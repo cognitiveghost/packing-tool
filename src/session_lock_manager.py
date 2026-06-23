@@ -73,7 +73,7 @@ class SessionLockManager:
         session_dir: Path,
         worker_id: Optional[str] = None,
         worker_name: Optional[str] = None
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[bool, Optional[str], Optional[Dict]]:
         """
         Attempt to acquire a lock on the session.
 
@@ -84,9 +84,10 @@ class SessionLockManager:
             worker_name: Worker display name
 
         Returns:
-            Tuple of (success: bool, error_message: Optional[str])
-            - (True, None) if lock acquired successfully
-            - (False, error_message) if session is locked by another process
+            Tuple of (success: bool, error_message: Optional[str], lock_info: Optional[Dict])
+            - (True, None, None) if lock acquired successfully
+            - (False, error_message, lock_info) if session is locked by another process
+              (lock_info is None when the failure is a file I/O error)
 
         Raises:
             IOError: If file operations fail
@@ -107,7 +108,7 @@ class SessionLockManager:
                         extra={"client_id": client_id, "session_dir": str(session_dir)}
                     )
                     self.update_heartbeat(session_dir)
-                    return True, None
+                    return True, None, None
                 else:
                     # Check if lock is stale
                     if self.is_lock_stale(lock_info):
@@ -121,7 +122,7 @@ class SessionLockManager:
                                 "stale_for_minutes": self._get_stale_minutes(lock_info)
                             }
                         )
-                        return False, error_msg
+                        return False, error_msg, lock_info
                     else:
                         # Active lock by another process
                         error_msg = self._format_active_lock_message(lock_info)
@@ -134,7 +135,7 @@ class SessionLockManager:
                                 "attempted_by": self.hostname
                             }
                         )
-                        return False, error_msg
+                        return False, error_msg, lock_info
 
         # Create new lock
         try:
@@ -172,7 +173,7 @@ class SessionLockManager:
                     "user_name": self.username
                 }
             )
-            return True, None
+            return True, None, None
 
         except Exception as e:
             self.logger.error(
@@ -180,7 +181,7 @@ class SessionLockManager:
                 extra={"client_id": client_id, "session_dir": str(session_dir)},
                 exc_info=True
             )
-            return False, f"Failed to create lock file: {e}"
+            return False, f"Failed to create lock file: {e}", None
 
     def release_lock(self, session_dir: Path) -> bool:
         """
@@ -307,9 +308,10 @@ class SessionLockManager:
             try:
                 with open(lock_path, 'r+', encoding='utf-8') as f:
                     # Acquire exclusive lock (Windows only)
+                    _lock_nbytes = max(1, os.fstat(f.fileno()).st_size)
                     if WINDOWS_LOCKING_AVAILABLE:
                         try:
-                            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, _lock_nbytes)
                         except IOError:
                             # File is locked by another process, retry
                             if attempt < max_retries - 1:
@@ -349,7 +351,7 @@ class SessionLockManager:
                     finally:
                         # Release lock (Windows only)
                         if WINDOWS_LOCKING_AVAILABLE:
-                            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, _lock_nbytes)
 
             except (IOError, OSError, json.JSONDecodeError) as e:
                 # Network issue or file error - don't crash

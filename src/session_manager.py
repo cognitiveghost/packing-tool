@@ -22,6 +22,8 @@ For small warehouse operations, this module ensures that:
 # Standard library imports
 import os  # For environment variables (PC name)
 import json  # For session info persistence
+import tempfile  # For atomic writes
+import shutil  # For atomic moves
 from pathlib import Path  # Modern path handling
 from datetime import datetime  # Session timestamps
 from typing import Optional  # Type hints
@@ -239,7 +241,7 @@ class SessionManager:
         # - heartbeat: timestamp of last heartbeat update
         # - worker_id: Worker ID (Phase 1.3)
         # - worker_name: Worker display name (Phase 1.3)
-        success, error_msg = self.lock_manager.acquire_lock(
+        success, error_msg, lock_info = self.lock_manager.acquire_lock(
             self.client_id,
             self.output_dir,
             worker_id=self.worker_id,
@@ -247,10 +249,10 @@ class SessionManager:
         )
 
         if not success:
-            # Lock acquisition failed (very rare at this point, but handle it)
-            # This might happen if another process acquired lock in the microseconds
-            # between our check above and this acquisition attempt
             logger.error(f"Failed to acquire session lock: {error_msg}")
+            if lock_info and self.lock_manager.is_lock_stale(lock_info):
+                stale_minutes = self.lock_manager._get_stale_minutes(lock_info)
+                raise StaleLockError(error_msg, lock_info=lock_info, stale_minutes=stale_minutes)
             raise SessionLockedError(error_msg)
 
         # Lock successfully acquired - we now have exclusive access to this session
@@ -276,8 +278,14 @@ class SessionManager:
         }
 
         try:
-            with open(info_path, 'w', encoding='utf-8') as f:
-                json.dump(session_info, f, indent=2)
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8',
+                dir=info_path.parent,
+                delete=False, suffix='.tmp'
+            ) as tmp_file:
+                json.dump(session_info, tmp_file, indent=2)
+                tmp_path = tmp_file.name
+            shutil.move(tmp_path, str(info_path))
             logger.debug(f"Created session info file: {info_path}")
         except Exception as e:
             # Non-critical failure - session can still function
@@ -741,9 +749,15 @@ class SessionManager:
                 session_info['packing_progress'][packing_list_name]['status'] = status
                 session_info['packing_progress'][packing_list_name]['updated_at'] = datetime.now().isoformat()
 
-            # Save updated session info
-            with open(session_info_file, 'w', encoding='utf-8') as f:
-                json.dump(session_info, f, indent=2, ensure_ascii=False)
+            # Save updated session info atomically (temp → move)
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8',
+                dir=session_info_file.parent,
+                delete=False, suffix='.tmp'
+            ) as tmp_file:
+                json.dump(session_info, tmp_file, indent=2, ensure_ascii=False)
+                tmp_path = tmp_file.name
+            shutil.move(tmp_path, str(session_info_file))
 
             logger.info(f"Updated session metadata: {packing_list_name} -> {status}")
 
