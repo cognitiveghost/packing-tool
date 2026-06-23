@@ -794,7 +794,10 @@ class PackerLogic(QObject):
         return normalized
 
     def _build_order_lookup(self):
-        self._build_order_lookup()
+        self._normalized_order_lookup = {
+            self._normalize_order_number(order_number): order_number
+            for order_number in self.orders_data
+        }
 
     def start_order_packing(self, scanned_text: str) -> Tuple[List[Dict] | None, str]:
         """
@@ -815,6 +818,10 @@ class PackerLogic(QObject):
         # STEP 1: Find order using normalized comparison
         scanned_normalized = self._normalize_order_number(scanned_text)
         logger.debug(f"Scanned text: '{scanned_text}' -> Normalized: '{scanned_normalized}'")
+
+        # Lazy-build the lookup if orders_data was set directly (e.g. in tests)
+        if not self._normalized_order_lookup and self.orders_data:
+            self._build_order_lookup()
 
         # Find matching order in orders_data via pre-built normalized lookup (O(1))
         matched_order_number = self._normalized_order_lookup.get(scanned_normalized)
@@ -1441,7 +1448,11 @@ class PackerLogic(QObject):
         # Store as packing_list_df and processed_df
         self.packing_list_df = df
         self.processed_df = df.copy()
-        self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        try:
+            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        except Exception as e:
+            logger.warning(f"Could not compute total items from Quantity column: {e}")
+            self._total_items = 0
 
         logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
 
@@ -1631,7 +1642,11 @@ class PackerLogic(QObject):
         # Store as packing_list_df and processed_df
         self.packing_list_df = df
         self.processed_df = df.copy()
-        self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        try:
+            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        except Exception as e:
+            logger.warning(f"Could not compute total items from Quantity column: {e}")
+            self._total_items = 0
 
         logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
 
