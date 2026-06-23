@@ -21,7 +21,7 @@ class TestSessionManager(unittest.TestCase):
 
         # Create mock SessionLockManager
         self.mock_lock_manager = MagicMock()
-        self.mock_lock_manager.acquire_lock.return_value = (True, None)
+        self.mock_lock_manager.acquire_lock.return_value = (True, None, None)
         self.mock_lock_manager.is_locked.return_value = (False, {})
 
         # Create SessionManager with mocks
@@ -43,8 +43,12 @@ class TestSessionManager(unittest.TestCase):
         # Configure mock to return specific session directory
         self.mock_profile_manager.get_session_dir.return_value = expected_dir
 
+        mock_tmp = MagicMock()
+        mock_tmp.return_value.__enter__.return_value.name = '/tmp/fake_session.tmp'
+
         with patch('pathlib.Path.mkdir') as mock_mkdir, \
-             patch('builtins.open', unittest.mock.mock_open()) as mock_open_file, \
+             patch('session_manager.tempfile.NamedTemporaryFile', mock_tmp), \
+             patch('session_manager.shutil.move') as mock_move, \
              patch('json.dump') as mock_json_dump:
 
             self.manager.start_session(test_path)
@@ -58,9 +62,9 @@ class TestSessionManager(unittest.TestCase):
             # Check that lock was acquired
             self.mock_lock_manager.acquire_lock.assert_called_once()
 
-            # Check that the session info file was opened for writing
+            # Check that the session info file was written atomically
             expected_file_path = expected_dir / SESSION_INFO_FILE
-            mock_open_file.assert_called_once_with(expected_file_path, 'w', encoding='utf-8')
+            mock_move.assert_called_once_with('/tmp/fake_session.tmp', str(expected_file_path))
 
             # Verify json.dump was called with correct structure
             call_args = mock_json_dump.call_args

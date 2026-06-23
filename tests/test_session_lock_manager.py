@@ -81,7 +81,7 @@ def another_lock_manager(mock_profile_manager):
 def test_acquire_lock_success(lock_manager, temp_session_dir):
     """Test acquiring lock on free session."""
     # Acquire lock
-    success, error_msg = lock_manager.acquire_lock("M", temp_session_dir)
+    success, error_msg, _ = lock_manager.acquire_lock("M", temp_session_dir)
 
     # Verify success
     assert success is True
@@ -106,11 +106,11 @@ def test_acquire_lock_success(lock_manager, temp_session_dir):
 def test_acquire_lock_already_locked(lock_manager, another_lock_manager, temp_session_dir):
     """Test acquiring lock when already locked by another PC."""
     # First PC acquires lock
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
     # Second PC tries to acquire lock
-    success, error_msg = another_lock_manager.acquire_lock("M", temp_session_dir)
+    success, error_msg, _ = another_lock_manager.acquire_lock("M", temp_session_dir)
 
     # Should fail with error message
     assert success is False
@@ -122,7 +122,7 @@ def test_acquire_lock_already_locked(lock_manager, another_lock_manager, temp_se
 def test_release_lock(lock_manager, temp_session_dir):
     """Test releasing lock."""
     # Acquire lock first
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
     lock_path = temp_session_dir / SessionLockManager.LOCK_FILENAME
@@ -209,7 +209,7 @@ def test_heartbeat_timer_starts(lock_manager, temp_session_dir):
     The actual timer would be managed by the application.
     """
     # Acquire lock
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
     # Verify heartbeat can be updated
@@ -300,7 +300,7 @@ def test_force_release_stale_lock(lock_manager, temp_session_dir):
     assert not lock_path.exists()
 
     # Should be able to acquire lock now
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
 
@@ -324,7 +324,7 @@ def test_fresh_lock_not_stale(lock_manager, temp_session_dir):
 def test_crash_recovery_scenario(lock_manager, temp_session_dir):
     """Test complete crash recovery workflow."""
     # Step 1: Acquire lock
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
     # Step 2: Simulate crash - manually set heartbeat to old time
@@ -349,7 +349,7 @@ def test_crash_recovery_scenario(lock_manager, temp_session_dir):
     assert not lock_path.exists()
 
     # Step 5: Reacquire lock (recovery complete)
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
     assert lock_path.exists()
 
@@ -410,7 +410,7 @@ def test_lock_on_read_only_directory(lock_manager, temp_session_dir):
 
     try:
         # Attempt to acquire lock should fail gracefully
-        success, error_msg = lock_manager.acquire_lock("M", temp_session_dir)
+        success, error_msg, _ = lock_manager.acquire_lock("M", temp_session_dir)
 
         assert success is False
         assert error_msg is not None
@@ -423,11 +423,11 @@ def test_lock_on_read_only_directory(lock_manager, temp_session_dir):
 def test_concurrent_lock_attempts(lock_manager, another_lock_manager, temp_session_dir):
     """Test multiple PCs trying to lock simultaneously."""
     # PC1 acquires lock
-    success1, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success1, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success1 is True
 
     # PC2 tries to acquire lock (should fail)
-    success2, error_msg2 = another_lock_manager.acquire_lock("M", temp_session_dir)
+    success2, error_msg2, _ = another_lock_manager.acquire_lock("M", temp_session_dir)
     assert success2 is False
     assert error_msg2 is not None
 
@@ -435,7 +435,7 @@ def test_concurrent_lock_attempts(lock_manager, another_lock_manager, temp_sessi
     lock_manager.release_lock(temp_session_dir)
 
     # PC2 can now acquire lock
-    success3, _ = another_lock_manager.acquire_lock("M", temp_session_dir)
+    success3, _, _ = another_lock_manager.acquire_lock("M", temp_session_dir)
     assert success3 is True
 
 
@@ -452,7 +452,7 @@ def test_invalid_lock_file_handling(lock_manager, temp_session_dir):
     assert lock_info is None
 
     # Should be able to acquire lock (overwrites invalid file)
-    success, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success is True
 
 
@@ -494,7 +494,7 @@ def test_acquire_lock_with_stale_lock_returns_error(lock_manager, temp_session_d
         json.dump(lock_data, f)
 
     # Try to acquire lock (should fail with stale lock error)
-    success, error_msg = lock_manager.acquire_lock("M", temp_session_dir)
+    success, error_msg, _ = lock_manager.acquire_lock("M", temp_session_dir)
 
     assert success is False
     assert error_msg is not None
@@ -598,11 +598,11 @@ def test_get_stale_minutes_with_missing_heartbeat(lock_manager):
 def test_reacquire_own_lock(lock_manager, temp_session_dir):
     """Test reacquiring lock that we already own."""
     # Acquire lock
-    success1, _ = lock_manager.acquire_lock("M", temp_session_dir)
+    success1, _, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success1 is True
 
     # Try to acquire again (should succeed - reacquire own lock)
-    success2, error_msg2 = lock_manager.acquire_lock("M", temp_session_dir)
+    success2, error_msg2, _ = lock_manager.acquire_lock("M", temp_session_dir)
     assert success2 is True
     assert error_msg2 is None
 

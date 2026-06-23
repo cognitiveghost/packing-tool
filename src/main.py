@@ -1442,7 +1442,7 @@ class MainWindow(QMainWindow):
             self.current_work_dir = str(work_dir)
 
             # 3. Acquire lock on work directory (with stale lock handling)
-            success, error_msg = self.lock_manager.acquire_lock(
+            success, error_msg, _ = self.lock_manager.acquire_lock(
                 client_id=client_id,
                 session_dir=work_dir,
                 worker_id=self.current_worker_id,
@@ -1459,7 +1459,7 @@ class MainWindow(QMainWindow):
                     )
                     if reply == QMessageBox.Yes:
                         self.lock_manager.force_release_lock(work_dir)
-                        success, error_msg = self.lock_manager.acquire_lock(
+                        success, error_msg, _ = self.lock_manager.acquire_lock(
                             client_id,
                             work_dir,
                             worker_id=self.current_worker_id,
@@ -2449,7 +2449,7 @@ class MainWindow(QMainWindow):
                 self.current_work_dir = str(work_dir)
 
                 # Acquire lock
-                success, error_msg = self.lock_manager.acquire_lock(
+                success, error_msg, _ = self.lock_manager.acquire_lock(
                     self.current_client_id,
                     work_dir,
                     worker_id=self.current_worker_id,
@@ -2465,7 +2465,7 @@ class MainWindow(QMainWindow):
                         )
                         if reply == QMessageBox.Yes:
                             self.lock_manager.force_release_lock(work_dir)
-                            success, error_msg = self.lock_manager.acquire_lock(
+                            success, error_msg, _ = self.lock_manager.acquire_lock(
                                 self.current_client_id,
                                 work_dir,
                                 worker_id=self.current_worker_id,

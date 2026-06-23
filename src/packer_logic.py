@@ -107,6 +107,8 @@ class PackerLogic(QObject):
         self.packing_list_df = None
         self.processed_df = None
         self.orders_data = {}
+        self._normalized_order_lookup: Dict[str, str] = {}
+        self._total_items: int = 0
         self.current_order_number = None
         self.current_order_state = {}
 
@@ -231,14 +233,7 @@ class PackerLogic(QObject):
         For unified workflow: work_dir/packing_state.json
         For Excel workflow: barcodes/packing_state.json (backward compatible)
         """
-        # For unified workflow, state file goes in work_dir root
-        # For Excel workflow (work_dir == barcodes), state file is still in barcodes dir
-        if self.work_dir.name == "barcodes":
-            # Excel workflow: keep state in barcodes directory
-            return str(self.work_dir / STATE_FILE_NAME)
-        else:
-            # Unified workflow: state in work_dir root
-            return str(self.work_dir / STATE_FILE_NAME)
+        return str(self.work_dir / STATE_FILE_NAME)
 
     def _get_summary_file_path(self) -> str:
         """
@@ -247,12 +242,7 @@ class PackerLogic(QObject):
         For unified workflow: work_dir/session_summary.json
         For Excel workflow: barcodes/session_summary.json (backward compatible)
         """
-        if self.work_dir.name == "barcodes":
-            # Excel workflow: keep summary in barcodes directory
-            return str(self.work_dir / SUMMARY_FILE_NAME)
-        else:
-            # Unified workflow: summary in work_dir root
-            return str(self.work_dir / SUMMARY_FILE_NAME)
+        return str(self.work_dir / SUMMARY_FILE_NAME)
 
     def _load_session_state(self):
         """
@@ -466,26 +456,8 @@ class PackerLogic(QObject):
         total_orders = len(self.orders_data) if self.orders_data else 0
         completed_orders_count = len(self.session_packing_state.get('completed_orders', []))
 
-        total_items = 0
-        packed_items = 0
-
-        if self.processed_df is not None:
-            try:
-                total_items = int(pd.to_numeric(self.processed_df['Quantity'], errors='coerce').sum())
-            except Exception as e:
-                logger.warning(f"Could not calculate total_items: {e}")
-
-        if self.processed_df is not None and self.session_packing_state.get('completed_orders'):
-            try:
-                completed_items = pd.to_numeric(
-                    self.processed_df[
-                        self.processed_df['Order_Number'].isin(self.session_packing_state['completed_orders'])
-                    ]['Quantity'],
-                    errors='coerce'
-                ).sum()
-                packed_items += int(completed_items)
-            except Exception as e:
-                logger.warning(f"Could not calculate packed items from completed orders: {e}")
+        total_items = self._total_items
+        packed_items = sum(o.get('items_count', 0) for o in self.completed_orders_metadata)
 
         for order_state in self.session_packing_state.get('in_progress', {}).values():
             if isinstance(order_state, list):
@@ -821,6 +793,12 @@ class PackerLogic(QObject):
 
         return normalized
 
+    def _build_order_lookup(self):
+        self._normalized_order_lookup = {
+            self._normalize_order_number(order_number): order_number
+            for order_number in self.orders_data
+        }
+
     def start_order_packing(self, scanned_text: str) -> Tuple[List[Dict] | None, str]:
         """
         Starts or resumes packing an order based on a scanned barcode.
@@ -841,14 +819,14 @@ class PackerLogic(QObject):
         scanned_normalized = self._normalize_order_number(scanned_text)
         logger.debug(f"Scanned text: '{scanned_text}' -> Normalized: '{scanned_normalized}'")
 
-        # Find matching order in orders_data
-        matched_order_number = None
-        for order_number in self.orders_data.keys():
-            order_normalized = self._normalize_order_number(order_number)
-            if scanned_normalized == order_normalized:
-                matched_order_number = order_number
-                logger.debug(f"Match found: '{scanned_text}' matches order '{order_number}'")
-                break
+        # Lazy-build the lookup if orders_data was set directly (e.g. in tests)
+        if not self._normalized_order_lookup and self.orders_data:
+            self._build_order_lookup()
+
+        # Find matching order in orders_data via pre-built normalized lookup (O(1))
+        matched_order_number = self._normalized_order_lookup.get(scanned_normalized)
+        if matched_order_number:
+            logger.debug(f"Match found: '{scanned_text}' matches order '{matched_order_number}'")
 
         if not matched_order_number:
             logger.info(f"Order not found for scanned text: '{scanned_text}'")
@@ -982,9 +960,6 @@ class PackerLogic(QObject):
 
         # Normalize the final SKU (whether mapped or direct)
         # This ensures consistent matching even if mapping returns non-normalized value
-        normalized_final_sku = self._normalize_sku(final_sku)
-
-        # The rest of the logic uses the potentially translated SKU.
         normalized_final_sku = self._normalize_sku(final_sku)
 
         # === STEP 3: Find matching item in current order ===
@@ -1473,6 +1448,11 @@ class PackerLogic(QObject):
         # Store as packing_list_df and processed_df
         self.packing_list_df = df
         self.processed_df = df.copy()
+        try:
+            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        except Exception as e:
+            logger.warning(f"Could not compute total items from Quantity column: {e}")
+            self._total_items = 0
 
         logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
 
@@ -1495,6 +1475,8 @@ class PackerLogic(QObject):
                     'order_fulfillment_status': raw.get('order_fulfillment_status') or '',
                 },
             }
+
+        self._build_order_lookup()
 
         # Initialize session metadata
         # Extract session_id from path if available (e.g., .../Sessions/CLIENT_M/2025-11-10_1/...)
@@ -1660,6 +1642,11 @@ class PackerLogic(QObject):
         # Store as packing_list_df and processed_df
         self.packing_list_df = df
         self.processed_df = df.copy()
+        try:
+            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+        except Exception as e:
+            logger.warning(f"Could not compute total items from Quantity column: {e}")
+            self._total_items = 0
 
         logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
 
@@ -1682,6 +1669,8 @@ class PackerLogic(QObject):
                     'order_fulfillment_status': raw.get('order_fulfillment_status') or '',
                 },
             }
+
+        self._build_order_lookup()
 
         # Initialize session metadata
         # Extract session_id from session_path (e.g., .../Sessions/CLIENT_M/2025-11-10_1)

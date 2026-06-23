@@ -31,6 +31,7 @@ Version: 1.0.0
 
 import json
 import time
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
@@ -92,6 +93,8 @@ class JSONCache:
         self.ttl_seconds = ttl_seconds
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._access_times: Dict[str, float] = {}
+        self._insert_times: Dict[str, float] = {}
+        self._lock = threading.RLock()
 
         logger.debug(f"JSONCache initialized: max_size={max_size}, ttl={ttl_seconds}s")
 
@@ -128,50 +131,53 @@ class JSONCache:
         cache_key = str(file_path.absolute())
         current_time = time.time()
 
-        # Check if cached and not expired
-        if cache_key in self._cache:
-            cache_age = current_time - self._access_times[cache_key]
+        with self._lock:
+            # Check if cached and not expired (TTL based on insert time, not access time)
+            if cache_key in self._cache:
+                cache_age = current_time - self._insert_times[cache_key]
 
-            if cache_age < self.ttl_seconds:
-                # Cache hit - update access time for LRU tracking
-                self._access_times[cache_key] = current_time
-                logger.debug(f"Cache HIT: {file_path.name} (age: {cache_age:.1f}s)")
-                return self._cache[cache_key]
-            else:
-                # Cache expired - remove stale entry
-                logger.debug(f"Cache EXPIRED: {file_path.name} (age: {cache_age:.1f}s)")
-                del self._cache[cache_key]
-                del self._access_times[cache_key]
+                if cache_age < self.ttl_seconds:
+                    # Cache hit - update access time for LRU tracking only
+                    self._access_times[cache_key] = current_time
+                    logger.debug(f"Cache HIT: {file_path.name} (age: {cache_age:.1f}s)")
+                    return self._cache[cache_key]
+                else:
+                    # Cache expired - remove stale entry
+                    logger.debug(f"Cache EXPIRED: {file_path.name} (age: {cache_age:.1f}s)")
+                    del self._cache[cache_key]
+                    del self._access_times[cache_key]
+                    del self._insert_times[cache_key]
 
-        # Cache miss - read from file
+        # Cache miss — read from disk without holding the lock so other threads
+        # can serve their own cache hits concurrently during a slow network read.
         try:
             if not file_path.exists():
                 logger.debug(f"File not found: {file_path}")
                 return default
 
-            # Read and parse JSON
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Add to cache
-            self._cache[cache_key] = data
-            self._access_times[cache_key] = current_time
-
-            # Evict oldest entries if cache is full
-            if len(self._cache) > self.max_size:
-                self._evict_oldest()
-
-            logger.debug(f"Cache MISS: {file_path.name} loaded and cached")
-            return data
-
         except json.JSONDecodeError as e:
-            # Invalid JSON format
             logger.warning(f"Invalid JSON in {file_path}: {e}")
             return default
         except Exception as e:
-            # Other errors (permissions, I/O errors, etc.)
             logger.error(f"Error reading {file_path}: {e}")
             return default
+
+        # Re-acquire lock to insert; another thread may have beat us here —
+        # only insert if the key is still absent to avoid replacing newer data.
+        now = time.time()
+        with self._lock:
+            if cache_key not in self._cache:
+                self._cache[cache_key] = data
+                self._access_times[cache_key] = now
+                self._insert_times[cache_key] = now
+                if len(self._cache) > self.max_size:
+                    self._evict_oldest()
+                logger.debug(f"Cache MISS: {file_path.name} loaded and cached")
+
+        return data
 
     def _evict_oldest(self):
         """
@@ -182,9 +188,9 @@ class JSONCache:
         - Remove oldest 10% of entries
         - This batch eviction is more efficient than removing one at a time
 
-        Called automatically when cache exceeds max_size.
+        Must be called with self._lock already held.
         """
-        # Sort by access time (oldest first)
+        # Sort by access time (oldest first) for LRU eviction
         sorted_keys = sorted(self._access_times.items(), key=lambda x: x[1])
 
         # Remove oldest 10% of entries (minimum 1)
@@ -193,6 +199,7 @@ class JSONCache:
         for cache_key, _ in sorted_keys[:remove_count]:
             del self._cache[cache_key]
             del self._access_times[cache_key]
+            del self._insert_times[cache_key]
             logger.debug(f"Evicted from cache: {Path(cache_key).name}")
 
         logger.debug(f"Cache eviction: removed {remove_count} entries")
@@ -216,10 +223,12 @@ class JSONCache:
             >>> cache.invalidate(state_file)
         """
         cache_key = str(Path(file_path).absolute())
-        if cache_key in self._cache:
-            del self._cache[cache_key]
-            del self._access_times[cache_key]
-            logger.debug(f"Cache invalidated: {file_path.name if isinstance(file_path, Path) else file_path}")
+        with self._lock:
+            if cache_key in self._cache:
+                del self._cache[cache_key]
+                del self._access_times[cache_key]
+                del self._insert_times[cache_key]
+                logger.debug(f"Cache invalidated: {file_path.name if isinstance(file_path, Path) else file_path}")
 
     def clear(self):
         """
@@ -230,10 +239,12 @@ class JSONCache:
         - Freeing memory when cache is no longer needed
         - Force-refreshing all data from disk
         """
-        entry_count = len(self._cache)
-        self._cache.clear()
-        self._access_times.clear()
-        logger.info(f"Cache cleared: {entry_count} entries removed")
+        with self._lock:
+            entry_count = len(self._cache)
+            self._cache.clear()
+            self._access_times.clear()
+            self._insert_times.clear()
+            logger.info(f"Cache cleared: {entry_count} entries removed")
 
     def stats(self) -> Dict[str, Any]:
         """
@@ -254,17 +265,18 @@ class JSONCache:
             >>> print(f"Cache utilization: {stats['size']}/{stats['max_size']}")
             >>> print(f"Oldest entry: {stats['oldest_age']:.1f}s old")
         """
-        oldest_age = 0
-        if self._access_times:
-            oldest_time = min(self._access_times.values())
-            oldest_age = time.time() - oldest_time
+        with self._lock:
+            oldest_age = 0
+            if self._access_times:
+                oldest_time = min(self._access_times.values())
+                oldest_age = time.time() - oldest_time
 
-        return {
-            'size': len(self._cache),
-            'max_size': self.max_size,
-            'ttl_seconds': self.ttl_seconds,
-            'oldest_age': round(oldest_age, 1)
-        }
+            return {
+                'size': len(self._cache),
+                'max_size': self.max_size,
+                'ttl_seconds': self.ttl_seconds,
+                'oldest_age': round(oldest_age, 1)
+            }
 
 
 # ============================================================================
