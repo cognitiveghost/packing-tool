@@ -13,8 +13,10 @@ on:
       - develop
 
 jobs:
-  test:
-    name: Run Tests
+  sanity-check:
+    # Tests were removed for a rewrite (not present in this checkout). Until they're
+    # back, this just checks the source tree compiles and imports cleanly.
+    name: Sanity Check
     runs-on: windows-latest
 
     steps:
@@ -31,35 +33,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests with pytest
-        run: >
-          pytest tests/
-          -v --tb=short --strict-markers
-          --ignore=tests/verify_logging.py
-          -m "not flaky"
-          --cov=src --cov=shared
-          --cov-report=term-missing
-          --cov-report=xml:coverage.xml
-          --junit-xml=test-results.xml
+      - name: Compile all sources
+        run: python -m py_compile src/*.py src/session_browser/*.py shared/*.py
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results.xml
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.xml
+      - name: Import main module
+        working-directory: src
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -c "import main"
 
   build-windows:
     name: Build Windows Executable
     runs-on: windows-latest
-    needs: test
+    needs: sanity-check
     if: github.event_name == 'release'
 
     steps:

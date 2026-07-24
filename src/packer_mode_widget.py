@@ -10,6 +10,8 @@ from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 from PySide6.QtCore import Qt, Signal, QSize
 from typing import List, Dict, Any
 
+from packer_logic import normalize_sku
+
 logger = logging.getLogger(__name__)
 
 class PackerModeWidget(QWidget):
@@ -731,7 +733,7 @@ class PackerModeWidget(QWidget):
         layout.addWidget(force_btn)
 
         # Map SKU — shown only when SKU has no barcode mapping
-        norm_sku = self._normalize_sku(sku)
+        norm_sku = normalize_sku(sku)
         sku_is_mapped = norm_sku in set(sku_map.values())
         if not sku_is_mapped:
             map_btn = QPushButton("Map")
@@ -878,11 +880,3 @@ class PackerModeWidget(QWidget):
             if packed >= total:
                 status_item.setForeground(QColor("#43a047"))
             self.summary_table.setItem(i, 3, status_item)
-
-    @staticmethod
-    def _normalize_sku(sku: str) -> str:
-        """
-        Normalize a SKU string for comparison purposes (Map SKU detection only).
-        Matches the normalization used in PackerLogic._normalize_sku().
-        """
-        return ''.join(c for c in str(sku).lower() if c.isalnum() or c in '-_')

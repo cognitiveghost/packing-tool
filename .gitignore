@@ -34,3 +34,6 @@ coverage.json
 # Test logs
 test_*.log
 *_audit_results.log
+
+# graphify skill output
+/graphify-out/

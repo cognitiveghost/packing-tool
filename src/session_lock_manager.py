@@ -12,16 +12,9 @@ import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, Tuple
-import shutil
-import tempfile
 
-# Windows-specific file locking
-try:
-    import msvcrt
-    WINDOWS_LOCKING_AVAILABLE = True
-except ImportError:
-    WINDOWS_LOCKING_AVAILABLE = False
-
+from shared.atomic_write import atomic_write_json
+from shared.file_lock import locked_file, FileLockError
 from logger import AppLogger
 
 
@@ -151,18 +144,7 @@ class SessionLockManager:
             }
 
             # Write atomically using temp file
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                dir=session_dir,
-                delete=False,
-                encoding='utf-8',
-                suffix='.tmp'
-            ) as tmp_file:
-                json.dump(lock_data, tmp_file, indent=2)
-                tmp_path = tmp_file.name
-
-            # Atomic move
-            shutil.move(tmp_path, lock_path)
+            atomic_write_json(lock_path, lock_data, indent=2)
 
             self.logger.info(
                 f"Session lock acquired successfully",
@@ -307,20 +289,7 @@ class SessionLockManager:
         for attempt in range(max_retries):
             try:
                 with open(lock_path, 'r+', encoding='utf-8') as f:
-                    # Acquire exclusive lock (Windows only)
-                    _lock_nbytes = max(1, os.fstat(f.fileno()).st_size)
-                    if WINDOWS_LOCKING_AVAILABLE:
-                        try:
-                            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, _lock_nbytes)
-                        except IOError:
-                            # File is locked by another process, retry
-                            if attempt < max_retries - 1:
-                                time.sleep(0.1)
-                                continue
-                            else:
-                                raise
-
-                    try:
+                    with locked_file(f):
                         # Read current data
                         f.seek(0)
                         data = json.load(f)
@@ -348,12 +317,7 @@ class SessionLockManager:
                         )
                         return True
 
-                    finally:
-                        # Release lock (Windows only)
-                        if WINDOWS_LOCKING_AVAILABLE:
-                            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, _lock_nbytes)
-
-            except (IOError, OSError, json.JSONDecodeError) as e:
+            except (IOError, OSError, FileLockError, json.JSONDecodeError) as e:
                 # Network issue or file error - don't crash
                 self.logger.warning(
                     f"Failed to update heartbeat (attempt {attempt + 1}/{max_retries}): {e}",
@@ -366,20 +330,16 @@ class SessionLockManager:
 
         return False
 
-    def is_lock_stale(self, lock_info: Dict, stale_timeout: Optional[int] = None) -> bool:
+    def is_lock_stale(self, lock_info: Dict) -> bool:
         """
         Check if a lock is stale (no recent heartbeat).
 
         Args:
             lock_info: Lock information dictionary
-            stale_timeout: Optional timeout in seconds (default: STALE_TIMEOUT)
 
         Returns:
             True if lock is stale, False otherwise
         """
-        if stale_timeout is None:
-            stale_timeout = self.STALE_TIMEOUT
-
         try:
             heartbeat_str = lock_info.get('heartbeat')
             if not heartbeat_str:
@@ -392,7 +352,7 @@ class SessionLockManager:
             now = datetime.now().astimezone()
             elapsed = (now - heartbeat_time).total_seconds()
 
-            return elapsed > stale_timeout
+            return elapsed > self.STALE_TIMEOUT
 
         except (ValueError, TypeError) as e:
             self.logger.warning(f"Failed to parse heartbeat time: {e}")
@@ -449,37 +409,6 @@ class SessionLockManager:
             )
             return False
 
-    def get_lock_display_info(self, lock_info: Dict) -> str:
-        """
-        Format lock information for display to user.
-
-        Args:
-            lock_info: Lock information dictionary
-
-        Returns:
-            Formatted string for UI display
-        """
-        locked_by = lock_info.get('locked_by', 'Unknown')
-        user_name = lock_info.get('user_name', 'Unknown')
-        lock_time = lock_info.get('lock_time', 'Unknown')
-
-        # Format time nicely
-        try:
-            from shared.metadata_utils import parse_timestamp
-            lock_dt = parse_timestamp(lock_time)
-            if lock_dt:
-                lock_time_formatted = lock_dt.strftime('%d.%m.%Y %H:%M')
-            else:
-                lock_time_formatted = lock_time
-        except (ValueError, TypeError):
-            lock_time_formatted = lock_time
-
-        return (
-            f"Locked by: {user_name}\n"
-            f"Computer: {locked_by}\n"
-            f"Since: {lock_time_formatted}"
-        )
-
     def _get_stale_minutes(self, lock_info: Dict) -> int:
         """Get how many minutes the lock has been stale."""
         try:
@@ -522,49 +451,3 @@ class SessionLockManager:
             f"You can force-release the lock."
         )
 
-    def get_all_active_sessions(self) -> Dict[str, list]:
-        """
-        Get all active sessions across all clients.
-
-        Returns:
-            Dictionary mapping client_id to list of active session info dicts:
-            {
-                'M': [
-                    {
-                        'session_name': 'Session_2025-10-28_143045',
-                        'session_dir': Path(...),
-                        'lock_info': {...}
-                    },
-                    ...
-                ],
-                'R': [...],
-                ...
-            }
-        """
-        all_sessions = {}
-
-        try:
-            clients = self.profile_manager.list_clients()
-
-            for client_id in clients:
-                sessions = self.profile_manager.get_incomplete_sessions(client_id)
-                active_sessions = []
-
-                for session_dir in sessions:
-                    is_locked, lock_info = self.is_locked(session_dir)
-
-                    if is_locked and not self.is_lock_stale(lock_info):
-                        # Active (non-stale) lock
-                        active_sessions.append({
-                            'session_name': session_dir.name,
-                            'session_dir': session_dir,
-                            'lock_info': lock_info
-                        })
-
-                if active_sessions:
-                    all_sessions[client_id] = active_sessions
-
-        except Exception as e:
-            self.logger.error(f"Failed to get all active sessions: {e}", exc_info=True)
-
-        return all_sessions

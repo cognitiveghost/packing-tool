@@ -16,11 +16,8 @@ For small warehouse operations, clear error messages are critical because:
 
 Exception hierarchy:
     PackingToolError (base)
-    ├── NetworkError (file server connection issues)
-    ├── SessionLockedError (session in use by another PC)
-    │   └── StaleLockError (crashed session, can be force-released)
-    ├── ProfileError (client profile operations)
-    └── ValidationError (input validation failures)
+    └── SessionLockedError (session in use by another PC)
+        └── StaleLockError (crashed session, can be force-released)
 """
 
 from typing import Dict, Optional
@@ -40,32 +37,6 @@ class PackingToolError(Exception):
 
     Note: This does NOT inherit from built-in errors like ValueError, IOError
     to maintain clear separation between application and system errors.
-    """
-
-
-class NetworkError(PackingToolError):
-    """
-    Raised when network or file server operations fail.
-
-    Common scenarios in warehouse environments:
-    - File server is offline or unreachable
-    - Network cable disconnected
-    - SMB/CIFS share not mounted
-    - Insufficient permissions on shared folder
-    - Network timeout during file operations
-
-    For small warehouses, network issues are common because:
-    - Limited IT infrastructure and support
-    - Basic network equipment (consumer-grade switches)
-    - File server may be an old PC or NAS device
-    - Wireless connections may be unstable in large warehouse spaces
-
-    Example usage:
-        if not file_server.is_accessible():
-            raise NetworkError(
-                f"Cannot connect to file server at {server_path}\\n\\n"
-                f"Please check network connection and try again."
-            )
     """
 
 
@@ -262,51 +233,3 @@ class StaleLockError(SessionLockedError):
             f"The application may have crashed on that PC.\n\n"
             f"You can force-release the lock to open this session."
         )
-
-
-class ProfileError(PackingToolError):
-    """
-    Raised when client profile operations fail.
-
-    Client profiles contain configuration, SKU mappings, and session data for
-    each client. This exception is raised when profile operations fail, such as:
-    - Creating a new client profile
-    - Loading client configuration
-    - Saving SKU mappings
-    - Accessing client directories
-
-    Common causes:
-    - Invalid client ID format (contains special characters)
-    - Duplicate client ID (profile already exists)
-    - Missing configuration files
-    - File permission issues on file server
-    - Network errors during profile operations
-
-    Example usage:
-        if not validate_client_id(client_id):
-            raise ProfileError(f"Invalid client ID: {client_id}")
-    """
-
-
-class ValidationError(PackingToolError):
-    """
-    Raised when input validation fails.
-
-    Validation ensures data integrity and prevents errors downstream.
-    This exception is raised for invalid user input, such as:
-    - Client ID contains invalid characters
-    - Excel file missing required columns
-    - SKU format is invalid
-    - Configuration values out of valid range
-
-    For warehouse operations, validation is critical because:
-    - Workers may not be familiar with technical data formats
-    - Excel files may be manually edited with errors
-    - Copy-paste from external sources can introduce formatting issues
-    - Invalid data can cause crashes or incorrect packing
-
-    Example usage:
-        is_valid, error_msg = validate_client_id(client_id)
-        if not is_valid:
-            raise ValidationError(error_msg)
-    """

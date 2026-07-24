@@ -70,8 +70,6 @@ class JSONCache:
         >>> cache = JSONCache(max_size=100, ttl_seconds=60)
         >>> data = cache.get('/path/to/file.json')
         >>> cache.invalidate('/path/to/file.json')  # After modification
-        >>> stats = cache.stats()
-        >>> print(f"Cache size: {stats['size']}/{stats['max_size']}")
     """
 
     def __init__(self, max_size: int = 100, ttl_seconds: int = 60):
@@ -230,54 +228,6 @@ class JSONCache:
                 del self._insert_times[cache_key]
                 logger.debug(f"Cache invalidated: {file_path.name if isinstance(file_path, Path) else file_path}")
 
-    def clear(self):
-        """
-        Clear entire cache.
-
-        Removes all cached entries. Useful for:
-        - Resetting cache during testing
-        - Freeing memory when cache is no longer needed
-        - Force-refreshing all data from disk
-        """
-        with self._lock:
-            entry_count = len(self._cache)
-            self._cache.clear()
-            self._access_times.clear()
-            self._insert_times.clear()
-            logger.info(f"Cache cleared: {entry_count} entries removed")
-
-    def stats(self) -> Dict[str, Any]:
-        """
-        Get cache statistics for monitoring and debugging.
-
-        Returns:
-            Dictionary with cache statistics:
-            {
-                'size': 42,              # Current number of cached files
-                'max_size': 100,         # Maximum cache size
-                'ttl_seconds': 60,       # Time-to-live setting
-                'oldest_age': 45.2,      # Age of oldest entry in seconds
-                'hit_rate': 0.85         # Not implemented yet (future enhancement)
-            }
-
-        Example:
-            >>> stats = cache.stats()
-            >>> print(f"Cache utilization: {stats['size']}/{stats['max_size']}")
-            >>> print(f"Oldest entry: {stats['oldest_age']:.1f}s old")
-        """
-        with self._lock:
-            oldest_age = 0
-            if self._access_times:
-                oldest_time = min(self._access_times.values())
-                oldest_age = time.time() - oldest_time
-
-            return {
-                'size': len(self._cache),
-                'max_size': self.max_size,
-                'ttl_seconds': self.ttl_seconds,
-                'oldest_age': round(oldest_age, 1)
-            }
-
 
 # ============================================================================
 # GLOBAL CACHE INSTANCE
@@ -346,34 +296,3 @@ def invalidate_json_cache(file_path: Path):
         >>> invalidate_json_cache(state_file)
     """
     _json_cache.invalidate(file_path)
-
-
-def clear_json_cache():
-    """
-    Convenience function to clear global cache.
-
-    Useful for:
-    - Testing (reset cache between tests)
-    - Memory cleanup (free cache memory)
-    - Force refresh (reload all data from disk)
-
-    Example:
-        >>> from json_cache import clear_json_cache
-        >>> clear_json_cache()  # Clear all cached JSON
-    """
-    _json_cache.clear()
-
-
-def get_json_cache_stats() -> Dict[str, Any]:
-    """
-    Get statistics from global JSON cache.
-
-    Returns:
-        Dictionary with cache statistics
-
-    Example:
-        >>> from json_cache import get_json_cache_stats
-        >>> stats = get_json_cache_stats()
-        >>> logger.info(f"JSON cache: {stats['size']}/{stats['max_size']} files cached")
-    """
-    return _json_cache.stats()

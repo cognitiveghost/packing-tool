@@ -214,18 +214,7 @@ stats_manager = StatsManager(
 
 ### Testing
 
-Run the test suite:
-
-```bash
-# Unit tests
-pytest tests/test_unified_stats_manager.py -v
-
-# Concurrent access tests
-pytest tests/test_stats_concurrent_access.py -v
-
-# All tests
-pytest tests/test_unified_stats_manager.py tests/test_stats_concurrent_access.py -v
-```
+Tests were removed for a rewrite and are not present in this checkout.
 
 ### Integration Example for Packing Tool
 
@@ -342,6 +331,5 @@ If the statistics file becomes corrupted:
 ### Support
 
 For issues or questions:
-1. Check the integration tests for usage examples
-2. Review the inline documentation in `stats_manager.py`
-3. Consult the Unified Development Plan (Phase 1.4)
+1. Review the inline documentation in `stats_manager.py`
+2. Consult the Unified Development Plan (Phase 1.4)

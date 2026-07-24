@@ -61,11 +61,10 @@ transferred between PCs.
 ## System Requirements
 
 - Windows 10 or 11
-- Python 3.9 or later (or the pre-built `.exe`)
+- Python 3.14 or later (or the pre-built `.exe`)
 - Network access to the shared file server
 - Shopify Tool v1.8.6.0 or later (required to create sessions)
 - Barcode scanner (USB HID keyboard-emulation type)
-- Thermal label printer compatible with 68 mm x 38 mm labels (e.g., Citizen CL-E300 at 203 DPI)
 
 ---
 
@@ -178,13 +177,16 @@ python src/main.py --config config.dev.ini
 
 ### Testing
 
-```bash
-pytest -m "not flaky" --ignore=tests/verify_logging.py
-```
+Tests were removed for a rewrite and are not present in this checkout.
 
-Tests use `pytest` and `pytest-qt`. GUI tests require a display (or a virtual framebuffer on
-headless systems). The `flaky` marker excludes tests with known race conditions under resource
-contention.
+### Running against a local dev server
+
+`run_dev.py` points the app at the shared `dev-server/` mock file server used by Shopify Tool
+(sibling repo), instead of the production network share:
+
+```bash
+python run_dev.py
+```
 
 ---
 
@@ -192,5 +194,3 @@ contention.
 
 - Issues: [github.com/cognitiveclodfr/packing-tool/issues](https://github.com/cognitiveclodfr/packing-tool/issues)
 - Releases: [github.com/cognitiveclodfr/packing-tool/releases](https://github.com/cognitiveclodfr/packing-tool/releases)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

@@ -15,7 +15,6 @@ Integration with Shopify Tool (Phase 1.3.2):
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
-import json
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
@@ -27,6 +26,8 @@ from PySide6.QtCore import Qt, QDate, QThread, Signal
 
 from logger import get_logger
 from json_cache import get_cached_json
+from session_registry_manager import SessionRegistryManager
+from shared.metadata_utils import parse_timestamp
 
 logger = get_logger(__name__)
 
@@ -531,62 +532,47 @@ class SessionSelectorDialog(QDialog):
 
         return filtered
 
-    def _scan_packing_lists(self, session_path: Path) -> List[Dict]:
+    def _scan_packing_lists(self, client_id: str, session_path: Path) -> List[Dict]:
         """
-        Scan for packing list JSON files in session/packing_lists/ directory.
+        List packing lists for a session from registry_index.json instead of
+        re-scanning session/packing_lists/*.json on the file server.
 
         Args:
+            client_id: Client identifier
             session_path: Path to session directory
 
         Returns:
             List of packing list dictionaries with metadata
         """
-        packing_lists_dir = session_path / "packing_lists"
-
-        if not packing_lists_dir.exists():
-            logger.debug(f"No packing_lists directory in {session_path.name}")
+        try:
+            registry_manager = SessionRegistryManager(self.profile_manager)
+            entries = registry_manager.get_all_entries(client_id)
+        except Exception as e:
+            logger.error(f"Error reading registry for packing lists: {e}", exc_info=True)
             return []
 
+        session_path_str = str(session_path)
         packing_lists = []
 
-        try:
-            for json_file in packing_lists_dir.glob("*.json"):
-                if not json_file.is_file():
-                    continue
+        for entry in entries:
+            if entry.get('session_path') != session_path_str:
+                continue
 
-                packing_list_info = {
-                    'name': json_file.stem,
-                    'filename': json_file.name,
-                    'path': json_file,
-                    'modified': datetime.fromtimestamp(json_file.stat().st_mtime),
-                    'orders_count': 0,
-                    'courier': None
-                }
+            name = entry.get('packing_list_name', '')
+            timestamp = entry.get('last_updated') or entry.get('created_at') or entry.get('started_at') or ''
 
-                # Try to read metadata from JSON
-                try:
-                    with open(json_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+            packing_lists.append({
+                'name': name,
+                'filename': f"{name}.json",
+                'path': session_path / "packing_lists" / f"{name}.json",
+                'modified': parse_timestamp(timestamp) or datetime.min,
+                'orders_count': entry.get('total_orders', 0),
+                'courier': entry.get('courier') or None,
+                'list_name': name,
+            })
 
-                    packing_list_info['orders_count'] = data.get('total_orders', len(data.get('orders', [])))
-                    packing_list_info['courier'] = data.get('courier')
-                    packing_list_info['list_name'] = data.get('list_name', json_file.stem)
-
-                    logger.debug(f"Found packing list: {json_file.name} ({packing_list_info['orders_count']} orders)")
-
-                except Exception as e:
-                    logger.warning(f"Error reading packing list {json_file.name}: {e}")
-
-                packing_lists.append(packing_list_info)
-
-            # Sort by name
-            packing_lists.sort(key=lambda x: x['name'])
-
-            return packing_lists
-
-        except Exception as e:
-            logger.error(f"Error scanning packing lists: {e}", exc_info=True)
-            return []
+        packing_lists.sort(key=lambda x: x['name'])
+        return packing_lists
 
     def _on_session_selected(self):
         """Handle session selection change."""
@@ -622,8 +608,9 @@ class SessionSelectorDialog(QDialog):
 
             self.load_button.setEnabled(True)
 
-            # Scan for packing lists
-            packing_lists = self._scan_packing_lists(session['path'])
+            # Load packing lists from the registry
+            client_id = self.pre_selected_client or self.client_combo.currentData()
+            packing_lists = self._scan_packing_lists(client_id, session['path'])
             self.packing_lists_widget.clear()
 
             if packing_lists:

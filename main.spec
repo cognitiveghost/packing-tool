@@ -15,7 +15,6 @@ a = Analysis(
         'exceptions',
         'session_lock_manager',
         'restore_session_dialog',
-        'session_monitor_widget',
         'logger',
         'profile_manager',
         'session_manager',

@@ -13,6 +13,7 @@ from pathlib import Path
 import json
 from logger import get_logger
 from json_cache import get_cached_json
+from packer_logic import compute_order_timing_metrics
 
 logger = get_logger(__name__)
 
@@ -312,37 +313,7 @@ class SessionDetailsDialog(QDialog):
             }
 
         # Compute the same metrics as generate_session_summary()
-        durations = [o['duration_seconds'] for o in orders_with_timing]
-        avg_time_per_order = round(sum(durations) / len(durations), 1)
-        fastest_order_seconds = min(durations)
-        slowest_order_seconds = max(durations)
-
-        all_items = []
-        for order in orders_with_timing:
-            all_items.extend(order.get('items', []))
-        item_times = [
-            item['time_from_order_start_seconds']
-            for item in all_items
-            if 'time_from_order_start_seconds' in item
-        ]
-        avg_time_per_item = round(sum(item_times) / len(item_times), 1) if item_times else 0
-
-        # 1.7 metrics
-        first_scan_latencies = [
-            o['time_to_first_scan_seconds']
-            for o in orders_with_timing
-            if o.get('time_to_first_scan_seconds') is not None
-        ]
-        avg_time_to_first_scan = (
-            round(sum(first_scan_latencies) / len(first_scan_latencies), 1)
-            if first_scan_latencies else 0
-        )
-        total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
-        total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
-        total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
-        avg_corrections_per_order = (
-            round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
-        )
+        timing_metrics = compute_order_timing_metrics(orders_with_timing)
 
         # Session duration from state timestamps (best-effort)
         started_at = session_info.get('started_at') or packing_state.get('started_at')
@@ -380,17 +351,9 @@ class SessionDetailsDialog(QDialog):
             'in_progress_orders': in_progress_count,
             'skipped_orders_count': len(packing_state.get('skipped_orders', [])),
             'metrics': {
-                'avg_time_per_order': avg_time_per_order,
-                'avg_time_per_item': avg_time_per_item,
-                'fastest_order_seconds': fastest_order_seconds,
-                'slowest_order_seconds': slowest_order_seconds,
+                **timing_metrics,
                 'orders_per_hour': orders_per_hour,
                 'items_per_hour': items_per_hour,
-                'avg_time_to_first_scan': avg_time_to_first_scan,
-                'total_corrections': total_corrections,
-                'avg_corrections_per_order': avg_corrections_per_order,
-                'total_extra_scans': total_extra_scans,
-                'total_unknown_scans': total_unknown_scans,
             },
             'orders': [o for o in completed_orders if isinstance(o, dict)],
             'skipped_orders': [

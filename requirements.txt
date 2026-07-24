@@ -2,7 +2,3 @@ PySide6
 pandas
 openpyxl
 pyinstaller
-pytest
-pytest-qt
-pytest-cov
-pytest-timeout
