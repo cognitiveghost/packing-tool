@@ -12,6 +12,8 @@ from typing import List, Optional, Dict
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
+from shared.atomic_write import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +85,7 @@ class WorkerProfile:
 
 
 class WorkerManager:
-    """Manage worker profiles
+    r"""Manage worker profiles
 
     Storage structure:
         \\server\...\Workers\
@@ -154,14 +156,7 @@ class WorkerManager:
             # Add version to root level
             data['version'] = "1.3.0"
 
-            # Atomic write: tmp file + rename
-            tmp_file = self.workers_file.with_suffix('.json.tmp')
-
-            with open(tmp_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            # Rename (atomic on Windows)
-            tmp_file.replace(self.workers_file)
+            atomic_write_json(self.workers_file, data, indent=2, ensure_ascii=False)
 
             logger.debug(f"Saved {len(data['workers'])} workers to registry (v1.3.0)")
 
@@ -333,30 +328,3 @@ class WorkerManager:
 
         logger.warning(f"Worker not found for stats update: {worker_id}")
 
-    def delete_worker(self, worker_id: str) -> bool:
-        """Delete worker profile
-
-        Args:
-            worker_id: Worker ID to delete
-
-        Returns:
-            bool: True if deleted, False if not found
-
-        Note: Use with caution! This removes worker from registry.
-              Historical data will still reference this worker_id.
-        """
-        data = self._load_workers_registry()
-        workers = data.get('workers', [])
-
-        # Find and remove
-        original_count = len(workers)
-        workers = [w for w in workers if w['id'] != worker_id]
-
-        if len(workers) < original_count:
-            data['workers'] = workers
-            self._save_workers_registry(data)
-            logger.warning(f"Deleted worker: {worker_id}")
-            return True
-
-        logger.warning(f"Worker not found for deletion: {worker_id}")
-        return False

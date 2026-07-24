@@ -22,11 +22,11 @@ For small warehouse operations, this module ensures that:
 # Standard library imports
 import os  # For environment variables (PC name)
 import json  # For session info persistence
-import tempfile  # For atomic writes
-import shutil  # For atomic moves
 from pathlib import Path  # Modern path handling
 from datetime import datetime  # Session timestamps
 from typing import Optional  # Type hints
+
+from shared.atomic_write import atomic_write_json
 
 # Local imports
 from logger import get_logger
@@ -40,10 +40,6 @@ logger = get_logger(__name__)
 # Its presence indicates a session that may need recovery after a crash
 # Contains: client_id, packing_list_path, started_at, pc_name
 SESSION_INFO_FILE = "session_info.json"
-
-# Filename for session summary (created upon session completion)
-# This file contains aggregated statistics and performance metrics
-SUMMARY_FILE_NAME = "session_summary.json"
 
 
 class SessionManager:
@@ -278,14 +274,7 @@ class SessionManager:
         }
 
         try:
-            with tempfile.NamedTemporaryFile(
-                mode='w', encoding='utf-8',
-                dir=info_path.parent,
-                delete=False, suffix='.tmp'
-            ) as tmp_file:
-                json.dump(session_info, tmp_file, indent=2)
-                tmp_path = tmp_file.name
-            shutil.move(tmp_path, str(info_path))
+            atomic_write_json(info_path, session_info, indent=2)
             logger.debug(f"Created session info file: {info_path}")
         except Exception as e:
             # Non-critical failure - session can still function
@@ -382,37 +371,6 @@ class SessionManager:
 
         barcodes_dir = self.output_dir / "barcodes"
         return str(barcodes_dir)
-
-    def get_session_summary_path(self, work_dir: Path = None) -> Path:
-        """
-        Get path to session_summary.json file.
-
-        Args:
-            work_dir: Optional work directory path. If not provided, uses current output_dir/barcodes
-
-        Returns:
-            Path to session_summary.json file
-
-        Examples:
-            # For Shopify sessions with unified work directory:
-            work_dir = Path("Sessions/CLIENT_M/2025-11-10_1/packing/DHL_Orders")
-            summary_path = sm.get_session_summary_path(work_dir)
-            # Returns: .../packing/DHL_Orders/session_summary.json
-
-            # For legacy Excel sessions (uses barcodes dir):
-            summary_path = sm.get_session_summary_path()
-            # Returns: .../session_dir/barcodes/session_summary.json
-        """
-        if work_dir:
-            # Shopify session: work_dir is packing/{list_name}/
-            return work_dir / SUMMARY_FILE_NAME
-        elif self.output_dir:
-            # Legacy Excel session: use barcodes subdirectory
-            barcodes_dir = self.output_dir / "barcodes"
-            return barcodes_dir / SUMMARY_FILE_NAME
-        else:
-            # No session active - should not happen
-            raise ValueError("Cannot get summary path: no active session or work_dir provided")
 
     def get_session_info(self) -> Optional[dict]:
         """
@@ -750,14 +708,7 @@ class SessionManager:
                 session_info['packing_progress'][packing_list_name]['updated_at'] = datetime.now().isoformat()
 
             # Save updated session info atomically (temp → move)
-            with tempfile.NamedTemporaryFile(
-                mode='w', encoding='utf-8',
-                dir=session_info_file.parent,
-                delete=False, suffix='.tmp'
-            ) as tmp_file:
-                json.dump(session_info, tmp_file, indent=2, ensure_ascii=False)
-                tmp_path = tmp_file.name
-            shutil.move(tmp_path, str(session_info_file))
+            atomic_write_json(session_info_file, session_info, indent=2, ensure_ascii=False)
 
             logger.info(f"Updated session metadata: {packing_list_name} -> {status}")
 

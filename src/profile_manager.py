@@ -15,13 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
-# Windows-specific file locking
-try:
-    import msvcrt
-    WINDOWS_LOCKING_AVAILABLE = True
-except ImportError:
-    WINDOWS_LOCKING_AVAILABLE = False
-
+from shared.file_lock import locked_file, FileLockError, WINDOWS_LOCKING_AVAILABLE
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -561,10 +555,7 @@ class ProfileManager:
                         json.dump(default_config, f)
 
                 with open(packer_config_path, 'r+', encoding='utf-8') as f:
-                    # Acquire exclusive lock (non-blocking)
-                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-
-                    try:
+                    with locked_file(f):
                         # Read current data
                         f.seek(0)
                         current_data = json.load(f)
@@ -585,10 +576,6 @@ class ProfileManager:
 
                         logger.info(f"Successfully saved SKU mapping to packer_config for {client_id}")
 
-                    finally:
-                        # Release lock
-                        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-
                 # Invalidate caches
                 cache_key = f"sku_{client_id}"
                 self._sku_cache.pop(cache_key, None)
@@ -597,7 +584,7 @@ class ProfileManager:
 
                 return True
 
-            except IOError as e:
+            except (IOError, FileLockError) as e:
                 # File is locked by another process
                 if attempt < max_retries - 1:
                     logger.warning(f"packer_config locked, retry {attempt + 1}/{max_retries}")
@@ -690,70 +677,6 @@ class ProfileManager:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         return client_sessions / timestamp
 
-    def get_client_sessions(self, client_id: str) -> List[Dict]:
-        """
-        Get list of all sessions for a client.
-
-        Args:
-            client_id: Client identifier
-
-        Returns:
-            List of session dictionaries with metadata
-        """
-        client_sessions_dir = self.sessions_dir / f"CLIENT_{client_id}"
-
-        if not client_sessions_dir.exists():
-            logger.debug(f"No sessions directory for client {client_id}")
-            return []
-
-        sessions = []
-
-        try:
-            for session_dir in client_sessions_dir.iterdir():
-                if not session_dir.is_dir():
-                    continue
-
-                state_file = session_dir / "packing_state.json"
-                session_info = {
-                    'name': session_dir.name,
-                    'path': str(session_dir),
-                    'total_orders': 0,
-                    'completed_orders': 0,
-                    'is_complete': False,
-                    'modified': datetime.fromtimestamp(session_dir.stat().st_mtime)
-                }
-
-                if state_file.exists():
-                    try:
-                        with open(state_file, 'r') as f:
-                            state = json.load(f)
-
-                        # Handle both old and new format
-                        if isinstance(state, dict):
-                            state_data = state.get('data', state)
-                            in_progress = state_data.get('in_progress', {})
-                            completed = state_data.get('completed_orders', [])
-
-                            total = len(in_progress) + len(completed)
-                            session_info['total_orders'] = total
-                            session_info['completed_orders'] = len(completed)
-                            session_info['is_complete'] = (len(completed) == total) if total > 0 else False
-
-                    except Exception as e:
-                        logger.warning(f"Error reading state for session {session_dir.name}: {e}")
-
-                sessions.append(session_info)
-
-            # Sort by date descending
-            sessions.sort(key=lambda x: x['modified'], reverse=True)
-
-            logger.debug(f"Found {len(sessions)} sessions for client {client_id}")
-            return sessions
-
-        except Exception as e:
-            logger.error(f"Error listing sessions for {client_id}: {e}")
-            return []
-
     def get_incomplete_sessions(self, client_id: str) -> List[Path]:
         """
         Get list of incomplete sessions for a client.
@@ -834,50 +757,3 @@ class ProfileManager:
         """
         return self.sessions_dir
 
-    def get_clients_root(self) -> Path:
-        """
-        Get the root directory for all clients.
-
-        Returns:
-            Path to CLIENTS directory on file server
-        """
-        return self.clients_dir
-
-    def get_global_stats_path(self) -> Path:
-        """
-        Get path to global statistics file on file server.
-
-        This file stores centralized statistics accessible from all PCs.
-
-        Returns:
-            Path to stats.json on file server
-        """
-        self.stats_dir.mkdir(exist_ok=True, parents=True)
-        return self.stats_dir / "stats.json"
-
-    def get_workers_root(self) -> Path:
-        """
-        Get the root directory for all workers.
-
-        Returns:
-            Path to Workers directory on file server
-        """
-        return self.workers_dir
-
-    def get_stats_root(self) -> Path:
-        """
-        Get the root directory for statistics.
-
-        Returns:
-            Path to Stats directory on file server
-        """
-        return self.stats_dir
-
-    def get_logs_root(self) -> Path:
-        """
-        Get the root directory for logs.
-
-        Returns:
-            Path to Logs directory on file server
-        """
-        return self.logs_dir

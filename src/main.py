@@ -1,26 +1,15 @@
 import sys
 import os
 import json
-import queue as _queue
 import threading
 from pathlib import Path
 
 try:
     import winsound as _winsound
-    _beep_queue: _queue.Queue = _queue.Queue()
-
-    def _beep_worker() -> None:
-        """Single daemon thread that serializes all beep requests."""
-        while True:
-            freq, dur = _beep_queue.get()
-            _winsound.Beep(freq, dur)
-            _beep_queue.task_done()
-
-    threading.Thread(target=_beep_worker, daemon=True, name="beep-worker").start()
 
     def _beep(frequency: int, duration_ms: int) -> None:
-        """Queue a beep on the shared audio worker thread (non-blocking)."""
-        _beep_queue.put((frequency, duration_ms))
+        """Play a beep on a fire-and-forget daemon thread (non-blocking)."""
+        threading.Thread(target=_winsound.Beep, args=(frequency, duration_ms), daemon=True).start()
 
 except ImportError:
     def _beep(frequency: int, duration_ms: int) -> None:  # type: ignore[misc]
@@ -48,7 +37,6 @@ from profile_manager import ProfileManager, NetworkError, ValidationError
 from session_lock_manager import SessionLockManager
 from exceptions import SessionLockedError, StaleLockError
 from session_selector import SessionSelectorDialog
-from print_dialog import PrintDialog
 from packer_mode_widget import PackerModeWidget
 from packer_logic import PackerLogic, REQUIRED_COLUMNS
 from session_manager import SessionManager
@@ -64,41 +52,6 @@ from theme import load_saved_theme, toggle_theme
 logger = get_logger(__name__)
 
 DEFAULT_CONFIG_PATH = "config.ini"
-
-def find_latest_session_dir(base_dir: str = ".") -> str | None:
-    """
-    Finds the most recent, valid, and incomplete session directory.
-
-    A session is considered valid and incomplete if it is a directory matching
-    the session name pattern and contains a `session_info.json` file.
-
-    Args:
-        base_dir (str): The directory to search for session folders.
-
-    Returns:
-        str | None: The path to the latest valid session directory, or None if
-                    none is found.
-    """
-    session_pattern = "OrdersFulfillment_"
-    session_dirs = []
-    try:
-        session_dirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d)) and d.startswith(session_pattern)]
-    except FileNotFoundError:
-        return None # No base directory yet
-
-    valid_sessions = []
-    for dirname in session_dirs:
-        dirpath = os.path.join(base_dir, dirname)
-        # A valid, incomplete session must have a session_info file.
-        if os.path.exists(os.path.join(dirpath, "session_info.json")):
-            valid_sessions.append(dirpath)
-
-    if not valid_sessions:
-        return None
-
-    # Return the one that was most recently modified
-    latest_session_dir = max(valid_sessions, key=os.path.getmtime)
-    return latest_session_dir
 
 
 class SessionStartWorker(QThread):
@@ -340,11 +293,6 @@ class MainWindow(QMainWindow):
 
         client_selection_layout.addStretch()
 
-        # "+ New Client" button kept as hidden helper — accessible via logic only
-        self.new_client_button = QPushButton("+ New Client")
-        self.new_client_button.clicked.connect(self.create_new_client)
-        self.new_client_button.setVisible(False)  # hidden from main UI
-
         # (control panel removed — all actions are in the toolbar)
 
         self.search_input = QLineEdit()
@@ -579,11 +527,7 @@ class MainWindow(QMainWindow):
             scanned_count = 0
             if order_num in in_progress_orders:
                 order_state = in_progress_orders[order_num]
-                # Handle both list format (current) and dict format (legacy)
-                if isinstance(order_state, list):
-                    scanned_count = sum(1 for s in order_state if s.get('packed', 0) >= s.get('required', 1))
-                else:
-                    scanned_count = sum(1 for s in order_state.values() if s.get('packed', 0) >= s.get('required', 1))
+                scanned_count = sum(1 for s in order_state if s.get('packed', 0) >= s.get('required', 1))
             elif is_completed:
                 scanned_count = total_items
 
@@ -627,27 +571,15 @@ class MainWindow(QMainWindow):
                 if order_num in in_progress_orders:
                     order_state = in_progress_orders[order_num]
                     # Find this SKU in the order state
-                    if isinstance(order_state, list):
-                        for item_state in order_state:
-                            # CRITICAL FIX: Validate item_state is dict before calling .get()
-                            if not isinstance(item_state, dict):
-                                logger.warning(f"Skipping invalid item_state in {order_num}: {type(item_state).__name__}")
-                                continue
+                    for item_state in order_state:
+                        # CRITICAL FIX: Validate item_state is dict before calling .get()
+                        if not isinstance(item_state, dict):
+                            logger.warning(f"Skipping invalid item_state in {order_num}: {type(item_state).__name__}")
+                            continue
 
-                            if item_state.get('original_sku') == sku:
-                                scanned_qty = item_state.get('packed', 0)
-                                break
-                    else:
-                        # Legacy dict format
-                        for item_state in order_state.values():
-                            # CRITICAL FIX: Validate item_state is dict before calling .get()
-                            if not isinstance(item_state, dict):
-                                logger.warning(f"Skipping invalid item_state in {order_num}: {type(item_state).__name__}")
-                                continue
-
-                            if item_state.get('original_sku') == sku:
-                                scanned_qty = item_state.get('packed', 0)
-                                break
+                        if item_state.get('original_sku') == sku:
+                            scanned_qty = item_state.get('packed', 0)
+                            break
                 elif is_completed:
                     try:
                         scanned_qty = int(qty)
@@ -880,28 +812,16 @@ class MainWindow(QMainWindow):
 
         # Count scanned quantities per SKU
         for order_state in in_progress_orders.values():
-            if isinstance(order_state, list):
-                for item_state in order_state:
-                    # CRITICAL FIX: Validate item_state is dict before calling .get()
-                    if not isinstance(item_state, dict):
-                        logger.warning(f"Skipping invalid item_state (not a dict): {type(item_state).__name__}")
-                        continue
+            for item_state in order_state:
+                # CRITICAL FIX: Validate item_state is dict before calling .get()
+                if not isinstance(item_state, dict):
+                    logger.warning(f"Skipping invalid item_state (not a dict): {type(item_state).__name__}")
+                    continue
 
-                    sku = item_state.get('original_sku')
-                    packed = item_state.get('packed', 0)
-                    if sku:
-                        scanned_by_sku[sku] = scanned_by_sku.get(sku, 0) + packed
-            else:
-                for item_state in order_state.values():
-                    # CRITICAL FIX: Validate item_state is dict before calling .get()
-                    if not isinstance(item_state, dict):
-                        logger.warning(f"Skipping invalid item_state (not a dict): {type(item_state).__name__}")
-                        continue
-
-                    sku = item_state.get('original_sku')
-                    packed = item_state.get('packed', 0)
-                    if sku:
-                        scanned_by_sku[sku] = scanned_by_sku.get(sku, 0) + packed
+                sku = item_state.get('original_sku')
+                packed = item_state.get('packed', 0)
+                if sku:
+                    scanned_by_sku[sku] = scanned_by_sku.get(sku, 0) + packed
 
         # Add completed orders to scanned count
         # OPTIMIZED: replaced nested loops + iterrows() with vectorized groupby
@@ -1055,30 +975,6 @@ class MainWindow(QMainWindow):
 
         logger.debug(f"Current client set to: {client_id}")
 
-    def create_new_client(self):
-        """Open dialog to create a new client profile."""
-        logger.info("Opening new client dialog")
-
-        dialog = NewClientDialog(self.profile_manager, self)
-
-        if dialog.exec() == QDialog.Accepted:
-            client_id = dialog.client_id
-            logger.info(f"New client created: {client_id}")
-
-            # Reload clients and select the new one
-            self.load_available_clients()
-
-            # Select newly created client
-            index = self.client_combo.findData(client_id)
-            if index >= 0:
-                self.client_combo.setCurrentIndex(index)
-
-            QMessageBox.information(
-                self,
-                "Client Created",
-                f"Client '{dialog.client_name}' (ID: {client_id}) created successfully!"
-            )
-
     # Muted theme-aware flash colors
     _FLASH_COLORS = {
         "green": "#43a047",
@@ -1087,7 +983,7 @@ class MainWindow(QMainWindow):
     }
     _FRAME_DEFAULT_STYLE = PackerModeWidget.FRAME_DEFAULT_STYLE
 
-    def flash_border(self, color: str, duration_ms: int = 500):
+    def flash_border(self, color: str):
         """
         Flashes the border of the packer mode table's frame.
 
@@ -1095,14 +991,13 @@ class MainWindow(QMainWindow):
 
         Args:
             color (str): Key color: "green", "red", or "orange".
-            duration_ms (int): Duration of the flash in milliseconds.
         """
         hex_color = self._FLASH_COLORS.get(color, color)
         self.packer_mode_widget.table_frame.setStyleSheet(
             f"QFrame#TableFrame {{ border: 2px solid {hex_color}; border-radius: 3px; }}"
         )
         QTimer.singleShot(
-            duration_ms,
+            500,
             lambda: self.packer_mode_widget.table_frame.setStyleSheet(self._FRAME_DEFAULT_STYLE)
         )
 
@@ -1442,37 +1337,12 @@ class MainWindow(QMainWindow):
             self.current_work_dir = str(work_dir)
 
             # 3. Acquire lock on work directory (with stale lock handling)
-            success, error_msg, _ = self.lock_manager.acquire_lock(
-                client_id=client_id,
-                session_dir=work_dir,
-                worker_id=self.current_worker_id,
-                worker_name=self.current_worker_name
-            )
-
+            success, error_msg = self._acquire_lock_with_stale_prompt(client_id, work_dir)
             if not success:
-                # Check if stale lock (error message contains "stale" keyword)
-                if error_msg and "stale" in error_msg.lower():
-                    reply = QMessageBox.question(
-                        self, "Stale Lock Detected",
-                        f"{error_msg}\n\nForce-release lock and continue?",
-                        QMessageBox.Yes | QMessageBox.No
-                    )
-                    if reply == QMessageBox.Yes:
-                        self.lock_manager.force_release_lock(work_dir)
-                        success, error_msg, _ = self.lock_manager.acquire_lock(
-                            client_id,
-                            work_dir,
-                            worker_id=self.current_worker_id,
-                            worker_name=self.current_worker_name
-                        )
-                        if not success:
-                            raise RuntimeError(f"Failed to acquire lock after force-release: {error_msg}")
-                    else:
-                        # User chose not to force-release
-                        return False
-                else:
-                    # Active lock by another user
-                    raise RuntimeError(error_msg or "Session is locked by another user")
+                if error_msg is None:
+                    # User chose not to force-release
+                    return False
+                raise RuntimeError(error_msg)
 
             logger.info(f"Lock acquired on {work_dir}")
 
@@ -1803,8 +1673,7 @@ class MainWindow(QMainWindow):
                                 "error": str(exc),
                             }
                             with open(_summary_path, 'w', encoding='utf-8') as _f:
-                                import json as _json
-                                _json.dump(_minimal, _f, indent=2, ensure_ascii=False)
+                                json.dump(_minimal, _f, indent=2, ensure_ascii=False)
                         except Exception:
                             pass
 
@@ -1861,9 +1730,8 @@ class MainWindow(QMainWindow):
                     # 5. Update session registry with completed status + metrics
                     try:
                         if _registry_mgr and _client_id and _cur_sess_path and _cur_pack_list:
-                            import json as _json_reg
                             with open(_summary_path, 'r', encoding='utf-8') as _f_reg:
-                                _reg_summary = _json_reg.load(_f_reg)
+                                _reg_summary = json.load(_f_reg)
                             _session_id_reg = Path(_cur_sess_path).name
                             _registry_mgr.register_session_complete(
                                 _client_id,
@@ -1947,43 +1815,6 @@ class MainWindow(QMainWindow):
 
         logger.info("Session ended and all variables cleared")
 
-    def view_session_history(self):
-        """
-        View completed packing sessions history.
-
-        TODO: Implement UI for viewing historical session data:
-        - List all completed sessions from Sessions/CLIENT_*/
-        - Show session_summary.json data (orders completed, duration, performance)
-        - Filter by date range, client, packing list name
-        - Display statistics: average orders/hour, total sessions, etc.
-        - Link to packing_state.json for detailed review
-
-        This feature will use:
-        - session_summary.json: Aggregated statistics and performance metrics
-        - packing_state.json: Detailed per-order packing history
-        - session_info.json: Session metadata (PC name, start time, etc.)
-
-        Planned UI:
-        - Table view with sortable columns
-        - Date range picker
-        - Export to CSV/Excel
-        - Charts for performance trends
-        """
-        logger.info("view_session_history called (placeholder - not yet implemented)")
-
-        QMessageBox.information(
-            self,
-            "Feature Coming Soon",
-            "Session History viewer is coming soon!\n\n"
-            "This feature will show:\n"
-            "• Completed packing sessions\n"
-            "• Performance metrics (orders/hour, items/hour)\n"
-            "• Historical trends and statistics\n"
-            "• Detailed session data\n\n"
-            "Stay tuned!"
-        )
-
-
     def setup_order_table(self):
         """
         Sets up the expandable order tree and statistics display.
@@ -2012,14 +1843,6 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.clear_screen()
         self.stacked_widget.setCurrentWidget(self.session_widget)
 
-    def open_print_dialog(self):
-        """Opens the dialog for printing order barcodes."""
-        if not self.logic.orders_data:
-            self.status_label.setText("No data to print.")
-            return
-        dialog = PrintDialog(self.logic.orders_data, self)
-        dialog.exec()
-
     def on_scanner_input(self, text: str):
         """
         Handles input from the barcode scanner in Packer Mode.
@@ -2034,26 +1857,9 @@ class MainWindow(QMainWindow):
         self.packer_mode_widget.show_notification("", "transparent")
 
         if self.logic.current_order_number is None:
-            # Find order by normalized comparison
-            order_number_from_scan = None
-            scanned_normalized = self.logic._normalize_order_number(text)
-            for order_num in self.logic.orders_data.keys():
-                if self.logic._normalize_order_number(order_num) == scanned_normalized:
-                    order_number_from_scan = order_num
-                    break
-
-            if not order_number_from_scan:
-                self.packer_mode_widget.show_notification("ORDER NOT FOUND", "#c0392b")
-                self.flash_border("red")
-                return
-
-            if order_number_from_scan in self.logic.session_packing_state.get('completed_orders', []):
-                self.packer_mode_widget.show_notification(f"ORDER {order_number_from_scan} ALREADY COMPLETED", "#b06020")
-                self.flash_border("orange")
-                return
-
             items, status = self.logic.start_order_packing(text)
             if status == "ORDER_LOADED":
+                order_number_from_scan = self.logic.current_order_number
                 self.packer_mode_widget.add_order_to_history(order_number_from_scan)
                 order_metadata = self.logic.orders_data.get(
                     order_number_from_scan, {}
@@ -2068,6 +1874,9 @@ class MainWindow(QMainWindow):
                 self.packer_mode_widget.update_session_progress(completed, len(self.logic.orders_data))
                 self.update_order_status(order_number_from_scan, "In Progress")
                 _beep(1000, 120)
+            elif status == "ORDER_ALREADY_COMPLETED":
+                self.packer_mode_widget.show_notification(f"ORDER {text} ALREADY COMPLETED", "#b06020")
+                self.flash_border("orange")
             else:
                 self.packer_mode_widget.show_notification("ORDER NOT FOUND", "#c0392b")
                 self.flash_border("red")
@@ -2448,37 +2257,12 @@ class MainWindow(QMainWindow):
                 self.current_packing_list = selected_name
                 self.current_work_dir = str(work_dir)
 
-                # Acquire lock
-                success, error_msg, _ = self.lock_manager.acquire_lock(
-                    self.current_client_id,
-                    work_dir,
-                    worker_id=self.current_worker_id,
-                    worker_name=self.current_worker_name
-                )
-
+                # Acquire lock (with stale lock handling)
+                success, error_msg = self._acquire_lock_with_stale_prompt(self.current_client_id, work_dir)
                 if not success:
-                    if error_msg and "stale" in error_msg.lower():
-                        reply = QMessageBox.question(
-                            self, "Stale Lock Detected",
-                            f"{error_msg}\n\nForce-release lock and continue?",
-                            QMessageBox.Yes | QMessageBox.No
-                        )
-                        if reply == QMessageBox.Yes:
-                            self.lock_manager.force_release_lock(work_dir)
-                            success, error_msg, _ = self.lock_manager.acquire_lock(
-                                self.current_client_id,
-                                work_dir,
-                                worker_id=self.current_worker_id,
-                                worker_name=self.current_worker_name
-                            )
-                            if not success:
-                                QMessageBox.warning(self, "Lock Failed", f"Failed to acquire lock: {error_msg}")
-                                return
-                        else:
-                            return
-                    else:
-                        QMessageBox.warning(self, "Session Locked", error_msg or "Session is locked by another user")
-                        return
+                    if error_msg:
+                        QMessageBox.warning(self, "Lock Failed", f"Failed to acquire lock: {error_msg}")
+                    return
 
                 logger.info(f"Lock acquired for work directory: {work_dir}")
 
@@ -2642,28 +2426,20 @@ class MainWindow(QMainWindow):
         # Show dialog
         browser_dialog.exec()
 
-    def _handle_resume_session_from_browser(self, dialog, session_info: dict):
+    def _start_or_resume_from_browser(
+        self, dialog, client_id, packing_list_name, session_path,
+        packing_list_path, work_dir=None, resumed=False
+    ):
         """
-        Handle resume request from Session Browser.
+        Shared logic for the Session Browser's "Resume" and "Start Packing" actions.
 
-        Args:
-            dialog: Session Browser dialog to close
-            session_info: Dict with session_path, client_id, packing_list_name, work_dir
+        If work_dir is None, one is created via SessionManager.get_packing_work_dir()
+        (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
-        logger.info(f"Resuming session from browser: {session_info.get('session_id', 'Unknown')}")
-
-        # Close browser dialog
         dialog.accept()
-
-        # Extract info
-        session_path = Path(session_info['session_path'])
-        client_id = session_info['client_id']
-        packing_list_name = session_info['packing_list_name']
-        work_dir = Path(session_info['work_dir'])
 
         # Set current client if different
         if self.current_client_id != client_id:
-            # Find client index in combo
             for i in range(self.client_combo.count()):
                 if self.client_combo.itemData(i) == client_id:
                     self.client_combo.setCurrentIndex(i)
@@ -2671,7 +2447,7 @@ class MainWindow(QMainWindow):
 
         # Check if session already active
         if self.session_manager and self.session_manager.is_active():
-            logger.warning("Attempted to resume session while one is already active")
+            logger.warning("Attempted to start/resume packing while a session is already active")
             QMessageBox.warning(
                 self,
                 "Session Active",
@@ -2689,8 +2465,12 @@ class MainWindow(QMainWindow):
                 worker_name=self.current_worker_name
             )
 
-        # Build packing list path
-        packing_list_path = session_path / "packing_lists" / f"{packing_list_name}.json"
+        if work_dir is None:
+            work_dir = self.session_manager.get_packing_work_dir(
+                session_path=str(session_path),
+                packing_list_name=packing_list_name
+            )
+            logger.info(f"Work directory created: {work_dir}")
 
         # Use unified session start method
         success = self.start_shopify_packing_session(
@@ -2701,11 +2481,14 @@ class MainWindow(QMainWindow):
             packing_list_name=packing_list_name
         )
 
-        if success:
-            # Get order count for success message
-            order_count = self.packing_data.get('total_orders', 0) if hasattr(self, 'packing_data') else 0
-            list_name = self.packing_data.get('list_name', packing_list_name) if hasattr(self, 'packing_data') else packing_list_name
+        if not success:
+            return
 
+        # Get order count for success message
+        order_count = self.packing_data.get('total_orders', 0) if hasattr(self, 'packing_data') else 0
+        list_name = self.packing_data.get('list_name', packing_list_name) if hasattr(self, 'packing_data') else packing_list_name
+
+        if resumed:
             QMessageBox.information(
                 self,
                 "Session Resumed",
@@ -2714,6 +2497,36 @@ class MainWindow(QMainWindow):
                 f"Continue packing from where you left off."
             )
             logger.info("Session resumed successfully from Session Browser")
+        else:
+            QMessageBox.information(
+                self,
+                "Session Loaded",
+                f"Loaded packing list: {list_name}\n"
+                f"Orders: {order_count}\n\n"
+                f"Ready to start packing."
+            )
+            logger.info("Packing session started successfully from Session Browser")
+
+    def _handle_resume_session_from_browser(self, dialog, session_info: dict):
+        """
+        Handle resume request from Session Browser.
+
+        Args:
+            dialog: Session Browser dialog to close
+            session_info: Dict with session_path, client_id, packing_list_name, work_dir
+        """
+        logger.info(f"Resuming session from browser: {session_info.get('session_id', 'Unknown')}")
+
+        session_path = Path(session_info['session_path'])
+        client_id = session_info['client_id']
+        packing_list_name = session_info['packing_list_name']
+        work_dir = Path(session_info['work_dir'])
+        packing_list_path = session_path / "packing_lists" / f"{packing_list_name}.json"
+
+        self._start_or_resume_from_browser(
+            dialog, client_id, packing_list_name, session_path,
+            packing_list_path, work_dir=work_dir, resumed=True
+        )
 
     def _handle_start_packing_from_browser(self, dialog, packing_info: dict):
         """
@@ -2725,73 +2538,51 @@ class MainWindow(QMainWindow):
         """
         logger.info(f"Starting packing session from browser: {packing_info.get('packing_list_name', 'Unknown')}")
 
-        # Close browser dialog
-        dialog.accept()
-
-        # Extract info
         session_path = Path(packing_info['session_path'])
         client_id = packing_info['client_id']
         packing_list_name = packing_info['packing_list_name']
         packing_list_path = Path(packing_info['list_file'])
 
-        # Set current client if different
-        if self.current_client_id != client_id:
-            # Find client index in combo
-            for i in range(self.client_combo.count()):
-                if self.client_combo.itemData(i) == client_id:
-                    self.client_combo.setCurrentIndex(i)
-                    break
-
-        # Check if session already active
-        if self.session_manager and self.session_manager.is_active():
-            logger.warning("Attempted to start packing while session is already active")
-            QMessageBox.warning(
-                self,
-                "Session Active",
-                "A session is already active. Please end it first."
-            )
-            return
-
-        # Create SessionManager for this client if not exists
-        if not self.session_manager or self.session_manager.client_id != client_id:
-            self.session_manager = SessionManager(
-                client_id=client_id,
-                profile_manager=self.profile_manager,
-                lock_manager=self.lock_manager,
-                worker_id=self.current_worker_id,
-                worker_name=self.current_worker_name
-            )
-
-        # Create work directory via SessionManager
-        work_dir = self.session_manager.get_packing_work_dir(
-            session_path=str(session_path),
-            packing_list_name=packing_list_name
+        self._start_or_resume_from_browser(
+            dialog, client_id, packing_list_name, session_path,
+            packing_list_path, work_dir=None, resumed=False
         )
 
-        logger.info(f"Work directory created: {work_dir}")
+    def _acquire_lock_with_stale_prompt(self, client_id: str, work_dir: Path):
+        """
+        Acquire a session lock, offering to force-release it if stale.
 
-        # Use unified session start method
-        success = self.start_shopify_packing_session(
-            packing_list_path=packing_list_path,
-            work_dir=work_dir,
-            session_path=session_path,
-            client_id=client_id,
-            packing_list_name=packing_list_name
+        Returns:
+            (True, None) on success.
+            (False, None) if the lock is stale and the user declined to force-release.
+            (False, error_msg) if the lock is actively held, or force-release+retry failed.
+        """
+        success, error_msg, _ = self.lock_manager.acquire_lock(
+            client_id, work_dir,
+            worker_id=self.current_worker_id,
+            worker_name=self.current_worker_name
         )
-
         if success:
-            # Get order count for success message
-            order_count = self.packing_data.get('total_orders', 0) if hasattr(self, 'packing_data') else 0
-            list_name = self.packing_data.get('list_name', packing_list_name) if hasattr(self, 'packing_data') else packing_list_name
+            return True, None
 
-            QMessageBox.information(
-                self,
-                "Session Loaded",
-                f"Loaded packing list: {list_name}\n"
-                f"Orders: {order_count}\n\n"
-                f"Ready to start packing."
-            )
-            logger.info("Packing session started successfully from Session Browser")
+        if not (error_msg and "stale" in error_msg.lower()):
+            return False, error_msg
+
+        reply = QMessageBox.question(
+            self, "Stale Lock Detected",
+            f"{error_msg}\n\nForce-release lock and continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return False, None
+
+        self.lock_manager.force_release_lock(work_dir)
+        success, error_msg, _ = self.lock_manager.acquire_lock(
+            client_id, work_dir,
+            worker_id=self.current_worker_id,
+            worker_name=self.current_worker_name
+        )
+        return success, error_msg
 
     def _handle_session_locked_error(self, error: SessionLockedError):
         """
@@ -2910,194 +2701,9 @@ class MainWindow(QMainWindow):
             logger.info("User cancelled force-release of stale lock")
             self.status_label.setText("Session opening cancelled.")
 
-
-# ==============================================================================
-# NEW CLIENT DIALOG
-# ==============================================================================
-
-class NewClientDialog(QDialog):
-    """Dialog for creating a new client profile."""
-
-    def __init__(self, profile_manager: ProfileManager, parent=None):
-        """
-        Initialize the new client dialog.
-
-        Args:
-            profile_manager: ProfileManager instance for validation and creation
-            parent: Parent widget
-        """
-        super().__init__(parent)
-        self.profile_manager = profile_manager
-        self.client_id = None
-        self.client_name = None
-
-        self.setWindowTitle("Create New Client Profile")
-        self.setMinimumWidth(400)
-
-        layout = QFormLayout(self)
-
-        # Instructions
-        instructions = QLabel(
-            "Create a new client profile. The client ID should be short (1-10 characters) "
-            "and will be used to organize sessions and settings."
-        )
-        instructions.setWordWrap(True)
-        layout.addRow(instructions)
-
-        # Client ID input
-        self.client_id_input = QLineEdit()
-        self.client_id_input.setPlaceholderText("e.g., M, R, CLIENT_A")
-        self.client_id_input.setMaxLength(10)
-        self.client_id_input.textChanged.connect(self.on_id_changed)
-        layout.addRow("Client ID (short):", self.client_id_input)
-
-        # Validation label
-        self.validation_label = QLabel("")
-        self.validation_label.setStyleSheet("color: red;")
-        self.validation_label.setWordWrap(True)
-        layout.addRow("", self.validation_label)
-
-        # Client name input
-        self.client_name_input = QLineEdit()
-        self.client_name_input.setPlaceholderText("e.g., M Cosmetics, R Fashion")
-        layout.addRow("Client Full Name:", self.client_name_input)
-
-        # Buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.ok_button = button_box.button(QDialogButtonBox.Ok)
-        self.ok_button.setEnabled(False)
-        button_box.accepted.connect(self.accept_dialog)
-        button_box.rejected.connect(self.reject)
-        layout.addRow(button_box)
-
-    def on_id_changed(self, text: str):
-        """
-        Validate client ID as user types.
-
-        Args:
-            text: Current text in client ID input
-        """
-        if not text:
-            self.validation_label.setText("")
-            self.ok_button.setEnabled(False)
-            return
-
-        # Convert to uppercase
-        text_upper = text.upper()
-        if text != text_upper:
-            # Update to uppercase
-            self.client_id_input.blockSignals(True)
-            cursor_pos = self.client_id_input.cursorPosition()
-            self.client_id_input.setText(text_upper)
-            self.client_id_input.setCursorPosition(cursor_pos)
-            self.client_id_input.blockSignals(False)
-            text = text_upper
-
-        # Validate
-        is_valid, error_msg = self.profile_manager.validate_client_id(text)
-
-        if not is_valid:
-            self.validation_label.setText(f"⚠ {error_msg}")
-            self.validation_label.setStyleSheet("color: red;")
-            self.ok_button.setEnabled(False)
-            return
-
-        # Check if already exists
-        if self.profile_manager.client_exists(text):
-            self.validation_label.setText(f"⚠ Client '{text}' already exists!")
-            self.validation_label.setStyleSheet("color: red;")
-            self.ok_button.setEnabled(False)
-            return
-
-        # Valid
-        self.validation_label.setText("✓ Valid client ID")
-        self.validation_label.setStyleSheet("color: green;")
-        self.ok_button.setEnabled(bool(self.client_name_input.text().strip()))
-
-    def accept_dialog(self):
-        """Handle OK button click."""
-        client_id = self.client_id_input.text().strip().upper()
-        client_name = self.client_name_input.text().strip()
-
-        if not client_name:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a client name.")
-            return
-
-        logger.info(f"Creating new client: {client_id} - {client_name}")
-
-        try:
-            success = self.profile_manager.create_client_profile(client_id, client_name)
-
-            if success:
-                self.client_id = client_id
-                self.client_name = client_name
-                self.accept()
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Error",
-                    f"Client '{client_id}' already exists!"
-                )
-
-        except ValidationError as e:
-            logger.error(f"Validation error creating client: {e}")
-            QMessageBox.warning(self, "Validation Error", str(e))
-
-        except Exception as e:
-            logger.error(f"Error creating client: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to create client profile:\n\n{e}"
-            )
-
-
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
-
-def restore_session(window: MainWindow):
-    """
-    Checks for and offers to restore an incomplete session on startup.
-
-    Args:
-        window (MainWindow): The main application window instance.
-    """
-    latest_dir = find_latest_session_dir()
-    if not latest_dir:
-        return
-
-    session_info_path = os.path.join(latest_dir, "session_info.json")
-    state_path = os.path.join(latest_dir, "packing_state.json")
-
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Question)
-    msg_box.setText("An incomplete session was found.")
-    msg_box.setInformativeText(f"Would you like to restore session '{os.path.basename(latest_dir)}'?")
-    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-    msg_box.setDefaultButton(QMessageBox.Yes)
-    reply = msg_box.exec()
-
-    if reply == QMessageBox.Yes:
-        try:
-            with open(session_info_path, 'r') as f:
-                session_info = json.load(f)
-            packing_list_path = session_info.get('packing_list_path')
-            if packing_list_path and os.path.exists(packing_list_path):
-                window.start_session(file_path=packing_list_path, restore_dir=latest_dir)
-            else:
-                QMessageBox.critical(window, "Error", "Could not restore session. The original packing list file was not found.")
-        except Exception as e:
-            QMessageBox.critical(window, "Error", f"An error occurred during session restoration: {e}")
-    else:
-        try:
-            if os.path.exists(session_info_path):
-                os.rename(session_info_path, session_info_path + ".ignored")
-            if os.path.exists(state_path):
-                os.rename(state_path, state_path + ".ignored")
-        except OSError as e:
-            QMessageBox.warning(window, "Cleanup Warning", f"Could not ignore all session files: {e}")
-
 
 if __name__ == "__main__":
     import argparse
@@ -3117,9 +2723,6 @@ if __name__ == "__main__":
     load_saved_theme(app)
 
     window = MainWindow(config_path=args.config)
-
-    # Check for abandoned sessions before showing the main window
-    restore_session(window)
 
     window.show()
     sys.exit(app.exec())

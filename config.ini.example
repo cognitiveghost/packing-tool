@@ -17,13 +17,13 @@
 # This is where all client profiles, SKU mappings, and session data are stored.
 # Use UNC path format: \\SERVER\SHARE\PATH
 #
-# Default: \\192.168.88.101\Z_GreenDelivery\WAREHOUSE\2Packing-tool
+# Default: \\192.168.88.101\_Fulfilment_\0UFulfilment
 #
 # The application will create this structure inside:
-#   CLIENTS/     - Client profiles and SKU mappings
-#   SESSIONS/    - Packing sessions organized by client
+#   Clients/     - Client profiles and SKU mappings
+#   Sessions/    - Packing sessions organized by client
 #
-FileServerPath = \\192.168.88.101\Z_GreenDelivery\WAREHOUSE\2Packing-tool
+FileServerPath = \\192.168.88.101\_Fulfilment_\0UFulfilment
 
 # Connection timeout in seconds (increase if server is slow)
 ConnectionTimeout = 5
@@ -36,22 +36,6 @@ LocalCachePath =
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 LogLevel = INFO
 
-# Log retention days (older logs will be deleted)
+# Log retention days (rotated daily log files older than this are deleted)
 LogRetentionDays = 30
 
-# Maximum log file size in MB
-MaxLogSizeMB = 10
-
-[General]
-# Application environment: development or production
-Environment = production
-
-# Enable debug mode (more verbose output)
-DebugMode = false
-
-[UI]
-# Remember last selected client on startup
-RememberLastClient = true
-
-# Auto-refresh interval for session list (seconds, 0 = disabled)
-AutoRefreshInterval = 0

@@ -34,6 +34,38 @@ logger = get_logger(__name__)
 # - Courier: Shipping courier name (e.g., "PostOne", "Speedy", "DHL")
 REQUIRED_COLUMNS = ['Order_Number', 'SKU', 'Product_Name', 'Quantity', 'Courier']
 
+
+def normalize_sku(sku: Any) -> str:
+    """
+    Normalizes an SKU for consistent comparison across different input sources.
+
+    This normalization is essential for small warehouse operations where SKUs/barcodes
+    can come from multiple sources with inconsistent formatting:
+    - Manual Excel entry: may include spaces, dashes, parentheses
+    - Barcode scanners: may add prefixes/suffixes depending on configuration
+    - Different suppliers: varying formatting conventions
+    - Copy-paste from supplier websites: may include special characters
+
+    The normalization algorithm:
+    1. Convert to string (handles numeric SKUs like "12345")
+    2. Remove all non-alphanumeric characters (spaces, dashes, dots, etc.)
+    3. Convert to lowercase (handles case-insensitive matching)
+
+    Examples:
+        "SKU-123-A" -> "sku123a"
+        "7290 0186 6410 0" -> "72900186641100"
+        "Product (ABC)" -> "productabc"
+        12345 -> "12345"
+
+    Args:
+        sku (Any): The SKU to normalize, typically a string or number.
+                  Can be Excel cell value (str, int, float)
+
+    Returns:
+        str: The normalized SKU string (lowercase alphanumeric only)
+    """
+    return ''.join(filter(str.isalnum, str(sku))).lower()
+
 # Filename for session state persistence
 # This file stores packing progress and is saved after every scan
 # to enable crash recovery and session restoration
@@ -43,6 +75,65 @@ STATE_FILE_NAME = "packing_state.json"
 # This file contains aggregated statistics and performance metrics
 # for the completed packing session
 SUMMARY_FILE_NAME = "session_summary.json"
+
+
+def compute_order_timing_metrics(orders_with_timing: List[Dict]) -> Dict[str, Any]:
+    """
+    Compute per-order timing metrics from a list of completed-order dicts.
+
+    Shared by PackerLogic.generate_session_summary (live session, in-memory
+    metadata) and the Session Browser's partial-summary builder (incomplete
+    session, reconstructed from packing_state.json on disk) — both feed it
+    the same order dict shape: duration_seconds, items (with
+    time_from_order_start_seconds), time_to_first_scan_seconds, corrections,
+    extra_scans_count, unknown_scans_count.
+
+    Does not include orders_per_hour/items_per_hour: those depend on
+    duration_seconds and a total-orders/items count that differ by caller.
+    """
+    durations = [o['duration_seconds'] for o in orders_with_timing if o.get('duration_seconds')]
+    avg_time_per_order = round(sum(durations) / len(durations), 1) if durations else 0
+    fastest_order_seconds = min(durations) if durations else 0
+    slowest_order_seconds = max(durations) if durations else 0
+
+    all_items = []
+    for order in orders_with_timing:
+        all_items.extend(order.get('items', []))
+    item_times = [
+        item['time_from_order_start_seconds']
+        for item in all_items
+        if 'time_from_order_start_seconds' in item
+    ]
+    avg_time_per_item = round(sum(item_times) / len(item_times), 1) if item_times else 0
+
+    first_scan_latencies = [
+        o['time_to_first_scan_seconds']
+        for o in orders_with_timing
+        if o.get('time_to_first_scan_seconds') is not None
+    ]
+    avg_time_to_first_scan = (
+        round(sum(first_scan_latencies) / len(first_scan_latencies), 1)
+        if first_scan_latencies else 0
+    )
+
+    total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
+    total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
+    total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
+    avg_corrections_per_order = (
+        round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
+    )
+
+    return {
+        "avg_time_per_order": avg_time_per_order,
+        "avg_time_per_item": avg_time_per_item,
+        "fastest_order_seconds": fastest_order_seconds,
+        "slowest_order_seconds": slowest_order_seconds,
+        "avg_time_to_first_scan": avg_time_to_first_scan,
+        "total_corrections": total_corrections,
+        "avg_corrections_per_order": avg_corrections_per_order,
+        "total_extra_scans": total_extra_scans,
+        "total_unknown_scans": total_unknown_scans,
+    }
 
 class PackerLogic(QObject):
     """
@@ -265,7 +356,7 @@ class PackerLogic(QObject):
         try:
             # OPTIMIZED: Use JSON cache for faster repeated reads
             # This helps when multiple workers/processes access the same state file
-            # Note: Cache is invalidated after writes in _save_session_state()
+            # Note: Cache is invalidated after writes in _save_session_state_sync()
             data = get_cached_json(state_file, default=None)
 
             if data is None:
@@ -541,18 +632,6 @@ class PackerLogic(QObject):
         except Exception as e:
             logger.error(f"CRITICAL: Failed to save session state: {e}", exc_info=True)
 
-    def _save_session_state(self) -> None:
-        """
-        Flush any pending async write, then write the current state synchronously.
-
-        Backward-compatible synchronous write — callers (including tests) that
-        call this method can rely on the file being present immediately after return.
-        """
-        self._state_writer.flush()
-        self._state_writer.schedule(self._build_state_dict())
-        # Flush again so the just-scheduled write completes before we return
-        self._state_writer.flush()
-
     def _save_session_state_async(self) -> None:
         """
         Schedule an async write of the current state (non-blocking).
@@ -720,35 +799,8 @@ class PackerLogic(QObject):
         logger.info(f"Session metadata initialized: {self.session_id} / {self.packing_list_name}")
 
     def _normalize_sku(self, sku: Any) -> str:
-        """
-        Normalizes an SKU for consistent comparison across different input sources.
-
-        This normalization is essential for small warehouse operations where SKUs/barcodes
-        can come from multiple sources with inconsistent formatting:
-        - Manual Excel entry: may include spaces, dashes, parentheses
-        - Barcode scanners: may add prefixes/suffixes depending on configuration
-        - Different suppliers: varying formatting conventions
-        - Copy-paste from supplier websites: may include special characters
-
-        The normalization algorithm:
-        1. Convert to string (handles numeric SKUs like "12345")
-        2. Remove all non-alphanumeric characters (spaces, dashes, dots, etc.)
-        3. Convert to lowercase (handles case-insensitive matching)
-
-        Examples:
-            "SKU-123-A" -> "sku123a"
-            "7290 0186 6410 0" -> "72900186641100"
-            "Product (ABC)" -> "productabc"
-            12345 -> "12345"
-
-        Args:
-            sku (Any): The SKU to normalize, typically a string or number.
-                      Can be Excel cell value (str, int, float)
-
-        Returns:
-            str: The normalized SKU string (lowercase alphanumeric only)
-        """
-        return ''.join(filter(str.isalnum, str(sku))).lower()
+        """Normalize an SKU for consistent comparison. See module-level normalize_sku()."""
+        return normalize_sku(sku)
 
     def _normalize_order_number(self, order_number: str) -> str:
         """
@@ -1781,53 +1833,21 @@ class PackerLogic(QObject):
 
         # Calculate metrics from completed_orders_metadata
         orders_with_timing = self.completed_orders_metadata if self.completed_orders_metadata else []
-
-        # --- Order-level timing ---
-        durations = [o['duration_seconds'] for o in orders_with_timing if o.get('duration_seconds')]
-        if durations:
-            avg_time_per_order = round(sum(durations) / len(durations), 1)
-            fastest_order_seconds = min(durations)
-            slowest_order_seconds = max(durations)
-        else:
-            avg_time_per_order = 0
-            fastest_order_seconds = 0
-            slowest_order_seconds = 0
-
-        # --- Item-level timing ---
-        all_items = []
-        for order in orders_with_timing:
-            all_items.extend(order.get('items', []))
-
-        item_times = [
-            item['time_from_order_start_seconds']
-            for item in all_items
-            if 'time_from_order_start_seconds' in item
-        ]
-        avg_time_per_item = round(sum(item_times) / len(item_times), 1) if item_times else 0
-
-        total_items_from_metadata = sum(o.get('items_count', 0) for o in orders_with_timing)
-
-        # --- 1.7 metrics: first-scan latency ---
-        first_scan_latencies = [
-            o['time_to_first_scan_seconds']
-            for o in orders_with_timing
-            if o.get('time_to_first_scan_seconds') is not None
-        ]
-        avg_time_to_first_scan = (
-            round(sum(first_scan_latencies) / len(first_scan_latencies), 1)
-            if first_scan_latencies else 0
-        )
-
-        # --- 1.7 metrics: corrections, extras, unknown scans ---
-        total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
-        total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
-        total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
-        avg_corrections_per_order = (
-            round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
-        )
-
         if not orders_with_timing:
             logger.warning("No timing metadata available, metrics will be zero")
+
+        timing_metrics = compute_order_timing_metrics(orders_with_timing)
+        avg_time_per_order = timing_metrics["avg_time_per_order"]
+        avg_time_per_item = timing_metrics["avg_time_per_item"]
+        fastest_order_seconds = timing_metrics["fastest_order_seconds"]
+        slowest_order_seconds = timing_metrics["slowest_order_seconds"]
+        avg_time_to_first_scan = timing_metrics["avg_time_to_first_scan"]
+        total_corrections = timing_metrics["total_corrections"]
+        avg_corrections_per_order = timing_metrics["avg_corrections_per_order"]
+        total_extra_scans = timing_metrics["total_extra_scans"]
+        total_unknown_scans = timing_metrics["total_unknown_scans"]
+
+        total_items_from_metadata = sum(o.get('items_count', 0) for o in orders_with_timing)
 
         # --- Session-level throughput ---
         orders_per_hour = 0

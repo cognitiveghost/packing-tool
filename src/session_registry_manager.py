@@ -26,13 +26,12 @@ Design notes:
 
 import json
 import os
-import tempfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from logger import get_logger
+from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
 logger = get_logger(__name__)
@@ -125,38 +124,14 @@ class SessionRegistryManager:
         path = self._get_registry_path(client_id)
         registry["last_updated"] = get_current_timestamp()
 
-        last_exc = None
-        for attempt in range(3):
-            tmp_path = None
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                # Write to temp file in same directory so rename is atomic on SMB
-                fd, tmp_str = tempfile.mkstemp(
-                    dir=path.parent, prefix=".registry_tmp_", suffix=".json"
-                )
-                tmp_path = Path(tmp_str)
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as f:
-                        json.dump(registry, f, indent=2, ensure_ascii=False)
-                except Exception:
-                    os.close(fd)
-                    raise
-                tmp_path.replace(path)
-                return True
-            except Exception as e:
-                last_exc = e
-                if tmp_path and tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except Exception:
-                        pass
-                if attempt < 2:
-                    time.sleep(0.15)
-
-        logger.error(
-            f"Failed to write registry for client {client_id} after 3 attempts: {last_exc}"
-        )
-        return False
+        try:
+            atomic_write_json(path, registry, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to write registry for client {client_id} after 3 attempts: {e}"
+            )
+            return False
 
     def registry_exists(self, client_id: str) -> bool:
         """Return True if registry_index.json already exists for this client."""
