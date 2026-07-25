@@ -53,9 +53,6 @@ class ProfileManager:
         is_network_available (bool): Current network connectivity status
     """
 
-    # Cache for loaded configurations (client_id -> (data, timestamp))
-    _config_cache: Dict[str, Tuple[Dict, datetime]] = {}
-    _sku_cache: Dict[str, Tuple[Dict, datetime]] = {}
     CACHE_TIMEOUT_SECONDS = 60  # Cache valid for 1 minute
 
     def __init__(self, config_path: str = "config.ini"):
@@ -69,6 +66,12 @@ class ProfileManager:
             ProfileManagerError: If configuration is invalid or inaccessible
         """
         logger.info("Initializing ProfileManager...")
+
+        # Cache for loaded configurations (client_id -> (data, timestamp)).
+        # Per-instance (not class-level) so two managers pointed at different
+        # base_path/file servers never share each other's cached data.
+        self._config_cache: Dict[str, Tuple[Dict, datetime]] = {}
+        self._sku_cache: Dict[str, Tuple[Dict, datetime]] = {}
 
         # Load configuration
         self.config = self._load_config(config_path)
@@ -235,7 +238,7 @@ class ProfileManager:
             clients = []
             for d in self.clients_dir.iterdir():
                 if d.is_dir() and d.name.startswith("CLIENT_"):
-                    client_id = d.name.replace("CLIENT_", "")
+                    client_id = d.name[len("CLIENT_"):]
                     clients.append(client_id)
 
             logger.debug(f"Found {len(clients)} clients: {clients}")
@@ -372,7 +375,7 @@ class ProfileManager:
 
             if age_seconds < self.CACHE_TIMEOUT_SECONDS:
                 logger.debug(f"Using cached config for {client_id}")
-                return cached_data
+                return cached_data.copy()
 
         # Load from disk - try packer_config.json first, then fall back to config.json
         packer_config_path = self.clients_dir / f"CLIENT_{client_id}" / "packer_config.json"
@@ -392,7 +395,7 @@ class ProfileManager:
             self._config_cache[cache_key] = (config, datetime.now())
 
             logger.debug(f"Loaded config for client {client_id} from {path_to_use.name}")
-            return config
+            return config.copy()
 
         except Exception as e:
             logger.error(f"Error loading config for {client_id}: {e}")
@@ -559,13 +562,10 @@ class ProfileManager:
                         # Read current data
                         f.seek(0)
                         current_data = json.load(f)
-                        current_mappings = current_data.get('sku_mapping', {})
 
-                        # Merge: new mappings override existing
-                        current_mappings.update(mappings)
-
-                        # Update config with new mappings
-                        current_data['sku_mapping'] = current_mappings
+                        # Replace (not merge): callers pass the full desired mapping,
+                        # so a deleted entry must not survive by merging onto disk.
+                        current_data['sku_mapping'] = mappings
                         current_data['last_updated'] = datetime.now().isoformat()
                         current_data['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
 
@@ -626,12 +626,9 @@ class ProfileManager:
                 with open(packer_config_path, 'r', encoding='utf-8') as f:
                     current_config = json.load(f)
 
-            # Get current mappings and merge
-            current_mappings = current_config.get('sku_mapping', {})
-            current_mappings.update(mappings)
-
-            # Update config
-            current_config['sku_mapping'] = current_mappings
+            # Replace (not merge): callers pass the full desired mapping, so a
+            # deleted entry must not survive by merging onto disk.
+            current_config['sku_mapping'] = mappings
             current_config['last_updated'] = datetime.now().isoformat()
             current_config['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
 

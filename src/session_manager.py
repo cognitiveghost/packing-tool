@@ -23,10 +23,10 @@ For small warehouse operations, this module ensures that:
 import os  # For environment variables (PC name)
 import json  # For session info persistence
 from pathlib import Path  # Modern path handling
-from datetime import datetime  # Session timestamps
 from typing import Optional  # Type hints
 
 from shared.atomic_write import atomic_write_json
+from shared.metadata_utils import get_current_timestamp
 
 # Local imports
 from logger import get_logger
@@ -269,7 +269,7 @@ class SessionManager:
         session_info = {
             'client_id': self.client_id,
             'packing_list_path': self.packing_list_path,
-            'started_at': datetime.now().isoformat(),  # ISO format for parsing
+            'started_at': get_current_timestamp(),  # timezone-aware ISO format for parsing
             'pc_name': os.environ.get('COMPUTERNAME', 'Unknown')  # Windows PC name
         }
 
@@ -700,12 +700,12 @@ class SessionManager:
             # Update for this packing list
             if packing_list_name not in session_info['packing_progress']:
                 session_info['packing_progress'][packing_list_name] = {
-                    'started_at': datetime.now().isoformat(),
+                    'started_at': get_current_timestamp(),
                     'status': status
                 }
             else:
                 session_info['packing_progress'][packing_list_name]['status'] = status
-                session_info['packing_progress'][packing_list_name]['updated_at'] = datetime.now().isoformat()
+                session_info['packing_progress'][packing_list_name]['updated_at'] = get_current_timestamp()
 
             # Save updated session info atomically (temp → move)
             atomic_write_json(session_info_file, session_info, indent=2, ensure_ascii=False)

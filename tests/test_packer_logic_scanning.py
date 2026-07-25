@@ -5,7 +5,6 @@ force_confirm_item / skip_order / confirm_keep_extra / remove_extra_item, and
 the all_orders_complete signal — the exact sequence a warehouse worker drives
 via barcode scans.
 """
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -297,20 +296,11 @@ def test_skip_order_preserves_progress_for_resume(loaded_logic):
     assert loaded_logic.current_order_state[0]["packed"] == 1
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: start_order_packing() never calls _unskip_current_order_if_needed() "
-        "(only full completion does — see process_sku_scan/force_confirm_item/"
-        "_maybe_complete_after_extra_resolution). An order that was skipped and is "
-        "then resumed but not yet re-completed stays in skipped_orders. "
-        "session_browser/orders_tab.py._load_orders() renders anything in "
-        "skipped_orders as a grey '[SKIPPED]' row and never cross-checks in_progress, "
-        "so a resumed order with real partial packing progress is displayed as "
-        "skipped/abandoned to anyone viewing the Session Browser while it's being "
-        "actively worked on."
-    ),
-    strict=True,
-)
+# Regression test: start_order_packing() used to never call
+# _unskip_current_order_if_needed() (only full completion did). An order that
+# was skipped and then resumed but not yet re-completed stayed in
+# skipped_orders, so session_browser/orders_tab.py._load_orders() rendered it
+# as a grey '[SKIPPED]' row even while it was being actively re-packed.
 def test_resuming_a_skipped_order_should_clear_it_from_the_skipped_list(loaded_logic):
     loaded_logic.start_order_packing("ORDER-001")
     loaded_logic.skip_order()

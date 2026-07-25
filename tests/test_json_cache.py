@@ -95,24 +95,14 @@ def test_eviction_keeps_cache_at_or_under_max_size(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# BUG: get() hands back the live object stored in the cache, not a copy.
-# Any caller that mutates what it gets back corrupts the cache for every
-# other reader of that same path — without ever writing to disk. This is the
-# root cause behind PackerLogic silently poisoning cross-consumer reads of
-# packing_state.json (see test_packer_logic_state_persistence.py).
+# Regression test: get() used to hand back the live object stored in the
+# cache, not a copy. Any caller that mutated what it got back corrupted the
+# cache for every other reader of that same path — without ever writing to
+# disk. This was the root cause behind PackerLogic silently poisoning
+# cross-consumer reads of packing_state.json (see
+# test_packer_logic_state_persistence.py).
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: JSONCache.get() returns the exact object it stores internally "
-        "(`return self._cache[cache_key]` / `return data` on miss), not a "
-        "defensive copy. A caller that treats the result as a local, mutable "
-        "value (a very ordinary Python pattern) silently corrupts what every "
-        "other reader of the same file path sees for the rest of the TTL "
-        "window, with no write to disk involved at all."
-    ),
-    strict=True,
-)
 def test_get_does_not_return_a_reference_callers_can_use_to_poison_the_cache(tmp_path):
     path = tmp_path / "data.json"
     path.write_text(json.dumps({"in_progress": {"ORDER-1": []}}), encoding="utf-8")

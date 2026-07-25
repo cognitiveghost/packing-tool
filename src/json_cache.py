@@ -29,6 +29,7 @@ Created: 2025-11-26
 Version: 1.0.0
 """
 
+import copy
 import json
 import time
 import threading
@@ -138,7 +139,9 @@ class JSONCache:
                     # Cache hit - update access time for LRU tracking only
                     self._access_times[cache_key] = current_time
                     logger.debug(f"Cache HIT: {file_path.name} (age: {cache_age:.1f}s)")
-                    return self._cache[cache_key]
+                    # Defensive copy: callers must not be able to mutate the
+                    # cached object and poison it for every other reader.
+                    return copy.deepcopy(self._cache[cache_key])
                 else:
                     # Cache expired - remove stale entry
                     logger.debug(f"Cache EXPIRED: {file_path.name} (age: {cache_age:.1f}s)")
@@ -175,7 +178,9 @@ class JSONCache:
                     self._evict_oldest()
                 logger.debug(f"Cache MISS: {file_path.name} loaded and cached")
 
-        return data
+        # Same defensive copy as the cache-hit path: `data` is now also the
+        # object stored in self._cache, so it must not be handed out live.
+        return copy.deepcopy(data)
 
     def _evict_oldest(self):
         """
