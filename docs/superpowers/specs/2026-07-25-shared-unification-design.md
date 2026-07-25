@@ -107,8 +107,17 @@ packing-tool, друкує список скопійованих файлів.
   явно відмінне від обох старих; це поле формату `Stats/global_stats.json`,
   не плутати з `shared/__init__.py::__version__` пакета).
 
-**`shared/file_lock.py`, `shared/atomic_write.py`, `shared/metadata_utils.py`**
-— без змін.
+**`shared/file_lock.py`, `shared/atomic_write.py`** — без змін.
+
+**`shared/metadata_utils.py`** — одна зміна: `from logger import get_logger`
+(рядок 14) замінюється на голий stdlib `import logging` +
+`logging.getLogger(__name__)`. Причина, виявлена під час деталізації плану:
+`logger.py` — це модуль з `packing-tool/src/`, якого не існує в
+shopify-fulfillment-tool (там `shopify_tool/logger_config.py`, інша назва
+й розташування). Скопійований як є, `metadata_utils.py` впав би з
+`ModuleNotFoundError` в shopify-tool при першому виклику
+`get_current_timestamp()`. `get_logger()` й так повертає звичайний
+`logging.Logger` (`src/logger.py:114`), тож заміна поведінково ідентична.
 
 **`shared/worker_manager.py`** → переїжджає в `packing-tool/src/worker_manager.py`.
 Ніколи не використовувався shopify-tool (не в його `shared/__init__.py`,
