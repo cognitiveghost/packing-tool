@@ -9,14 +9,11 @@ Phase 1.3: Worker Profile System
 """
 
 from .stats_manager import StatsManager, StatsManagerError, FileLockError
-from .worker_manager import WorkerManager, WorkerProfile
 
 __all__ = [
     'StatsManager',
     'StatsManagerError',
     'FileLockError',
-    'WorkerManager',
-    'WorkerProfile',
 ]
 
 __version__ = '1.3.0.0'

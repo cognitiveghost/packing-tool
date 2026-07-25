@@ -42,7 +42,7 @@ from packer_logic import PackerLogic, REQUIRED_COLUMNS
 from session_manager import SessionManager
 from shared.stats_manager import StatsManager
 from shared.session_id import derive_session_id
-from shared.worker_manager import WorkerManager
+from worker_manager import WorkerManager
 from sku_mapping_dialog import SKUMappingDialog
 from session_history_manager import SessionHistoryManager
 from session_browser.session_browser_widget import SessionBrowserWidget

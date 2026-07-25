@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from shared.worker_manager import WorkerManager, WorkerProfile
+from worker_manager import WorkerManager, WorkerProfile
 
 logger = logging.getLogger(__name__)
 

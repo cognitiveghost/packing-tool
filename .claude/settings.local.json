@@ -1,12 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)",
-      "Bash(git rm:*)",
-      "Bash(pytest:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(graphify export *)",
+      "Bash(awk '/^## God Nodes/,/^## [A-Z][a-z]+ \\(Connections|Questions\\)$/' graphify-out/GRAPH_REPORT.md)",
+      "Bash(awk '/^## Surprising Connections/,/^## Suggested Questions/' graphify-out/GRAPH_REPORT.md)",
+      "Bash(awk '/^## Suggested Questions/,0' graphify-out/GRAPH_REPORT.md)"
     ]
   }
 }
