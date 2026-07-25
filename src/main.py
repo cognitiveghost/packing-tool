@@ -41,6 +41,7 @@ from packer_mode_widget import PackerModeWidget
 from packer_logic import PackerLogic, REQUIRED_COLUMNS
 from session_manager import SessionManager
 from shared.stats_manager import StatsManager
+from shared.session_id import derive_session_id
 from shared.worker_manager import WorkerManager
 from sku_mapping_dialog import SKUMappingDialog
 from session_history_manager import SessionHistoryManager
@@ -1623,7 +1624,7 @@ class MainWindow(QMainWindow):
                     logger.error(f"Error calculating totals: {e}", exc_info=True)
 
                 if _is_shopify:
-                    _session_id = f"{getattr(self, 'current_session_path', '')}_{getattr(self, 'current_packing_list', '')}"
+                    _session_id = derive_session_id(getattr(self, 'current_session_path', ''))
                     _pl_path_str = getattr(self, 'current_packing_list', 'Unknown') or 'Unknown'
                 else:
                     _session_id = self.session_manager.session_id
