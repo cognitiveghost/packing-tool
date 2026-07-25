@@ -76,10 +76,19 @@ class ProfileManager:
         # Load configuration
         self.config = self._load_config(config_path)
 
-        # Get paths from config
-        file_server_path = self.config.get('Network', 'FileServerPath', fallback=None)
+        # Get paths from config — FULFILLMENT_SERVER_PATH env var takes
+        # precedence when set (same variable, same precedence
+        # shopify-fulfillment-tool's ProfileManager already uses), so both
+        # apps can be pointed at the same file server from one place.
+        # Falls back to config.ini for existing deployments.
+        file_server_path = os.environ.get("FULFILLMENT_SERVER_PATH") or self.config.get(
+            'Network', 'FileServerPath', fallback=None
+        )
         if not file_server_path:
-            raise ProfileManagerError("FileServerPath not configured in config.ini")
+            raise ProfileManagerError(
+                "FileServerPath not configured: set FULFILLMENT_SERVER_PATH "
+                "or add FileServerPath to config.ini"
+            )
 
         self.base_path = Path(file_server_path)
         self.clients_dir = self.base_path / "Clients"

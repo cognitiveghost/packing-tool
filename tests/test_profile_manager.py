@@ -202,3 +202,30 @@ def test_get_available_clients_and_list_clients_agree(profile_manager):
     profile_manager.create_client_profile(client_id, "Edge Case Client")
 
     assert profile_manager.get_available_clients() == profile_manager.list_clients()
+
+
+# ---------------------------------------------------------------------------
+# base_path resolution: FULFILLMENT_SERVER_PATH env var vs config.ini
+# ---------------------------------------------------------------------------
+# Regression/consistency test: Shopify Tool has always read its shared
+# file-server path from the FULFILLMENT_SERVER_PATH env var first, falling
+# back to a hardcoded default. Packing Tool used to read only config.ini,
+# with no way to point both apps at the same server from one place. Now
+# Packing Tool checks the same env var first too, falling back to
+# config.ini for existing deployments that only set FileServerPath there.
+
+def test_env_var_takes_precedence_over_config_ini(tmp_path, config_ini, server_root, monkeypatch):
+    env_server = tmp_path / "env_server"
+    env_server.mkdir()
+    monkeypatch.setenv("FULFILLMENT_SERVER_PATH", str(env_server))
+
+    manager = ProfileManager(config_path=str(config_ini))
+
+    assert manager.base_path == env_server
+    assert manager.base_path != server_root
+
+
+def test_falls_back_to_config_ini_when_env_var_unset(config_ini, server_root):
+    manager = ProfileManager(config_path=str(config_ini))
+
+    assert manager.base_path == server_root

@@ -40,6 +40,17 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def _clear_fulfillment_server_path_env(monkeypatch):
+    """Hermetic tests: FULFILLMENT_SERVER_PATH must not leak in from the
+    developer's shell (e.g. left set from working on the sibling
+    shopify-fulfillment-tool repo), or every fixture that builds a
+    ProfileManager from config_ini would silently redirect to whatever
+    that variable points at instead of the tmp_path server_root.
+    """
+    monkeypatch.delenv("FULFILLMENT_SERVER_PATH", raising=False)
+
+
 @pytest.fixture
 def server_root(tmp_path):
     root = tmp_path / "server"
