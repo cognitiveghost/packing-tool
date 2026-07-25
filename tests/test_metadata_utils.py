@@ -63,18 +63,15 @@ def test_parse_timestamp_none_and_empty_return_none():
 
 
 # ---------------------------------------------------------------------------
-# Cross-module inconsistency: session_manager.update_session_metadata() writes
-# naive timestamps (`datetime.now().isoformat()`), while the rest of the app's
-# convention (metadata_utils.get_current_timestamp) is always timezone-aware.
+# Regression test: session_manager.update_session_metadata() used to write
+# naive timestamps (`datetime.now().isoformat()`), while the rest of the
+# app's convention (metadata_utils.get_current_timestamp) is always
+# timezone-aware. Naive `started_at`/`updated_at` values fed into
+# parse_timestamp()/calculate_duration() (which assume naive == UTC) would be
+# wrong by the local UTC offset on any machine not running in UTC.
 # ---------------------------------------------------------------------------
 
-def test_session_manager_metadata_timestamps_are_naive_unlike_the_rest_of_the_app(tmp_path):
-    """Documents a real inconsistency: if these naive `started_at`/`updated_at`
-    values are ever fed into parse_timestamp()/calculate_duration() (which
-    assume naive == UTC), results will be wrong by the local UTC offset on any
-    machine not running in UTC — the opposite convention from
-    get_current_timestamp() used everywhere else for durations/metrics.
-    """
+def test_session_manager_metadata_timestamps_are_timezone_aware_like_the_rest_of_the_app(tmp_path):
     import session_manager
 
     session_info_path = tmp_path / "session_info.json"
@@ -86,11 +83,9 @@ def test_session_manager_metadata_timestamps_are_naive_unlike_the_rest_of_the_ap
     saved = json.loads(session_info_path.read_text(encoding="utf-8"))
     started_at = saved["packing_progress"]["DHL_Orders"]["started_at"]
 
-    aware_ts = get_current_timestamp()
-    assert "+" not in started_at and not started_at.endswith("Z"), (
-        "expected update_session_metadata()'s timestamp to be naive (current "
-        "behavior); this now looks tz-aware like get_current_timestamp() "
-        f"({aware_ts!r}) — if so the inconsistency was fixed, update this test"
+    assert "+" in started_at or started_at.endswith("Z"), (
+        "expected update_session_metadata()'s timestamp to be timezone-aware "
+        f"like get_current_timestamp(), got {started_at!r}"
     )
 
 

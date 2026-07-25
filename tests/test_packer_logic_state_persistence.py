@@ -9,8 +9,6 @@ PackerLogic._do_atomic_write), not a stubbed writer.
 import json
 import copy
 
-import pytest
-
 from json_cache import get_cached_json, invalidate_json_cache
 
 
@@ -137,27 +135,17 @@ def test_corrupted_json_state_file_starts_fresh_instead_of_crashing(packer_logic
 
 
 # ---------------------------------------------------------------------------
-# BUG: pending extra-item flags are silently lost across a crash/restart.
+# Regression test: pending extra-item flags used to be silently lost across
+# a crash/restart.
 #
-# PackerLogic.__init__ does:
+# PackerLogic.__init__ used to do:
 #     self._load_session_state()                        # restores current_extra_items from disk
-#     self.current_extra_items: Dict[str, int] = {}      # ...then immediately wipes it again
-# So `_current_extras` round-trips to disk correctly but is dead on read:
-# whatever _load_session_state() restored is discarded two lines later in the
-# same constructor, every single time.
+#     self.current_extra_items: Dict[str, int] = {}      # ...then immediately wiped it again
+# So `_current_extras` round-tripped to disk correctly but was dead on read:
+# whatever _load_session_state() restored was discarded two lines later in
+# the same constructor, every single time.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: in PackerLogic.__init__, `self.current_extra_items: Dict[str, int] = {}` "
-        "runs immediately AFTER `self._load_session_state()`, unconditionally wiping "
-        "out whatever current_extra_items the latter just restored from "
-        "'_current_extras' in packing_state.json. The restoration code (and its "
-        "'crash recovery' comment) is dead — pending extras never survive a restart, "
-        "regardless of which order is resumed."
-    ),
-    strict=True,
-)
 def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_factory):
     orders = [("ORDER-A", "DHL", [
         {"sku": "SKU-1", "quantity": 1, "product_name": "A1"},
@@ -191,26 +179,13 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
 
 
 # ---------------------------------------------------------------------------
-# BUG: get_cached_json() hands out the live cached object by reference.
-# _load_session_state() mutates item dicts in place (legacy-field migration),
-# which silently poisons the shared process-wide JSON cache for every other
-# reader of the same path (e.g. Session Browser) without ever writing to disk.
+# Regression test: get_cached_json() used to hand out the live cached object
+# by reference. _load_session_state() mutates item dicts in place
+# (legacy-field migration), which used to silently poison the shared
+# process-wide JSON cache for every other reader of the same path (e.g.
+# Session Browser) without ever writing to disk.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: json_cache.JSONCache.get() returns the exact object stored in its "
-        "internal cache dict (no copy), and PackerLogic._load_session_state() "
-        "mutates item_state dicts in place while migrating legacy fields "
-        "(original_sku/normalized_sku/packed/required/row) and later while "
-        "scanning (found_item['packed'] += 1). Because those dicts ARE the cached "
-        "object, every in-memory scan mutates the global JSON cache before the "
-        "corresponding write ever reaches disk, and if the write then fails, the "
-        "cache is left silently reporting the unwritten state as if it were "
-        "confirmed on disk (invalidate_json_cache() only runs on the success path)."
-    ),
-    strict=True,
-)
 def test_json_cache_is_not_mutated_by_in_memory_migration(packer_logic_factory, session_factory):
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-AAA", "quantity": 2, "product_name": "Widget"}])]
     session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)

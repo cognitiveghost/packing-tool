@@ -1,7 +1,5 @@
 # Standard library imports
 import os
-import tempfile
-import shutil
 
 # Third-party imports for data processing
 import pandas as pd  # Excel file handling and data manipulation
@@ -21,6 +19,7 @@ from typing import List, Dict, Any, Tuple
 from logger import get_logger
 from json_cache import get_cached_json, invalidate_json_cache
 from async_state_writer import AsyncStateWriter
+from shared.atomic_write import atomic_write_json
 
 # Initialize module-level logger
 logger = get_logger(__name__)
@@ -224,6 +223,11 @@ class PackerLogic(QObject):
         self.current_order_items_scanned = []  # List of items with scan timestamps
         self.completed_orders_metadata = []  # List of completed orders with timing data
 
+        # Extra items tracking: normalized_sku → extra count (scanned beyond required).
+        # Also initialized BEFORE _load_session_state() so crash-recovered extras
+        # (from '_current_extras') survive a restart instead of being wiped.
+        self.current_extra_items: Dict[str, int] = {}
+
         # Per-order counters for 1.7 metrics — reset by start_order_packing()
         self.current_order_corrections: int = 0           # cancel_item_scan() events
         self.current_order_extra_scan_count: int = 0      # SKU_EXTRA events
@@ -234,9 +238,6 @@ class PackerLogic(QObject):
 
         # Load session state if exists (must come AFTER Phase 2b vars are declared)
         self._load_session_state()
-
-        # Extra items tracking: normalized_sku → extra count (scanned beyond required)
-        self.current_extra_items: Dict[str, int] = {}
 
         # Unknown/incorrect scan tracking: raw barcodes that didn't match any SKU
         self.unknown_scans: List[str] = []
@@ -598,7 +599,9 @@ class PackerLogic(QObject):
 
     def _do_atomic_write(self, state_data: Dict[str, Any]) -> None:
         """
-        Write state_data to disk using an atomic temp-file → rename pattern.
+        Write state_data to disk using the shared atomic (temp-file + rename)
+        helper, with the same retry-on-transient-SMB-error behavior as every
+        other write path in the app.
 
         Called by AsyncStateWriter from a background thread.
         state_data must be a plain serialisable dict (no shared mutable objects).
@@ -610,21 +613,7 @@ class PackerLogic(QObject):
         total_items = state_data.get("progress", {}).get("total_items", 0)
 
         try:
-            state_path = Path(state_file)
-            state_dir = state_path.parent
-
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                dir=state_dir,
-                prefix='.tmp_state_',
-                suffix='.json',
-                delete=False,
-                encoding='utf-8'
-            ) as tmp_file:
-                json.dump(state_data, tmp_file, indent=2, ensure_ascii=False)
-                tmp_path = tmp_file.name
-
-            shutil.move(tmp_path, state_file)
+            atomic_write_json(state_file, state_data)
             invalidate_json_cache(state_file)
 
             logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
@@ -890,6 +879,7 @@ class PackerLogic(QObject):
             return None, "ORDER_ALREADY_COMPLETED"
 
         self.current_order_number = original_order_number
+        self._unskip_current_order_if_needed()
         items = self.orders_data[original_order_number]['items']
 
         # Capture "is this a brand-new order?" BEFORE potentially adding it to in_progress.
@@ -1974,10 +1964,11 @@ class PackerLogic(QObject):
         if not summary_path:
             summary_path = self._get_summary_file_path()
 
-        # Save to file
+        # Save to file atomically (temp file + rename), same as every other
+        # write path — a failure partway through must never truncate a
+        # previously-good summary in place.
         try:
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                json.dump(summary, f, indent=2, ensure_ascii=False)
+            atomic_write_json(summary_path, summary)
 
             logger.info(f"Session summary (v1.3.0) saved to: {summary_path}")
             return summary_path

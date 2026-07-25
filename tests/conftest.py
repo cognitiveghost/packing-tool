@@ -9,8 +9,7 @@ Design notes:
   config falls back to a hardcoded Windows UNC path
   (\\\\192.168.88.101\\_Fulfilment_\\0UFulfilment) which, on POSIX, is
   treated as a single literal directory name and gets created in the repo
-  root the first time any module calls get_logger(). See test_logger.py
-  for a regression test that documents this directly.
+  root the first time any module calls get_logger().
 """
 import os
 import sys
@@ -39,20 +38,6 @@ def qapp():
     """A QApplication is required for QObject subclasses with Signals (PackerLogic)."""
     app = QApplication.instance() or QApplication([])
     yield app
-
-
-@pytest.fixture(autouse=True)
-def _isolate_profile_manager_caches():
-    """ProfileManager._config_cache/_sku_cache are class-level (shared across all
-    instances in the process) — see test_profile_manager.py::test_config_cache_leaks_across_instances
-    for why that itself is a bug. Clear them around every test so unrelated tests
-    don't pollute each other via the same client_id.
-    """
-    ProfileManager._config_cache.clear()
-    ProfileManager._sku_cache.clear()
-    yield
-    ProfileManager._config_cache.clear()
-    ProfileManager._sku_cache.clear()
 
 
 @pytest.fixture

@@ -36,6 +36,7 @@ Usage:
 
 import json
 import os
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -250,10 +251,31 @@ class StatsManager:
                         from shared.metadata_utils import get_current_timestamp
                         stats["last_updated"] = get_current_timestamp()
 
-                        # Save
+                        # Serialize to a throwaway temp file first. If this
+                        # fails partway (disk full, dropped SMB write), only
+                        # the temp file is corrupted — the locked original,
+                        # shared by every PC running Packing/Shopify Tool,
+                        # is never truncated until the new content is known-good.
+                        tmp_fd, tmp_name = tempfile.mkstemp(
+                            dir=self.stats_file.parent,
+                            prefix=f".{self.stats_file.stem}_tmp_",
+                            suffix=self.stats_file.suffix,
+                        )
+                        try:
+                            with os.fdopen(tmp_fd, 'w', encoding='utf-8') as tmp_f:
+                                json.dump(stats, tmp_f, indent=4, ensure_ascii=False)
+                            new_content = Path(tmp_name).read_text(encoding='utf-8')
+                        finally:
+                            try:
+                                os.unlink(tmp_name)
+                            except OSError:
+                                pass
+
+                        # Commit into the locked file only now that the new
+                        # content is fully generated and known-good.
                         f.seek(0)
                         f.truncate()
-                        json.dump(stats, f, indent=4, ensure_ascii=False)
+                        f.write(new_content)
                         f.flush()
                         os.fsync(f.fileno())
 

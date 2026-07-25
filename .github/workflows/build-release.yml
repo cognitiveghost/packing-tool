@@ -14,8 +14,6 @@ on:
 
 jobs:
   sanity-check:
-    # Tests were removed for a rewrite (not present in this checkout). Until they're
-    # back, this just checks the source tree compiles and imports cleanly.
     name: Sanity Check
     runs-on: windows-latest
 
@@ -32,8 +30,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Compile all sources
+        shell: bash
         run: python -m py_compile src/*.py src/session_browser/*.py shared/*.py
 
       - name: Import main module
@@ -41,6 +41,9 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -c "import main"
+
+      - name: Run tests
+        run: python -m pytest
 
   build-windows:
     name: Build Windows Executable
