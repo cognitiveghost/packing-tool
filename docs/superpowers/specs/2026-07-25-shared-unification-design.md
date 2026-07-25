@@ -93,8 +93,14 @@ packing-tool, друкує список скопійованих файлів.
   `_lock_file`).
 - Timestamps через `shared.metadata_utils.get_current_timestamp()`
   (видаляються голі `datetime.now().isoformat()`).
-- `_atomic_update` спрощується до temp+`os.replace()` (як в
-  `atomic_write.py`), замість поточного read-back-в-locked-handle трюку.
+- `_atomic_update` переноситься **без змін**: temp-file-then-read-back-
+  into-the-locked-handle — навмисний вибір, не помилка. Просте
+  temp+`os.replace()` (як в `atomic_write.py`) замінило б файл під локом,
+  залишивши лок на відв'язаному inode, а новий файл — незаблокованим;
+  вже покрито регресійним тестом
+  `tests/test_atomic_write.py::test_stats_manager_atomic_update_is_actually_crash_safe`.
+  Корекція попереднього дизайну: секція 2 спершу помилково пропонувала це
+  спростити.
 - Один `FileLockError`, реекспортований з `shared.file_lock` (друга
   дефініція класу видаляється).
 - `_get_default_stats()["version"]` = `"2.0"` (єдине канонічне значення,
