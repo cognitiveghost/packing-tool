@@ -33,6 +33,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Compile all sources
+        shell: bash
         run: python -m py_compile src/*.py src/session_browser/*.py shared/*.py
 
       - name: Import main module
