@@ -237,16 +237,9 @@ def test_falls_back_to_config_ini_when_env_var_unset(config_ini, server_root):
 # re-reading config.ini - so a per-process log file always lands under the
 # same server the rest of ProfileManager's data uses.
 # ---------------------------------------------------------------------------
-import logging as _logging
-
-
 def test_profile_manager_creates_a_per_process_log_file(config_ini, server_root):
     ProfileManager(config_path=str(config_ini))
 
     log_dir = server_root / "Logs" / "PackingTool"
     files = list(log_dir.glob("PackingTool_*.log"))
     assert len(files) == 1
-
-    for handler in _logging.getLogger().handlers[:]:
-        _logging.getLogger().removeHandler(handler)
-        handler.close()

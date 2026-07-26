@@ -25,11 +25,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt, QThread, QDate, QSize
 
-from logger import get_logger
+import logging
 from shared.metadata_utils import parse_timestamp
 from shared.theme import StatusDot
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------ #
 #  Status display configuration                                         #

@@ -32,7 +32,7 @@ from datetime import datetime
 from openpyxl.styles import PatternFill
 import pandas as pd
 
-from logger import get_logger
+import logging
 from profile_manager import ProfileManager, NetworkError, ValidationError
 from session_lock_manager import SessionLockManager
 from exceptions import SessionLockedError, StaleLockError
@@ -51,7 +51,7 @@ from session_registry_manager import SessionRegistryManager
 from worker_selection_dialog import WorkerSelectionDialog
 from theme import load_saved_theme, toggle_theme
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = "config.ini"
 

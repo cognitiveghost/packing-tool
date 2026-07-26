@@ -19,9 +19,8 @@ from datetime import datetime
 from shared.file_lock import locked_file, FileLockError, WINDOWS_LOCKING_AVAILABLE
 from shared.server_connection import resolve_server_path, test_path_reachable
 from shared.logger import setup_logging
-from logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ProfileManagerError(Exception):

@@ -16,13 +16,13 @@ from PySide6.QtCore import QObject, Signal
 from typing import List, Dict, Any, Tuple
 
 # Local imports
-from logger import get_logger
+import logging
 from json_cache import get_cached_json, invalidate_json_cache
 from async_state_writer import AsyncStateWriter
 from shared.atomic_write import atomic_write_json
 
 # Initialize module-level logger
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Required columns in the Excel packing list
 # These columns are mandatory for the application to function correctly

@@ -29,11 +29,11 @@ from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp
 
 # Local imports
-from logger import get_logger
+import logging
 from exceptions import SessionLockedError, StaleLockError
 
 # Initialize module-level logger
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Filename for session information file
 # This file is created at session start and deleted at graceful session end

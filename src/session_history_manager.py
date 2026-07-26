@@ -10,10 +10,10 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 
-from logger import get_logger
+import logging
 from json_cache import get_cached_json
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

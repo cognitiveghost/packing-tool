@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RestoreSessionDialog(QDialog):

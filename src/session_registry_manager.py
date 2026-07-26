@@ -30,11 +30,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from logger import get_logger
+import logging
 from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Seconds before an "in_progress" heartbeat is considered stale
 STALE_HEARTBEAT_SECONDS = 300  # 5 minutes

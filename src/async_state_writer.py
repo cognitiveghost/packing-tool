@@ -9,9 +9,9 @@ import copy
 import threading
 from typing import Callable, Dict, Any, Optional
 
-from logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AsyncStateWriter:

@@ -28,11 +28,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, QTimer, Qt, QSettings
 
-from logger import get_logger
+import logging
 from .client_selector_widget import ClientSelectorWidget
 from .sessions_list_widget import SessionsListWidget
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Auto-refresh interval in milliseconds (2 minutes — cheap with registry)
 _AUTO_REFRESH_MS = 120_000
