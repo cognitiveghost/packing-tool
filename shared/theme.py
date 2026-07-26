@@ -260,13 +260,13 @@ def build_stylesheet(theme: ThemeTokens) -> str:
 
         QScrollBar:vertical {{ background-color: {theme.background}; width: 12px; border: none; }}
         QScrollBar::handle:vertical {{
-            background-color: {theme.border}; min-height: 20px; border-radius: 6px;
+            background-color: {theme.border}; min-height: 20px; border-radius: {r}px;
         }}
         QScrollBar::handle:vertical:hover {{ background-color: {theme.text_secondary}; }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         QScrollBar:horizontal {{ background-color: {theme.background}; height: 12px; border: none; }}
         QScrollBar::handle:horizontal {{
-            background-color: {theme.border}; min-width: 20px; border-radius: 6px;
+            background-color: {theme.border}; min-width: 20px; border-radius: {r}px;
         }}
         QScrollBar::handle:horizontal:hover {{ background-color: {theme.text_secondary}; }}
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; }}
