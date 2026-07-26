@@ -165,7 +165,11 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("Packer's Assistant")
-        self.resize(1024, 768)
+
+        from shared.theme import restore_window_geometry
+        self._geometry_settings = QSettings("PackingTool", "MainWindowGeometry")
+        if not restore_window_geometry(self, self._geometry_settings):
+            self.resize(1024, 768)
 
         logger.info("Initializing MainWindow")
 
@@ -1251,6 +1255,12 @@ class MainWindow(QMainWindow):
         logger.info("Application closing, performing cleanup...")
 
         try:
+            from shared.theme import save_window_geometry
+            try:
+                save_window_geometry(self, self._geometry_settings)
+            except Exception as e:
+                logger.warning(f"Failed to save window geometry: {e}")
+
             # 1. Stop heartbeat timer (prevents lock updates during cleanup)
             if hasattr(self, 'heartbeat_timer') and self.heartbeat_timer:
                 try:
