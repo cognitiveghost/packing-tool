@@ -543,10 +543,8 @@ class MainWindow(QMainWindow):
             # Order status
             if is_completed:
                 status_text = "Completed"
-                status_icon = ""
             else:
-                status_text = f"⏳ {scanned_count}/{total_items} items"
-                status_icon = "⏳"
+                status_text = f"{scanned_count}/{total_items} items"
 
             # Courier
             courier = items_df.iloc[0].get('Courier', 'N/A') if 'Courier' in items_df.columns else 'N/A'
@@ -603,7 +601,7 @@ class MainWindow(QMainWindow):
                 if scanned_qty >= qty_int:
                     item_status = "Scanned"
                 else:
-                    item_status = f"⏳ Pending ({scanned_qty}/{qty_int})"
+                    item_status = f"Pending ({scanned_qty}/{qty_int})"
 
                 # Create child item
                 child_item = QTreeWidgetItem([
@@ -859,7 +857,7 @@ class MainWindow(QMainWindow):
             if scanned >= qty_int:
                 status = "Complete"
             else:
-                status = f"⏳ {scanned}/{qty_int}"
+                status = f"{scanned}/{qty_int}"
 
             self.sku_table.setItem(idx, 0, QTableWidgetItem(sku))
             self.sku_table.setItem(idx, 1, QTableWidgetItem(product))

@@ -42,7 +42,7 @@ class MetricsTab(QWidget):
 
         if not metrics:
             no_data_label = QLabel(
-                "ℹ️ Metrics not available\n\n"
+                "Metrics not available\n\n"
                 "Timing metrics are not available for this session."
             )
             no_data_label.setObjectName("no_metrics_label")

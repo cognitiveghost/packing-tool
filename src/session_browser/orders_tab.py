@@ -123,7 +123,7 @@ class OrdersTab(QWidget):
 
         # Update info label
         if not self.all_orders:
-            self.info_label.setText("ℹ️ No order data available for this session.")
+            self.info_label.setText("No order data available for this session.")
             self.info_label.setStyleSheet("color: #888888; font-weight: bold;")
             return
         else:
