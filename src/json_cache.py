@@ -163,7 +163,7 @@ class JSONCache:
             logger.warning(f"Invalid JSON in {file_path}: {e}")
             return default
         except Exception as e:
-            logger.error(f"Error reading {file_path}: {e}")
+            logger.error(f"Error reading {file_path}: {e}", exc_info=True)
             return default
 
         # Re-acquire lock to insert; another thread may have beat us here —

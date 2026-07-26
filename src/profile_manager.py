@@ -157,7 +157,7 @@ class ProfileManager:
             config.read(config_path, encoding='utf-8')
             logger.info(f"Configuration loaded from {config_path}")
         except Exception as e:
-            logger.error(f"Failed to load config: {e}")
+            logger.error(f"Failed to load config: {e}", exc_info=True)
 
         return config
 
@@ -171,7 +171,7 @@ class ProfileManager:
             self.logs_dir.mkdir(parents=True, exist_ok=True)
             logger.debug("Directory structure verified")
         except Exception as e:
-            logger.error(f"Cannot create directories: {e}")
+            logger.error(f"Cannot create directories: {e}", exc_info=True)
             raise ProfileManagerError(f"Cannot create directories on file server: {e}")
 
     # ========================================================================
@@ -244,7 +244,7 @@ class ProfileManager:
             return sorted(clients)
 
         except Exception as e:
-            logger.error(f"Error listing clients: {e}")
+            logger.error(f"Error listing clients: {e}", exc_info=True)
             return []
 
     def client_exists(self, client_id: str) -> bool:
@@ -397,7 +397,7 @@ class ProfileManager:
             return config.copy()
 
         except Exception as e:
-            logger.error(f"Error loading config for {client_id}: {e}")
+            logger.error(f"Error loading config for {client_id}: {e}", exc_info=True)
             return None
 
     def save_client_config(self, client_id: str, config: Dict) -> bool:
@@ -434,7 +434,7 @@ class ProfileManager:
             return True
 
         except Exception as e:
-            logger.error(f"Error saving config for {client_id}: {e}")
+            logger.error(f"Error saving config for {client_id}: {e}", exc_info=True)
             return False
 
     def _create_backup(self, client_id: str, file_path: Path, file_type: str):
@@ -497,7 +497,7 @@ class ProfileManager:
                     mappings = data.get("sku_mapping", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from packer_config for {client_id}")
             except Exception as e:
-                logger.error(f"Error loading SKU mapping from packer_config for {client_id}: {e}")
+                logger.error(f"Error loading SKU mapping from packer_config for {client_id}: {e}", exc_info=True)
 
         # Fall back to old sku_mapping.json if packer_config doesn't have mappings
         if not mappings and mapping_path.exists():
@@ -507,7 +507,7 @@ class ProfileManager:
                     mappings = data.get("mappings", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from sku_mapping.json for {client_id}")
             except Exception as e:
-                logger.error(f"Error loading SKU mapping from sku_mapping.json for {client_id}: {e}")
+                logger.error(f"Error loading SKU mapping from sku_mapping.json for {client_id}: {e}", exc_info=True)
 
         # Update cache
         self._sku_cache[cache_key] = (mappings, datetime.now())
@@ -589,7 +589,7 @@ class ProfileManager:
                     logger.warning(f"packer_config locked, retry {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
                 else:
-                    logger.error(f"Could not acquire lock on packer_config after {max_retries} attempts")
+                    logger.error(f"Could not acquire lock on packer_config after {max_retries} attempts", exc_info=True)
                     raise ProfileManagerError(
                         f"Configuration is locked by another user. Please try again in a moment."
                     )
@@ -645,7 +645,7 @@ class ProfileManager:
             return True
 
         except Exception as e:
-            logger.error(f"Error saving SKU mapping (simple): {e}")
+            logger.error(f"Error saving SKU mapping (simple): {e}", exc_info=True)
             return False
 
     # ========================================================================

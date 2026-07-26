@@ -73,7 +73,7 @@ class ClientSelectorWidget(QWidget):
         try:
             clients = self.profile_manager.list_clients()
         except Exception as e:
-            logger.error(f"Failed to list clients: {e}")
+            logger.error(f"Failed to list clients: {e}", exc_info=True)
             clients = []
 
         saved = self._settings.value("last_client_id", "", type=str)

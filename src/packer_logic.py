@@ -289,7 +289,7 @@ class PackerLogic(QObject):
         except Exception as e:
             # Graceful degradation: if SKU mapping fails to load, continue without it
             # Scanned barcodes will be matched directly against order SKUs
-            logger.error(f"Error loading SKU mappings: {e}")
+            logger.error(f"Error loading SKU mappings: {e}", exc_info=True)
             return {}
 
     def set_sku_map(self, sku_map: Dict[str, str]):
@@ -316,7 +316,7 @@ class PackerLogic(QObject):
             self.profile_manager.save_sku_mapping(self.client_id, sku_map)
             logger.info("SKU mapping saved successfully")
         except Exception as e:
-            logger.error(f"Failed to save SKU mapping: {e}")
+            logger.error(f"Failed to save SKU mapping: {e}", exc_info=True)
 
     def _get_state_file_path(self) -> str:
         """
@@ -534,7 +534,7 @@ class PackerLogic(QObject):
             logger.info(f"Session state loaded: {in_progress_count} in progress, {completed_count} completed")
 
         except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Error loading session state: {e}, starting fresh")
+            logger.error(f"Error loading session state: {e}, starting fresh", exc_info=True)
             self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
 
     def _build_state_dict(self) -> Dict[str, Any]:
@@ -1413,11 +1413,11 @@ class PackerLogic(QObject):
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in packing list file: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg)
         except Exception as e:
             error_msg = f"Error reading packing list file: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg)
 
         # Extract orders list
@@ -1611,11 +1611,11 @@ class PackerLogic(QObject):
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in analysis_data.json: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg)
         except Exception as e:
             error_msg = f"Error reading analysis_data.json: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg)
 
         # Extract orders list

@@ -467,5 +467,5 @@ class SessionHistoryManager:
             }
 
         except Exception as e:
-            logger.error(f"Error getting session details: {e}")
+            logger.error(f"Error getting session details: {e}", exc_info=True)
             return None

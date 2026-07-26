@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
                 logger.info("ProfileManager initialized successfully")
                 break
             except NetworkError as e:
-                logger.error(f"Failed to initialize ProfileManager: {e}")
+                logger.error(f"Failed to initialize ProfileManager: {e}", exc_info=True)
                 if prompt_for_recovery_path(self, str(e), "PackingTool"):
                     continue
                 sys.exit(1)
@@ -1169,7 +1169,7 @@ class MainWindow(QMainWindow):
                     self.status_label.setText("SKU mapping updated and synchronized across all PCs.")
                     logger.info("SKU mapping reloaded into active session")
                 except Exception as e:
-                    logger.error(f"Failed to reload SKU mapping into session: {e}")
+                    logger.error(f"Failed to reload SKU mapping into session: {e}", exc_info=True)
                     QMessageBox.warning(
                         self,
                         "Reload Warning",
@@ -1194,7 +1194,7 @@ class MainWindow(QMainWindow):
                 self.lock_manager.update_heartbeat(Path(self.current_work_dir))
                 logger.debug("Lock heartbeat updated")
             except Exception as e:
-                logger.error(f"Failed to update heartbeat: {e}")
+                logger.error(f"Failed to update heartbeat: {e}", exc_info=True)
 
     def _cleanup_failed_session_start(self):
         """
@@ -1784,7 +1784,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             self.status_label.setText(f"Could not save the report. Error: {e}")
-            logger.error(f"Error during end_session: {e}")
+            logger.error(f"Error during end_session: {e}", exc_info=True)
 
         # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, 'heartbeat_timer'):
@@ -1796,7 +1796,7 @@ class MainWindow(QMainWindow):
                 self.lock_manager.release_lock(Path(self.current_work_dir))
                 logger.info("Lock released")
             except Exception as e:
-                logger.error(f"Failed to release lock: {e}")
+                logger.error(f"Failed to release lock: {e}", exc_info=True)
 
         # Cleanup PackerLogic state
         if self.logic:
@@ -2074,7 +2074,7 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Save Failed", "Could not save mapping to file server.")
         except Exception as e:
-            logger.error(f"Failed to save quick SKU mapping: {e}")
+            logger.error(f"Failed to save quick SKU mapping: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
 
         self.packer_mode_widget.set_focus_to_scanner()

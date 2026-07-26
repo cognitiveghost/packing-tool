@@ -50,7 +50,7 @@ class SKUMappingDialog(QDialog):
             self.current_map = self.profile_manager.load_sku_mapping(client_id).copy()
             logger.info(f"Loaded {len(self.current_map)} SKU mappings for client {client_id}")
         except Exception as e:
-            logger.error(f"Failed to load SKU mappings: {e}")
+            logger.error(f"Failed to load SKU mappings: {e}", exc_info=True)
             self.current_map = {}
             QMessageBox.warning(
                 self,
@@ -281,7 +281,7 @@ class SKUMappingDialog(QDialog):
             logger.info(f"Reloaded {len(self.current_map)} SKU mappings from server")
 
         except Exception as e:
-            logger.error(f"Failed to reload SKU mappings: {e}")
+            logger.error(f"Failed to reload SKU mappings: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Reload Error",
