@@ -5,6 +5,7 @@ This module manages client-specific configurations, SKU mappings, and session
 directories on a centralized file server. It provides robust file locking for
 concurrent access, caching for performance, and connection testing.
 """
+import logging
 import os
 import json
 import re
@@ -17,6 +18,7 @@ from datetime import datetime
 
 from shared.file_lock import locked_file, FileLockError, WINDOWS_LOCKING_AVAILABLE
 from shared.server_connection import resolve_server_path, test_path_reachable
+from shared.logger import setup_logging
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -98,6 +100,16 @@ class ProfileManager:
         self.workers_dir = self.base_path / "Workers"
         self.stats_dir = self.base_path / "Stats"
         self.logs_dir = self.base_path / "Logs"
+
+        # Per-process log file on the same server ProfileManager itself
+        # resolved (base_path) - previously logger.py re-read config.ini
+        # independently, so a saved Server Connection path or
+        # FULFILLMENT_SERVER_PATH override could silently point data at
+        # one server and logs at another.
+        log_level_str = self.config.get('Logging', 'LogLevel', fallback='INFO')
+        log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+        retention_days = self.config.getint('Logging', 'LogRetentionDays', fallback=30)
+        setup_logging("PackingTool", str(self.base_path), level=log_level, retention_days=retention_days)
 
         # Local cache directory
         cache_path = self.config.get('Network', 'LocalCachePath', fallback='')
