@@ -42,7 +42,7 @@ class MetricsTab(QWidget):
 
         if not metrics:
             no_data_label = QLabel(
-                "ℹ️ Metrics not available\n\n"
+                "Metrics not available\n\n"
                 "Timing metrics are not available for this session."
             )
             no_data_label.setObjectName("no_metrics_label")
@@ -55,7 +55,7 @@ class MetricsTab(QWidget):
         # Incomplete-session notice
         if is_incomplete:
             notice = QLabel(
-                "⚠️ Partial metrics — session was not fully completed.\n"
+                "⚠ Partial metrics — session was not fully completed.\n"
                 "Only data from completed orders is shown."
             )
             notice.setObjectName("incomplete_session_notice")

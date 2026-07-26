@@ -1,10 +1,11 @@
 import logging
+import os
 from collections import defaultdict
 from functools import partial
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem,
     QLabel, QLineEdit, QHeaderView, QPushButton, QAbstractItemView, QFrame,
-    QGroupBox, QProgressBar, QMessageBox, QApplication, QStyle
+    QGroupBox, QProgressBar, QMessageBox, QApplication, QStyle, QTabWidget
 )
 from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 from PySide6.QtCore import Qt, Signal, QSize
@@ -40,6 +41,9 @@ class PackerModeWidget(QWidget):
         scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
         raw_scan_label (QLabel): Shows raw text from the last scan.
         history_table (QTableWidget): History of scanned orders in this session.
+        main_tabs (QTabWidget): Holds the order-items table and session-summary table as tabs.
+        packed_stat_label (QLabel): Glance-only tile — completed/total orders for the session.
+        items_stat_label (QLabel): Glance-only tile — packed/total items for the current order.
     """
     barcode_scanned        = Signal(str)
     exit_packing_mode      = Signal()
@@ -116,6 +120,17 @@ class PackerModeWidget(QWidget):
         _mbl.setStretchFactor(self._meta_notes_lbl, 1)
         left_layout.addWidget(self.metadata_banner)
 
+        # Scanner input — hidden line edit that captures barcode scanner keystrokes.
+        # Moved here (top of the main panel, right under the metadata banner) from
+        # the right column so it's the first thing under the banner.
+        self.scanner_input = QLineEdit()
+        self.scanner_input.setFixedSize(1, 1)
+        self.scanner_input.returnPressed.connect(self._on_scan)
+        scan_row = QHBoxLayout()
+        scan_row.setSpacing(8)
+        scan_row.addWidget(self.scanner_input, 1)
+        left_layout.addLayout(scan_row)
+
         # Items table inside a frame
         self.table_frame = QFrame()
         self.table_frame.setObjectName("TableFrame")
@@ -141,7 +156,6 @@ class PackerModeWidget(QWidget):
         self.table.setFocusPolicy(Qt.NoFocus)
 
         frame_layout.addWidget(self.table)
-        left_layout.addWidget(self.table_frame)
 
         # Bottom row: history table (left half) + extras panel (right half, hidden until needed)
         _bottom_row = QWidget()
@@ -202,15 +216,12 @@ class PackerModeWidget(QWidget):
         _ecvl.addWidget(self.extras_panel)
         _brl.addWidget(_extras_container, stretch=1)
 
-        left_layout.addWidget(_bottom_row)
-
-        # [D] Summary panel — deduped SKUs with summed quantities (hidden until order loaded)
+        # [D] Summary panel — deduped SKUs with summed quantities
         self.summary_frame = QFrame()
         self.summary_frame.setObjectName("SummaryFrame")
         self.summary_frame.setStyleSheet(
             "QFrame#SummaryFrame { border: 1px solid palette(mid); border-radius: 3px; }"
         )
-        self.summary_frame.setVisible(False)
         _sfl = QVBoxLayout(self.summary_frame)
         _sfl.setContentsMargins(4, 2, 4, 2)
         _sfl.setSpacing(2)
@@ -230,14 +241,35 @@ class PackerModeWidget(QWidget):
         self.summary_table.setSelectionMode(QAbstractItemView.NoSelection)
         self.summary_table.setFocusPolicy(Qt.NoFocus)
         _sfl.addWidget(self.summary_table)
-        # summary_frame lives in the right panel (added there below)
+
+        # Tabs: order items (main scan table) + session summary, side by side in one
+        # tab container instead of summary_frame living in the right column.
+        self.main_tabs = QTabWidget()
+        self.main_tabs.addTab(self.table_frame, "Order Items")
+        self.main_tabs.addTab(self.summary_frame, "Session Summary")
+        left_layout.addWidget(self.main_tabs, 1)
+        left_layout.addWidget(_bottom_row)  # history/extras stay under the tabs
 
         # ─── RIGHT PANEL ─────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
 
-        # Dev mode: visible scan simulator panel (replaces physical barcode scanner)
-        if self._sim_mode:
+        # Glance-only stat tiles: session order progress + current-order item progress.
+        # Kept in sync via update_session_progress / _update_summary_panel /
+        # _refresh_summary_from_table (same call sites that already update
+        # session_progress_bar / summary_table).
+        stats_row = QHBoxLayout()
+        self.packed_stat_label = QLabel("Packed: 0 / 0")
+        self.items_stat_label = QLabel("Items: 0 / 0")
+        for lbl in (self.packed_stat_label, self.items_stat_label):
+            lbl.setStyleSheet("font-weight: bold;")
+            stats_row.addWidget(lbl)
+        right_layout.addLayout(stats_row)
+
+        # Dev mode: visible scan simulator panel (replaces physical barcode scanner).
+        # Opt-in only: via the ScanSimulatorMode config setting (self._sim_mode, wired
+        # through main.py) or, for a quick one-off without touching config, PACKER_DEV_SIM=1.
+        if self._sim_mode or os.environ.get("PACKER_DEV_SIM"):
             sim_group = QGroupBox("Scan Simulator (Dev Mode)")
             sim_group.setStyleSheet(
                 "QGroupBox { border: 2px dashed #e67e22; border-radius: 6px; "
@@ -321,23 +353,14 @@ class PackerModeWidget(QWidget):
 
         right_layout.addStretch()
 
-        # [D] Summary panel — bottom edge aligns with the main scan table's bottom edge.
-        # A fixed-height bottom section (matching _bottom_row.maximumHeight() = 160px)
-        # ensures the exit button occupies the same vertical space as the history/extras
-        # row on the left, so summary_frame's bottom = main table's bottom.
-        right_layout.addWidget(self.summary_frame)
-
+        # Bottom section — fixed height matching _bottom_row.maximumHeight() (160px) on
+        # the left, so the exit button's bottom edge lines up with the history/extras row.
         _right_bottom = QWidget()
         _right_bottom.setMaximumHeight(self._BOTTOM_ROW_HEIGHT)
         _rbottom_layout = QVBoxLayout(_right_bottom)
         _rbottom_layout.setContentsMargins(0, 0, 0, 0)
         _rbottom_layout.setSpacing(0)
         _rbottom_layout.addStretch()
-
-        self.scanner_input = QLineEdit()
-        self.scanner_input.setFixedSize(1, 1)
-        self.scanner_input.returnPressed.connect(self._on_scan)
-        _rbottom_layout.addWidget(self.scanner_input)
 
         self.exit_button = QPushButton("<< Back to Menu")
         font = self.exit_button.font(); font.setPointSize(14)
@@ -569,9 +592,10 @@ class PackerModeWidget(QWidget):
         self.scanner_input.setEnabled(True)
         # [A] Hide metadata banner
         self.metadata_banner.setVisible(False)
-        # [D] Hide summary panel
-        self.summary_frame.setVisible(False)
+        # [D] Clear summary panel (summary_frame is now a permanent tab page, not
+        # a widget that's shown/hidden — the tab always exists, only its data changes)
         self.summary_table.setRowCount(0)
+        self.items_stat_label.setText("Items: 0 / 0")
         # [E] Disable skip button
         self.skip_order_button.setEnabled(False)
         # [J] Hide extras panel and reset title
@@ -625,6 +649,7 @@ class PackerModeWidget(QWidget):
         self.session_progress_bar.setMaximum(max(total, 1))
         self.session_progress_bar.setValue(completed)
         self.session_progress_bar.setFormat(f"{completed} / {total} orders")
+        self.packed_stat_label.setText(f"Packed: {completed} / {total}")
 
     # [J] Feature J ────────────────────────────────────────────────────────────
 
@@ -833,7 +858,9 @@ class PackerModeWidget(QWidget):
                 status_item.setForeground(QColor("#43a047"))
             self.summary_table.setItem(i, 3, status_item)
 
-        self.summary_frame.setVisible(len(unique_skus) > 0)
+        total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
+        total_qty = sum(sku_totals.values())
+        self.items_stat_label.setText(f"Items: {total_packed} / {total_qty}")
 
     def _refresh_summary_from_table(self):
         """
@@ -842,7 +869,11 @@ class PackerModeWidget(QWidget):
         Main table columns: 0=Product Name, 1=SKU, 2="packed / total", 3=Status, 4=Actions.
         Summary columns: 0=SKU, 1=Product, 2=Packed/Total, 3=Status.
         """
-        if not self.summary_frame.isVisible():
+        # summary_frame now lives inside main_tabs, so isVisible() would reflect
+        # whether "Session Summary" happens to be the active tab rather than
+        # whether an order is loaded. Use summary_table's row count instead —
+        # it's populated by _update_summary_panel whenever an order is displayed.
+        if self.summary_table.rowCount() == 0:
             return
 
         sku_packed: Dict[str, int] = defaultdict(int)
@@ -880,3 +911,7 @@ class PackerModeWidget(QWidget):
             if packed >= total:
                 status_item.setForeground(QColor("#43a047"))
             self.summary_table.setItem(i, 3, status_item)
+
+        total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
+        total_qty = sum(sku_totals.values())
+        self.items_stat_label.setText(f"Items: {total_packed} / {total_qty}")

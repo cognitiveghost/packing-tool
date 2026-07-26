@@ -434,7 +434,7 @@ class SessionLockManager:
 
         return (
             f"Session is currently active on another PC:\n"
-            f"👤 {user_name} on 💻 {locked_by}\n"
+            f"{user_name} on {locked_by}\n"
             f"Please wait or choose another session."
         )
 
@@ -446,7 +446,7 @@ class SessionLockManager:
 
         return (
             f"Session has a stale lock (no heartbeat for {stale_minutes} minutes):\n"
-            f"👤 {user_name} on 💻 {locked_by}\n"
+            f"{user_name} on {locked_by}\n"
             f"The application may have crashed.\n"
             f"You can force-release the lock."
         )

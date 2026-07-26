@@ -98,8 +98,7 @@ class SessionLockedError(PackingToolError):
         Get a user-friendly message for display in UI dialogs.
 
         Formats the technical lock information into a human-readable message
-        that warehouse workers can understand. Uses emoji icons for visual
-        clarity and friendly tone.
+        that warehouse workers can understand.
 
         Returns:
             Formatted message with lock details, suitable for QMessageBox display
@@ -107,9 +106,9 @@ class SessionLockedError(PackingToolError):
         Example output:
             "This session is currently locked by:
 
-            👤 User: john.smith
-            💻 Computer: PC-WAREHOUSE-2
-            🕐 Lock time: 2025-11-03T14:30:00
+            User: john.smith
+            Computer: PC-WAREHOUSE-2
+            Lock time: 2025-11-03T14:30:00
 
             Please wait for the user to finish, or choose another session."
         """
@@ -125,9 +124,9 @@ class SessionLockedError(PackingToolError):
         # Format user-friendly message
         return (
             f"This session is currently locked by:\n\n"
-            f"👤 User: {user_name}\n"
-            f"💻 Computer: {locked_by}\n"
-            f"🕐 Lock time: {lock_time}\n\n"
+            f"User: {user_name}\n"
+            f"Computer: {locked_by}\n"
+            f"Lock time: {lock_time}\n\n"
             f"Please wait for the user to finish, or choose another session."
         )
 
@@ -205,10 +204,10 @@ class StaleLockError(SessionLockedError):
         Example output:
             "This session has a stale lock (no heartbeat for 10 minutes).
 
-            👤 Original user: john.smith
-            💻 Computer: PC-WAREHOUSE-2
-            🕐 Last heartbeat: 2025-11-03T14:30:00
-            ❌ Status: No response (possible crash)
+            Original user: john.smith
+            Computer: PC-WAREHOUSE-2
+            Last heartbeat: 2025-11-03T14:30:00
+            Status: No response (possible crash)
 
             The application may have crashed on that PC.
 
@@ -226,10 +225,10 @@ class StaleLockError(SessionLockedError):
         # Format user-friendly message with stale duration
         return (
             f"This session has a stale lock (no heartbeat for {self.stale_minutes} minutes).\n\n"
-            f"👤 Original user: {user_name}\n"
-            f"💻 Computer: {locked_by}\n"
-            f"🕐 Last heartbeat: {heartbeat}\n"
-            f"❌ Status: No response (possible crash)\n\n"
+            f"Original user: {user_name}\n"
+            f"Computer: {locked_by}\n"
+            f"Last heartbeat: {heartbeat}\n"
+            f"Status: No response (possible crash)\n\n"
             f"The application may have crashed on that PC.\n\n"
             f"You can force-release the lock to open this session."
         )

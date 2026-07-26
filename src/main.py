@@ -165,7 +165,11 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("Packer's Assistant")
-        self.resize(1024, 768)
+
+        from shared.theme import restore_window_geometry
+        self._geometry_settings = QSettings("PackingTool", "MainWindowGeometry")
+        if not restore_window_geometry(self, self._geometry_settings):
+            self.resize(1024, 768)
 
         logger.info("Initializing MainWindow")
 
@@ -538,11 +542,9 @@ class MainWindow(QMainWindow):
 
             # Order status
             if is_completed:
-                status_text = "✅ Completed"
-                status_icon = "✅"
+                status_text = "Completed"
             else:
-                status_text = f"⏳ {scanned_count}/{total_items} items"
-                status_icon = "⏳"
+                status_text = f"{scanned_count}/{total_items} items"
 
             # Courier
             courier = items_df.iloc[0].get('Courier', 'N/A') if 'Courier' in items_df.columns else 'N/A'
@@ -597,9 +599,9 @@ class MainWindow(QMainWindow):
                     qty_int = 1
 
                 if scanned_qty >= qty_int:
-                    item_status = "✅ Scanned"
+                    item_status = "Scanned"
                 else:
-                    item_status = f"⏳ Pending ({scanned_qty}/{qty_int})"
+                    item_status = f"Pending ({scanned_qty}/{qty_int})"
 
                 # Create child item
                 child_item = QTreeWidgetItem([
@@ -853,9 +855,9 @@ class MainWindow(QMainWindow):
             # Check if fully scanned
             scanned = scanned_by_sku.get(sku, 0)
             if scanned >= qty_int:
-                status = "✅ Complete"
+                status = "Complete"
             else:
-                status = f"⏳ {scanned}/{qty_int}"
+                status = f"{scanned}/{qty_int}"
 
             self.sku_table.setItem(idx, 0, QTableWidgetItem(sku))
             self.sku_table.setItem(idx, 1, QTableWidgetItem(product))
@@ -1251,6 +1253,12 @@ class MainWindow(QMainWindow):
         logger.info("Application closing, performing cleanup...")
 
         try:
+            from shared.theme import save_window_geometry
+            try:
+                save_window_geometry(self, self._geometry_settings)
+            except Exception as e:
+                logger.warning(f"Failed to save window geometry: {e}")
+
             # 1. Stop heartbeat timer (prevents lock updates during cleanup)
             if hasattr(self, 'heartbeat_timer') and self.heartbeat_timer:
                 try:
@@ -1778,7 +1786,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"Could not save the report. Error: {e}")
             logger.error(f"Error during end_session: {e}")
 
-        # ✅ CRITICAL: Stop heartbeat timer and release lock
+        # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, 'heartbeat_timer'):
             self.heartbeat_timer.stop()
             logger.debug("Heartbeat timer stopped")

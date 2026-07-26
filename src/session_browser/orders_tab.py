@@ -123,7 +123,7 @@ class OrdersTab(QWidget):
 
         # Update info label
         if not self.all_orders:
-            self.info_label.setText("ℹ️ No order data available for this session.")
+            self.info_label.setText("No order data available for this session.")
             self.info_label.setStyleSheet("color: #888888; font-weight: bold;")
             return
         else:
@@ -172,7 +172,7 @@ class OrdersTab(QWidget):
                 order_item.setText(5, flags if flags else "✓ ok")
 
                 # Colour the flags cell if there are quality issues
-                if any(c in flags for c in ('⟲', '⚡', '+', '?')):
+                if any(s in flags for s in ('⟲', 'manual', '+', '?')):
                     order_item.setForeground(5, QColor(200, 160, 0))
 
             # Make order row bold
@@ -192,7 +192,7 @@ class OrdersTab(QWidget):
 
                     sku = item.get('sku', 'Unknown')
                     method = item.get('confirmation_method', 'scanned')
-                    prefix = "⚡ " if method == 'force_confirmed' else "→ "
+                    prefix = "" if method == 'force_confirmed' else "→ "
                     item_node.setText(0, f"  {prefix}{sku}")
 
                     time_from_start = item.get('time_from_order_start_seconds', 0)
@@ -206,7 +206,7 @@ class OrdersTab(QWidget):
 
                     # Show method in flags column
                     if method == 'force_confirmed':
-                        item_node.setText(5, "⚡ manual")
+                        item_node.setText(5, "manual")
                         item_node.setForeground(5, QColor(200, 120, 0))
                     else:
                         item_node.setText(5, "✓ scan")
@@ -255,7 +255,7 @@ class OrdersTab(QWidget):
         has_force = any(i.get('confirmation_method') == 'force_confirmed' for i in items)
 
         if has_force:
-            parts.append("⚡ manual")
+            parts.append("manual")
         if corrections:
             parts.append(f"⟲{corrections}")
         if extra_scans:

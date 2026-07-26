@@ -20,14 +20,14 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QGroupBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
     QFileDialog, QMessageBox, QDateEdit, QFrame, QSizePolicy, QProgressBar
 )
 from PySide6.QtCore import Signal, Qt, QThread, QDate, QSize
-from PySide6.QtGui import QColor, QFont
 
 from logger import get_logger
 from shared.metadata_utils import parse_timestamp
+from shared.theme import StatusDot
 
 logger = get_logger(__name__)
 
@@ -36,13 +36,13 @@ logger = get_logger(__name__)
 # ------------------------------------------------------------------ #
 
 STATUS_CONFIG = {
-    "not_started":  {"label": "Not Started",  "icon": "🔵", "color": "#4A90D9"},
-    "in_progress":  {"label": "Active",        "icon": "🟢", "color": "#27AE60"},
-    "stale":        {"label": "Stale",         "icon": "🟠", "color": "#E67E22"},
-    "paused":       {"label": "Paused",        "icon": "🟡", "color": "#F1C40F"},
-    "completed":    {"label": "Completed",     "icon": "✅", "color": "#2ECC71"},
-    "incomplete":   {"label": "Incomplete",    "icon": "⚠️",  "color": "#E74C3C"},
-    "abandoned":    {"label": "Abandoned",     "icon": "🔴", "color": "#C0392B"},
+    "not_started":  {"label": "Not Started",  "color": "#4A90D9"},
+    "in_progress":  {"label": "Active",        "color": "#27AE60"},
+    "stale":        {"label": "Stale",         "color": "#E67E22"},
+    "paused":       {"label": "Paused",        "color": "#F1C40F"},
+    "completed":    {"label": "Completed",     "color": "#2ECC71"},
+    "incomplete":   {"label": "Incomplete",    "color": "#E74C3C"},
+    "abandoned":    {"label": "Abandoned",     "color": "#C0392B"},
 }
 
 # Column indices
@@ -136,8 +136,8 @@ def _fmt_progress(entry: dict) -> str:
 
 
 def _status_display(status: str) -> str:
-    cfg = STATUS_CONFIG.get(status, {"icon": "?", "label": status.replace("_", " ").title()})
-    return f"{cfg['icon']} {cfg['label']}"
+    cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title()})
+    return cfg["label"]
 
 
 # ------------------------------------------------------------------ #
@@ -204,7 +204,7 @@ class SessionsListWidget(QWidget):
         self._status_combo.setMinimumWidth(140)
         self._status_combo.addItem("All statuses", "")
         for key, cfg in STATUS_CONFIG.items():
-            self._status_combo.addItem(f"{cfg['icon']} {cfg['label']}", key)
+            self._status_combo.addItem(cfg["label"], key)
         self._status_combo.currentIndexChanged.connect(self._apply_filters)
         filter_layout.addWidget(QLabel("Status:"))
         filter_layout.addWidget(self._status_combo)
@@ -225,7 +225,7 @@ class SessionsListWidget(QWidget):
         filter_layout.addWidget(self._date_to)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("🔍  Search list, session, worker…")
+        self._search_input.setPlaceholderText("Search list, session, worker…")
         self._search_input.setMinimumWidth(200)
         self._search_input.textChanged.connect(self._apply_filters)
         filter_layout.addWidget(self._search_input)
@@ -268,38 +268,43 @@ class SessionsListWidget(QWidget):
         self._table.doubleClicked.connect(self._on_row_double_clicked)
         main_layout.addWidget(self._table)
 
-        # Inline preview panel
-        self._preview_box = QGroupBox("Session Details")
-        preview_layout = QHBoxLayout(self._preview_box)
-        preview_layout.setSpacing(12)
+        # Consolidated action bar (replaces the old preview QGroupBox + separate
+        # action_layout — see 2026-07-26-unified-ui-design-system-design.md)
+        action_bar = QHBoxLayout()
+        action_bar.setSpacing(8)
+
         self._preview_label = QLabel("Select a row for quick info")
         self._preview_label.setWordWrap(True)
-        preview_layout.addWidget(self._preview_label)
-        preview_layout.addStretch()
+        action_bar.addWidget(self._preview_label, 1)
+
         self._preview_action_btn = QPushButton()
         self._preview_action_btn.setVisible(False)
         self._preview_action_btn.clicked.connect(self._on_preview_action)
-        preview_layout.addWidget(self._preview_action_btn)
-        self._preview_details_btn = QPushButton("📋  View Details")
+        action_bar.addWidget(self._preview_action_btn)
+
+        self._preview_details_btn = QPushButton("View Details")
         self._preview_details_btn.setVisible(False)
         self._preview_details_btn.clicked.connect(self._on_preview_details)
-        preview_layout.addWidget(self._preview_details_btn)
-        self._preview_box.setMaximumHeight(120)
-        main_layout.addWidget(self._preview_box)
+        action_bar.addWidget(self._preview_details_btn)
 
-        # Bottom action bar
-        action_layout = QHBoxLayout()
-        action_layout.addStretch()
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
+        action_bar.addWidget(divider)
+
         self._export_csv_btn = QPushButton("Export CSV")
         self._export_csv_btn.clicked.connect(self._export_csv)
-        action_layout.addWidget(self._export_csv_btn)
+        action_bar.addWidget(self._export_csv_btn)
+
         self._export_excel_btn = QPushButton("Export Excel")
         self._export_excel_btn.clicked.connect(self._export_excel)
-        action_layout.addWidget(self._export_excel_btn)
-        self._refresh_btn = QPushButton("↻ Refresh")
+        action_bar.addWidget(self._export_excel_btn)
+
+        self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.clicked.connect(self.refresh)
-        action_layout.addWidget(self._refresh_btn)
-        main_layout.addLayout(action_layout)
+        action_bar.addWidget(self._refresh_btn)
+
+        main_layout.addLayout(action_bar)
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #
@@ -404,16 +409,29 @@ class SessionsListWidget(QWidget):
             return dt.timestamp()
         return 0.0
 
+    def _make_status_cell(self, status: str) -> QWidget:
+        cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title(), "color": "#888888"})
+        cell = QWidget()
+        layout = QHBoxLayout(cell)
+        layout.setContentsMargins(8, 0, 4, 0)
+        layout.setSpacing(6)
+        layout.addWidget(StatusDot(cfg["color"]))
+        layout.addWidget(QLabel(cfg["label"]))
+        layout.addStretch()
+        return cell
+
     def _fill_row(self, row: int, entry: dict):
         status = entry.get("status", "")
-        cfg = STATUS_CONFIG.get(status, {"icon": "?", "label": status, "color": "#888"})
 
-        # Col 0: Status
-        status_item = QTableWidgetItem(f"{cfg['icon']} {cfg['label']}")
-        status_item.setForeground(QColor(cfg["color"]))
-        status_item.setFont(QFont("Segoe UI", 9))
-        status_item.setData(Qt.ItemDataRole.UserRole, entry)
-        self._table.setItem(row, COL_STATUS, status_item)
+        # Col 0: Status — hidden sort-key item carries the sortable label and
+        # the row's entry data (read by _get_row_entry/_apply_filters); the
+        # visible content is the StatusDot cell widget set alongside it.
+        sort_item = QTableWidgetItem()
+        sort_item.setData(Qt.ItemDataRole.DisplayRole,
+                          STATUS_CONFIG.get(status, {}).get("label", ""))
+        sort_item.setData(Qt.ItemDataRole.UserRole, entry)
+        self._table.setItem(row, COL_STATUS, sort_item)
+        self._table.setCellWidget(row, COL_STATUS, self._make_status_cell(status))
 
         # Col 1: Packing List
         self._table.setItem(row, COL_LIST_NAME,
@@ -571,7 +589,7 @@ class SessionsListWidget(QWidget):
             self._preview_action_btn.setVisible(True)
             self._preview_details_btn.setVisible(False)
         elif status in ("completed", "abandoned"):
-            self._preview_action_btn.setText("📋  View Details")
+            self._preview_action_btn.setText("View Details")
             self._preview_action_btn.setVisible(True)
             self._preview_details_btn.setVisible(False)
         else:
