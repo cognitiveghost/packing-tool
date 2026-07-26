@@ -127,10 +127,242 @@ def clamp_geometry(
     return (x, y, w, h)
 
 
+def build_stylesheet(theme: ThemeTokens) -> str:
+    """Build the global Qt stylesheet (QSS) for one theme."""
+    hover = theme.button_hover_dark if theme.name == "dark" else theme.button_hover_light
+    r = theme.radius
+    return f"""
+        QWidget {{
+            background-color: {theme.background};
+            color: {theme.text};
+            font-family: {theme.font_family};
+        }}
+
+        QPushButton {{
+            background-color: {theme.accent_blue};
+            color: white;
+            border: 1px solid {theme.border};
+            border-radius: {r}px;
+            padding: 6px 12px;
+            font-size: 10pt;
+        }}
+        QPushButton:hover {{ background-color: {hover}; }}
+        QPushButton:pressed {{ background-color: {theme.button_hover_dark}; }}
+        QPushButton:disabled {{
+            background-color: {theme.background};
+            color: {theme.text_disabled};
+            border: 1px solid {theme.border_subtle};
+        }}
+
+        QLineEdit, QTextEdit, QPlainTextEdit {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: {r}px;
+            padding: 4px 8px;
+        }}
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
+            border: 2px solid {theme.accent_blue};
+        }}
+        QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {{
+            background-color: {theme.background};
+            color: {theme.text_disabled};
+            border-color: {theme.border_subtle};
+        }}
+
+        QComboBox {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: {r}px;
+            padding: 4px 8px;
+        }}
+        QComboBox:hover {{ border: 1px solid {theme.accent_blue}; }}
+        QComboBox::drop-down {{ border: none; }}
+        QComboBox QAbstractItemView {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            selection-background-color: {theme.accent_blue};
+            selection-color: white;
+        }}
+
+        QSpinBox, QDoubleSpinBox, QDateEdit {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: {r}px;
+            padding: 4px 8px;
+        }}
+
+        QCheckBox, QRadioButton {{
+            color: {theme.text};
+            spacing: {theme.spacing_sm}px;
+            background-color: transparent;
+        }}
+        QCheckBox::indicator, QRadioButton::indicator {{
+            width: 18px; height: 18px;
+            border: 2px solid {theme.border};
+            border-radius: {r}px;
+            background-color: {theme.background};
+        }}
+        QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
+            border: 2px solid {theme.accent_blue};
+        }}
+        QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+            background-color: {theme.accent_blue};
+            border: 2px solid {theme.accent_blue};
+        }}
+
+        QGroupBox {{
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: {r + 4}px;
+            padding-top: 24px; padding-bottom: 8px;
+            padding-left: 8px; padding-right: 8px;
+            font-weight: bold;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: padding;
+            subcontrol-position: top left;
+            padding: 4px 8px; left: 8px; top: 4px;
+        }}
+
+        QLabel {{ color: {theme.text}; background-color: transparent; }}
+
+        QTableView {{
+            background-color: {theme.background};
+            color: {theme.text};
+            gridline-color: {theme.border_subtle};
+            border: 1px solid {theme.border};
+            border-radius: {r + 4}px;
+        }}
+        QTableView::item:selected {{ background-color: {theme.accent_blue}; color: white; }}
+        QTableView::item:hover {{ background-color: {theme.hover}; }}
+        QHeaderView::section {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            padding: 4px; font-weight: bold;
+        }}
+        QTableCornerButton::section {{
+            background-color: {theme.background_elevated};
+            border: 1px solid {theme.border};
+        }}
+
+        QListWidget {{
+            background-color: {theme.background};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            border-radius: {r + 4}px;
+        }}
+        QListWidget::item:selected {{ background-color: {theme.accent_blue}; color: white; }}
+        QListWidget::item:hover {{ background-color: {theme.hover}; }}
+
+        QScrollBar:vertical {{ background-color: {theme.background}; width: 12px; border: none; }}
+        QScrollBar::handle:vertical {{
+            background-color: {theme.border}; min-height: 20px; border-radius: 6px;
+        }}
+        QScrollBar::handle:vertical:hover {{ background-color: {theme.text_secondary}; }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
+        QScrollBar:horizontal {{ background-color: {theme.background}; height: 12px; border: none; }}
+        QScrollBar::handle:horizontal {{
+            background-color: {theme.border}; min-width: 20px; border-radius: 6px;
+        }}
+        QScrollBar::handle:horizontal:hover {{ background-color: {theme.text_secondary}; }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; }}
+
+        QTabWidget::pane {{ border: 1px solid {theme.border}; background-color: {theme.background}; }}
+        QTabBar::tab {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+            padding: 8px 16px; margin-right: 2px;
+        }}
+        QTabBar::tab:selected {{
+            background-color: {theme.background};
+            border-bottom-color: {theme.background};
+            font-weight: bold;
+        }}
+        QTabBar::tab:hover {{ background-color: {theme.hover}; }}
+
+        QStatusBar {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border-top: 1px solid {theme.border};
+        }}
+
+        QMenuBar {{ background-color: {theme.background}; color: {theme.text}; }}
+        QMenuBar::item:selected {{ background-color: {theme.hover}; }}
+        QMenu {{
+            background-color: {theme.background_elevated};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+        }}
+        QMenu::item:selected {{ background-color: {theme.accent_blue}; color: white; }}
+
+        QToolBar {{
+            background-color: {theme.background_elevated};
+            border: 1px solid {theme.border};
+            spacing: {theme.spacing_xs}px;
+        }}
+
+        QDialog {{ background-color: {theme.background}; color: {theme.text}; }}
+    """
+
+
+def build_palette(theme: ThemeTokens):
+    """Build a QPalette for one theme. Import is local so this module stays
+    importable in a pure-Python (no Qt) context, e.g. under plain pytest."""
+    from PySide6.QtGui import QPalette, QColor
+
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(theme.background))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(theme.text))
+    palette.setColor(QPalette.ColorRole.Base, QColor(theme.background_elevated))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.hover))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(theme.background_elevated))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(theme.text))
+    palette.setColor(QPalette.ColorRole.Text, QColor(theme.text))
+    palette.setColor(QPalette.ColorRole.Button, QColor(theme.background_elevated))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(theme.text))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor(theme.accent_red))
+    palette.setColor(QPalette.ColorRole.Link, QColor(theme.accent_blue))
+    palette.setColor(QPalette.ColorRole.LinkVisited, QColor("#9C27B0"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(theme.accent_blue))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.text_placeholder))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(theme.text_disabled))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(theme.text_disabled))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(theme.text_disabled))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Base, QColor(theme.background_elevated))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Button, QColor(theme.background_elevated))
+    return palette
+
+
+def apply_theme(app, theme_name: str) -> None:
+    """Apply a theme's stylesheet and palette to a running QApplication."""
+    theme = get_theme(theme_name)
+    app.setStyleSheet(build_stylesheet(theme))
+    app.setPalette(build_palette(theme))
+
+
 if __name__ == "__main__":
     validate_theme(LIGHT_THEME)
     validate_theme(DARK_THEME)
     assert get_theme("dark") is DARK_THEME
     assert get_theme("light") is LIGHT_THEME
     assert get_theme("missing") is LIGHT_THEME
-    print("shared/theme.py tokens self-check OK")
+
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    for theme in (LIGHT_THEME, DARK_THEME):
+        sheet = build_stylesheet(theme)
+        assert "QPushButton" in sheet and theme.accent_blue in sheet
+        palette = build_palette(theme)
+        assert palette.color(palette.ColorRole.Window).name().upper() == theme.background.upper()
+    apply_theme(app, "dark")
+    assert (theme_app_stylesheet := app.styleSheet())
+    print("shared/theme.py full self-check OK")
