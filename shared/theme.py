@@ -9,6 +9,10 @@ shopify-fulfillment-tool/scripts/sync_shared.py after changing this file.
 import re
 from dataclasses import dataclass
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import QWidget
+
 
 @dataclass(frozen=True)
 class ThemeTokens:
@@ -125,6 +129,62 @@ def clamp_geometry(
     x = max(avail_x, min(x, avail_x + avail_w - w))
     y = max(avail_y, min(y, avail_y + avail_h - h))
     return (x, y, w, h)
+
+
+class StatusDot(QWidget):
+    """Small colored circle for status indicators in tables/lists.
+
+    Replaces emoji glyphs (previously concatenated into table-cell text,
+    e.g. packing-tool's sessions_list_widget.py STATUS_CONFIG icons) with a
+    theme-independent painted widget — consistent rendering across OS/fonts.
+    """
+
+    def __init__(self, color: str, diameter: int = 10, parent=None):
+        super().__init__(parent)
+        self._color = QColor(color)
+        self._diameter = diameter
+        self.setFixedSize(diameter, diameter)
+
+    def set_color(self, color: str) -> None:
+        self._color = QColor(color)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(self._color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(0, 0, self._diameter, self._diameter)
+
+
+def save_window_geometry(window, settings, key: str = "window_geometry") -> None:
+    """Save a QMainWindow/QWidget's geometry to QSettings."""
+    settings.setValue(key, window.saveGeometry())
+
+
+def restore_window_geometry(window, settings, key: str = "window_geometry") -> bool:
+    """Restore previously-saved geometry, clamped to the available screen.
+
+    Returns True if geometry was restored, False if there was nothing saved
+    (caller should fall back to its own default size in that case).
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    raw = settings.value(key)
+    if raw is None:
+        return False
+    if not window.restoreGeometry(raw):
+        return False
+
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    avail = screen.availableGeometry()
+    geo = window.geometry()
+    x, y, w, h = clamp_geometry(
+        geo.x(), geo.y(), geo.width(), geo.height(),
+        avail.x(), avail.y(), avail.width(), avail.height(),
+    )
+    window.setGeometry(x, y, w, h)
+    return True
 
 
 def build_stylesheet(theme: ThemeTokens) -> str:
@@ -365,4 +425,21 @@ if __name__ == "__main__":
         assert palette.color(palette.ColorRole.Window).name().upper() == theme.background.upper()
     apply_theme(app, "dark")
     assert (theme_app_stylesheet := app.styleSheet())
+
+    dot = StatusDot(DARK_THEME.accent_green)
+    assert dot.width() == 10 and dot.height() == 10
+    dot.set_color(DARK_THEME.accent_red)
+
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QMainWindow
+    test_settings = QSettings("SharedThemeSelfCheck", "GeometryTest")
+    test_settings.remove("window_geometry")
+    win = QMainWindow()
+    win.setGeometry(100, 100, 800, 600)
+    save_window_geometry(win, test_settings)
+    win2 = QMainWindow()
+    assert restore_window_geometry(win2, test_settings) is True
+    assert win2.geometry().width() == 800
+    test_settings.remove("window_geometry")
+
     print("shared/theme.py full self-check OK")
