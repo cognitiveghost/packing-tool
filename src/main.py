@@ -42,6 +42,7 @@ from packer_logic import PackerLogic, REQUIRED_COLUMNS
 from session_manager import SessionManager
 from shared.stats_manager import StatsManager
 from shared.session_id import derive_session_id
+from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from worker_manager import WorkerManager
 from sku_mapping_dialog import SKUMappingDialog
 from session_history_manager import SessionHistoryManager
@@ -171,22 +172,21 @@ class MainWindow(QMainWindow):
         # Detect if running in test mode
         self._is_test_mode = skip_worker_selection or 'pytest' in sys.modules
 
-        # Initialize ProfileManager (may raise NetworkError)
-        try:
-            self.profile_manager = ProfileManager(config_path)
-            logger.info("ProfileManager initialized successfully")
-        except NetworkError as e:
-            logger.error(f"Failed to initialize ProfileManager: {e}")
-            QMessageBox.critical(
-                self,
-                "Network Error",
-                f"Cannot connect to file server:\n\n{e}\n\n"
-                f"Please check your network connection and try again."
-            )
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Unexpected error initializing ProfileManager: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to initialize application:\n\n{e}")
+        # Initialize ProfileManager, offering a path-recovery prompt on
+        # NetworkError instead of exiting immediately.
+        while True:
+            try:
+                self.profile_manager = ProfileManager(config_path)
+                logger.info("ProfileManager initialized successfully")
+                break
+            except NetworkError as e:
+                logger.error(f"Failed to initialize ProfileManager: {e}")
+                if prompt_for_recovery_path(self, str(e), "PackingTool"):
+                    continue
+                sys.exit(1)
+            except Exception as e:
+                logger.error(f"Unexpected error initializing ProfileManager: {e}", exc_info=True)
+                QMessageBox.critical(self, "Error", f"Failed to initialize application:\n\n{e}")
             sys.exit(1)
 
         # Initialize SessionLockManager
@@ -397,6 +397,10 @@ class MainWindow(QMainWindow):
         sku_mapping_action = QAction("SKU Mappings...", self)
         sku_mapping_action.triggered.connect(self.open_sku_mapping_dialog)
         settings_menu.addAction(sku_mapping_action)
+
+        connection_action = QAction("Server Connection...", self)
+        connection_action.triggered.connect(self._open_connection_settings)
+        settings_menu.addAction(connection_action)
 
         settings_menu.addSeparator()
 
@@ -1122,6 +1126,13 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QApplication
         new_theme = toggle_theme(QApplication.instance())
         self.statusBar().showMessage(f"Theme switched to: {new_theme}", 3000)
+
+    def _open_connection_settings(self):
+        """Open the Server Connection settings dialog."""
+        config_fallback = self.profile_manager.config.get('Network', 'FileServerPath', fallback=None)
+        ConnectionSettingsDialog(
+            self, "PackingTool", "FULFILLMENT_SERVER_PATH", config_fallback
+        ).exec()
 
     def open_sku_mapping_dialog(self):
         """

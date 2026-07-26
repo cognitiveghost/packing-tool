@@ -51,6 +51,23 @@ def _clear_fulfillment_server_path_env(monkeypatch):
     monkeypatch.delenv("FULFILLMENT_SERVER_PATH", raising=False)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_qsettings(tmp_path_factory):
+    """Hermetic tests: resolve_server_path's QSettings layer must not read
+    (or write) the developer's real "PackingTool"/"Connection" settings —
+    a path saved via the Server Connection dialog on this machine would
+    otherwise silently override the tmp_path server_root used everywhere
+    below, the same class of leak _clear_fulfillment_server_path_env guards
+    against for the env var.
+    """
+    from PySide6.QtCore import QSettings
+    settings_dir = tmp_path_factory.mktemp("qsettings")
+    # QSettings(org, app) uses NativeFormat; redirect both formats since
+    # setPath only affects settings objects of the format it's given.
+    QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, str(settings_dir))
+    QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(settings_dir))
+
+
 @pytest.fixture
 def server_root(tmp_path):
     root = tmp_path / "server"
