@@ -110,6 +110,23 @@ def validate_theme(theme: ThemeTokens) -> None:
             )
 
 
+def clamp_geometry(
+    x: int, y: int, w: int, h: int,
+    avail_x: int, avail_y: int, avail_w: int, avail_h: int,
+) -> tuple:
+    """Clamp a saved window rect to fit inside the available screen rect.
+
+    Shrinks w/h to fit if larger than the screen, then clamps x/y so the
+    whole window is on-screen. Pure function — no Qt dependency — so a
+    saved-on-a-different-monitor geometry can never restore off-screen.
+    """
+    w = min(w, avail_w)
+    h = min(h, avail_h)
+    x = max(avail_x, min(x, avail_x + avail_w - w))
+    y = max(avail_y, min(y, avail_y + avail_h - h))
+    return (x, y, w, h)
+
+
 if __name__ == "__main__":
     validate_theme(LIGHT_THEME)
     validate_theme(DARK_THEME)
