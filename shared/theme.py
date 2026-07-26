@@ -435,11 +435,11 @@ if __name__ == "__main__":
     test_settings = QSettings("SharedThemeSelfCheck", "GeometryTest")
     test_settings.remove("window_geometry")
     win = QMainWindow()
-    win.setGeometry(100, 100, 800, 600)
+    win.setGeometry(50, 50, 400, 300)
     save_window_geometry(win, test_settings)
     win2 = QMainWindow()
     assert restore_window_geometry(win2, test_settings) is True
-    assert win2.geometry().width() == 800
+    assert win2.geometry().width() == 400
     test_settings.remove("window_geometry")
 
     print("shared/theme.py full self-check OK")
