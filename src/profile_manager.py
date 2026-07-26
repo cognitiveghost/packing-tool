@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 from shared.file_lock import locked_file, FileLockError, WINDOWS_LOCKING_AVAILABLE
+from shared.server_connection import resolve_server_path, test_path_reachable
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,10 +77,20 @@ class ProfileManager:
         # Load configuration
         self.config = self._load_config(config_path)
 
-        # Get paths from config
-        file_server_path = self.config.get('Network', 'FileServerPath', fallback=None)
+        # Get paths from config — resolve_server_path checks, in order:
+        # FULFILLMENT_SERVER_PATH env var (same variable, same precedence
+        # shopify-fulfillment-tool's ProfileManager already uses, so both
+        # apps can be pointed at the same file server from one place), then
+        # a path saved via the Server Connection UI, then config.ini.
+        config_fallback = self.config.get('Network', 'FileServerPath', fallback=None)
+        file_server_path = resolve_server_path(
+            "PackingTool", "FULFILLMENT_SERVER_PATH", config_fallback
+        )
         if not file_server_path:
-            raise ProfileManagerError("FileServerPath not configured in config.ini")
+            raise ProfileManagerError(
+                "FileServerPath not configured: set FULFILLMENT_SERVER_PATH, "
+                "use Settings → Server Connection, or add FileServerPath to config.ini"
+            )
 
         self.base_path = Path(file_server_path)
         self.clients_dir = self.base_path / "Clients"
@@ -101,7 +112,9 @@ class ProfileManager:
         self.connection_timeout = self.config.getint('Network', 'ConnectionTimeout', fallback=5)
 
         # Test network connectivity
-        self.is_network_available = self._test_connection()
+        self.is_network_available = test_path_reachable(
+            str(self.base_path), self.connection_timeout
+        )
 
         if not self.is_network_available:
             logger.error(f"File server not accessible: {self.base_path}")
@@ -136,31 +149,6 @@ class ProfileManager:
             logger.error(f"Failed to load config: {e}")
 
         return config
-
-    def _test_connection(self) -> bool:
-        """
-        Test if file server is accessible.
-
-        Returns:
-            True if server is accessible, False otherwise
-        """
-        logger.debug(f"Testing connection to {self.base_path}")
-
-        try:
-            # Try to create a test file
-            test_file = self.base_path / ".connection_test"
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch(exist_ok=True)
-
-            # Try to read it back
-            test_file.exists()
-
-            logger.info(f"Network connection OK: {self.base_path}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Network connection FAILED: {e}")
-            return False
 
     def _ensure_directories(self):
         """Create base directory structure if it doesn't exist."""
