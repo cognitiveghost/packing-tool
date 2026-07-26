@@ -465,7 +465,7 @@ class PackerLogic(QObject):
                         item['order_number'] for item in completed_list if 'order_number' in item
                     ]
 
-                    # ✅ CRITICAL: Restore timing metadata for Phase 2b
+                    # CRITICAL: Restore timing metadata for Phase 2b
                     self.completed_orders_metadata = []
                     for item in completed_list:
                         metadata = {

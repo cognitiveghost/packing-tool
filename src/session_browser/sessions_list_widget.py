@@ -589,7 +589,7 @@ class SessionsListWidget(QWidget):
             self._preview_action_btn.setVisible(True)
             self._preview_details_btn.setVisible(False)
         elif status in ("completed", "abandoned"):
-            self._preview_action_btn.setText("📋  View Details")
+            self._preview_action_btn.setText("View Details")
             self._preview_action_btn.setVisible(True)
             self._preview_details_btn.setVisible(False)
         else:

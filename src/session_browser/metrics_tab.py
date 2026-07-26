@@ -55,7 +55,7 @@ class MetricsTab(QWidget):
         # Incomplete-session notice
         if is_incomplete:
             notice = QLabel(
-                "⚠️ Partial metrics — session was not fully completed.\n"
+                "⚠ Partial metrics — session was not fully completed.\n"
                 "Only data from completed orders is shown."
             )
             notice.setObjectName("incomplete_session_notice")

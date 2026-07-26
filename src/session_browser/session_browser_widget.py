@@ -5,7 +5,7 @@ Architecture (v2.0):
     ┌────────────────┬─────────────────────────────────────────────────────┐
     │  CLIENTS       │  Client: M  ·  12 entries  ·  3 active  ·  2 stale  │
     │  ─────────     │  ──────────────────────────────────────────────────  │
-    │  > M           │  [Status ▾] [From] [To] [🔍 Search…]                │
+    │  > M           │  [Status ▾] [From] [To] [Search…]                    │
     │    K           │  ──────────────────────────────────────────────────  │
     │    S           │  Status | Packing List | Session | Worker | …        │
     │                │  rows…                                               │

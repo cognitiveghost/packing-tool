@@ -50,15 +50,6 @@ class RestoreSessionDialog(QDialog):
         header_label.setStyleSheet("font-size: 12pt; font-weight: bold;")
         layout.addWidget(header_label)
 
-        # Legend
-        legend = QLabel(
-            "🔒 = Active on another PC | "
-            "⚠️ = Stale lock (possible crash) | "
-            "📦 = Available"
-        )
-        legend.setStyleSheet("color: gray; font-size: 9pt;")
-        layout.addWidget(legend)
-
         # Session list
         self.session_list = QListWidget()
         self.session_list.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -107,26 +98,23 @@ class RestoreSessionDialog(QDialog):
                 if is_locked:
                     # Check if stale
                     if self.lock_manager.is_lock_stale(lock_info):
-                        icon = "⚠️"
                         user_info = lock_info.get('user_name', 'Unknown')
                         pc_info = lock_info.get('locked_by', 'Unknown')
                         status = f"Stale lock - {user_info} on {pc_info}"
                         stale = True
                     else:
-                        icon = "🔒"
                         user_info = lock_info.get('user_name', 'Unknown')
                         pc_info = lock_info.get('locked_by', 'Unknown')
                         status = f"Active - {user_info} on {pc_info}"
                         stale = False
                 else:
-                    icon = "📦"
                     status = "Available"
                     stale = False
                     lock_info = None
 
                 # Format session name with timestamp
                 session_name = session_dir.name
-                item_text = f"{icon}  {session_name}  -  {status}"
+                item_text = f"{session_name}  -  {status}"
 
                 item = QListWidgetItem(item_text)
                 item.setData(Qt.ItemDataRole.UserRole, {

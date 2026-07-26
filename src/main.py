@@ -542,8 +542,8 @@ class MainWindow(QMainWindow):
 
             # Order status
             if is_completed:
-                status_text = "✅ Completed"
-                status_icon = "✅"
+                status_text = "Completed"
+                status_icon = ""
             else:
                 status_text = f"⏳ {scanned_count}/{total_items} items"
                 status_icon = "⏳"
@@ -601,7 +601,7 @@ class MainWindow(QMainWindow):
                     qty_int = 1
 
                 if scanned_qty >= qty_int:
-                    item_status = "✅ Scanned"
+                    item_status = "Scanned"
                 else:
                     item_status = f"⏳ Pending ({scanned_qty}/{qty_int})"
 
@@ -857,7 +857,7 @@ class MainWindow(QMainWindow):
             # Check if fully scanned
             scanned = scanned_by_sku.get(sku, 0)
             if scanned >= qty_int:
-                status = "✅ Complete"
+                status = "Complete"
             else:
                 status = f"⏳ {scanned}/{qty_int}"
 
@@ -1788,7 +1788,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"Could not save the report. Error: {e}")
             logger.error(f"Error during end_session: {e}")
 
-        # ✅ CRITICAL: Stop heartbeat timer and release lock
+        # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, 'heartbeat_timer'):
             self.heartbeat_timer.stop()
             logger.debug("Heartbeat timer stopped")
