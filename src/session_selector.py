@@ -470,6 +470,17 @@ class SessionSelectorDialog(QDialog):
             logger.debug(f"No sessions directory for client {client_id}")
             return []
 
+        # Keep the packing-list registry in sync before _scan_packing_lists()
+        # reads it, same as Session Browser's RegistryRefreshWorker. Without
+        # this, packing lists uploaded since the registry was last written
+        # are invisible here even though they're on disk.
+        try:
+            registry_manager = SessionRegistryManager(self.profile_manager)
+            registry_manager.ensure_registry(client_id)
+            registry_manager.refresh_available_lists(client_id)
+        except Exception as e:
+            logger.error(f"Error refreshing packing-list registry: {e}", exc_info=True)
+
         sessions = []
 
         try:
