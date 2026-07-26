@@ -30,11 +30,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from logger import get_logger
+import logging
 from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Seconds before an "in_progress" heartbeat is considered stale
 STALE_HEARTBEAT_SECONDS = 300  # 5 minutes
@@ -130,7 +130,7 @@ class SessionRegistryManager:
         except Exception as e:
             logger.error(
                 f"Failed to write registry for client {client_id} after 3 attempts: {e}"
-            )
+            , exc_info=True)
             return False
 
     def registry_exists(self, client_id: str) -> bool:
@@ -703,7 +703,7 @@ class SessionRegistryManager:
                     changed = True
 
         except Exception as e:
-            logger.error(f"Error scanning for new available lists: {e}")
+            logger.error(f"Error scanning for new available lists: {e}", exc_info=True)
 
         if changed:
             self.write_registry(client_id, registry)

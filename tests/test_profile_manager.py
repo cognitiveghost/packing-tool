@@ -229,3 +229,17 @@ def test_falls_back_to_config_ini_when_env_var_unset(config_ini, server_root):
     manager = ProfileManager(config_path=str(config_ini))
 
     assert manager.base_path == server_root
+
+
+# ---------------------------------------------------------------------------
+# Logging wiring: ProfileManager now calls shared.logger.setup_logging with
+# its own resolved base_path, instead of the old logger.py independently
+# re-reading config.ini - so a per-process log file always lands under the
+# same server the rest of ProfileManager's data uses.
+# ---------------------------------------------------------------------------
+def test_profile_manager_creates_a_per_process_log_file(config_ini, server_root):
+    ProfileManager(config_path=str(config_ini))
+
+    log_dir = server_root / "Logs" / "PackingTool"
+    files = list(log_dir.glob("PackingTool_*.log"))
+    assert len(files) == 1

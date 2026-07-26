@@ -10,10 +10,10 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 
-from logger import get_logger
+import logging
 from json_cache import get_cached_json
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -467,5 +467,5 @@ class SessionHistoryManager:
             }
 
         except Exception as e:
-            logger.error(f"Error getting session details: {e}")
+            logger.error(f"Error getting session details: {e}", exc_info=True)
             return None

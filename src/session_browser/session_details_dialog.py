@@ -11,11 +11,11 @@ from .metrics_tab import MetricsTab
 
 from pathlib import Path
 import json
-from logger import get_logger
+import logging
 from json_cache import get_cached_json
 from packer_logic import compute_order_timing_metrics
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SessionDetailsDialog(QDialog):

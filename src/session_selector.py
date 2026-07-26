@@ -24,12 +24,12 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPalette
 from PySide6.QtCore import Qt, QDate, QThread, Signal
 
-from logger import get_logger
+import logging
 from json_cache import get_cached_json
 from session_registry_manager import SessionRegistryManager
 from shared.metadata_utils import parse_timestamp
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SessionScanWorker(QThread):

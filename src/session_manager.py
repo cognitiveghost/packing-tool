@@ -29,11 +29,11 @@ from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp
 
 # Local imports
-from logger import get_logger
+import logging
 from exceptions import SessionLockedError, StaleLockError
 
 # Initialize module-level logger
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Filename for session information file
 # This file is created at session start and deleted at graceful session end
@@ -279,7 +279,7 @@ class SessionManager:
         except Exception as e:
             # Non-critical failure - session can still function
             # But recovery after crash will be harder without this file
-            logger.error(f"Failed to create session info file: {e}")
+            logger.error(f"Failed to create session info file: {e}", exc_info=True)
 
         # === START HEARTBEAT MECHANISM ===
         # Start periodic timer that updates lock file every 60 seconds
@@ -391,7 +391,7 @@ class SessionManager:
             with open(info_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Error reading session info: {e}")
+            logger.error(f"Error reading session info: {e}", exc_info=True)
             return None
 
     def _start_heartbeat(self):
@@ -454,7 +454,7 @@ class SessionManager:
         except Exception as e:
             # Unexpected error starting timer
             # Log but don't crash - session can still function without heartbeat
-            logger.error(f"Failed to start heartbeat timer: {e}")
+            logger.error(f"Failed to start heartbeat timer: {e}", exc_info=True)
 
     def _stop_heartbeat(self):
         """
@@ -480,7 +480,7 @@ class SessionManager:
             except Exception as e:
                 # Non-critical failure - log and continue
                 # Timer will be garbage collected anyway when session ends
-                logger.error(f"Failed to stop heartbeat timer: {e}")
+                logger.error(f"Failed to stop heartbeat timer: {e}", exc_info=True)
 
     def _update_heartbeat(self):
         """
@@ -524,7 +524,7 @@ class SessionManager:
         except Exception as e:
             # Unexpected error during heartbeat update
             # Log but don't crash - this is a background operation
-            logger.error(f"Error updating heartbeat: {e}")
+            logger.error(f"Error updating heartbeat: {e}", exc_info=True)
 
     def load_packing_list(self, session_path: str, packing_list_name: str) -> dict:
         """
@@ -591,7 +591,7 @@ class SessionManager:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in packing list {packing_list_file}: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise
 
         # 7. Validate that 'orders' key exists

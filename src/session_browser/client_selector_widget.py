@@ -12,9 +12,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Qt, QSettings
 
-from logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ClientSelectorWidget(QWidget):
@@ -73,7 +73,7 @@ class ClientSelectorWidget(QWidget):
         try:
             clients = self.profile_manager.list_clients()
         except Exception as e:
-            logger.error(f"Failed to list clients: {e}")
+            logger.error(f"Failed to list clients: {e}", exc_info=True)
             clients = []
 
         saved = self._settings.value("last_client_id", "", type=str)

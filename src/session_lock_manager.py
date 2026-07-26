@@ -15,7 +15,7 @@ from typing import Dict, Optional, Tuple
 
 from shared.atomic_write import atomic_write_json
 from shared.file_lock import locked_file, FileLockError
-from logger import AppLogger
+import logging
 
 
 class SessionLockManager:
@@ -41,7 +41,7 @@ class SessionLockManager:
             profile_manager: ProfileManager instance for accessing session directories
         """
         self.profile_manager = profile_manager
-        self.logger = AppLogger.get_logger(self.__class__.__name__)
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.hostname = socket.gethostname()
         self.username = self._get_username()
         self.process_id = os.getpid()

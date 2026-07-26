@@ -5,12 +5,12 @@ Design notes:
   real AsyncStateWriter background thread) rather than mocks, since the
   goal of this suite is to validate actual persistence/scanning behavior,
   not to re-describe the code in different words.
-- AppLogger is neutralized before any app module is imported: its default
-  config falls back to a hardcoded Windows UNC path
-  (\\\\192.168.88.101\\_Fulfilment_\\0UFulfilment) which, on POSIX, is
-  treated as a single literal directory name and gets created in the repo
-  root the first time any module calls get_logger().
+- Each ProfileManager construction calls shared.logger.setup_logging,
+  which adds handlers to the real root logger. tests/test_logger.py's
+  _reset_root_logger fixture is autouse there; this file doesn't need
+  its own equivalent since no test here asserts on handler counts.
 """
+import logging
 import os
 import sys
 import json
@@ -24,9 +24,6 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 import pytest
-
-from logger import AppLogger
-AppLogger._initialized = True  # skip real _setup_logging(); avoid UNC-path side effects
 
 from PySide6.QtWidgets import QApplication
 from profile_manager import ProfileManager
@@ -66,6 +63,24 @@ def _isolate_qsettings(tmp_path_factory):
     # setPath only affects settings objects of the format it's given.
     QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, str(settings_dir))
     QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(settings_dir))
+
+
+@pytest.fixture(autouse=True)
+def _reset_root_logger_handlers():
+    """Every ProfileManager construction calls shared.logger.setup_logging,
+    which adds handlers to the process-wide root logger. setup_logging
+    itself replaces its own previous handlers on each call (see
+    shared/logger.py's _active_handlers), so this doesn't strictly leak -
+    but closing them between tests avoids holding open file handles to
+    dozens of per-test tmp_path directories for the whole suite run.
+    """
+    yield
+    from shared.logger import _active_handlers
+    root = logging.getLogger()
+    for handler in _active_handlers:
+        root.removeHandler(handler)
+        handler.close()
+    _active_handlers.clear()
 
 
 @pytest.fixture
