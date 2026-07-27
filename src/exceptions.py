@@ -39,6 +39,13 @@ class PackingToolError(Exception):
     """
 
 
+class SessionAlreadyActiveError(PackingToolError):
+    """
+    Raised when starting a session while this SessionManager instance already
+    has one active. Callers must end_session() first.
+    """
+
+
 class SessionLockedError(PackingToolError):
     """
     Raised when attempting to access a session actively locked by another process.

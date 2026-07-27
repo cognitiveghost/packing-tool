@@ -27,7 +27,7 @@ import logging
 import os  # For environment variables (PC name)
 from pathlib import Path  # Modern path handling
 
-from exceptions import SessionLockedError, StaleLockError
+from exceptions import SessionAlreadyActiveError, SessionLockedError, StaleLockError
 from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp
 
@@ -129,7 +129,7 @@ class SessionManager:
             The session ID (directory name, e.g., "2025-11-03_14-30-45")
 
         Raises:
-            Exception: If a session is already active (call end_session() first)
+            SessionAlreadyActiveError: If a session is already active (call end_session() first)
             SessionLockedError: If session is actively locked by another process
                                (lock_info contains: locked_by, user_name, lock_time)
             StaleLockError: If session has a stale lock (process crashed/not responding)
@@ -140,7 +140,7 @@ class SessionManager:
         # This prevents confusion and ensures proper lock management
         if self.session_active:
             logger.error("Attempted to start session while one is already active")
-            raise Exception("A session is already active. Please end the current session first.")
+            raise SessionAlreadyActiveError("A session is already active. Please end the current session first.")
 
         logger.info(f"Starting session for client {self.client_id}")
 

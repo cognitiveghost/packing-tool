@@ -64,6 +64,9 @@ def test_reacquiring_own_lock_succeeds_and_updates_heartbeat(lock_manager, sessi
     assert success is True
     assert error is None
 
+    new_heartbeat = json.loads(lock_path.read_text(encoding="utf-8"))["heartbeat"]
+    assert new_heartbeat != original_heartbeat
+
 
 def test_acquire_lock_fails_when_actively_held_by_another_pc(lock_manager, session_dir):
     _write_foreign_lock(session_dir, hostname="OTHER-PC", heartbeat_age_seconds=5)  # fresh heartbeat
