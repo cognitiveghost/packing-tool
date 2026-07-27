@@ -1621,6 +1621,12 @@ class MainWindow(QMainWindow):
                     if _session_info and 'started_at' in _session_info:
                         try:
                             _start_time = datetime.fromisoformat(_session_info['started_at'])
+                            if _start_time.tzinfo is None:
+                                # Legacy session_info.json from before timestamps were
+                                # made timezone-aware; interpret as local time so the
+                                # subtraction against tz-aware _end_time below doesn't
+                                # raise TypeError.
+                                _start_time = _start_time.astimezone()
                         except (ValueError, TypeError):
                             logger.warning("Could not parse started_at from session_info")
                 except Exception as e:
@@ -1699,6 +1705,7 @@ class MainWindow(QMainWindow):
                     except Exception as exc:
                         logger.exception("save_session_summary failed")
                         try:
+                            from shared.atomic_write import atomic_write_json
                             from shared.metadata_utils import get_current_timestamp
                             _minimal = {
                                 "version": "1.3.0",
@@ -1710,8 +1717,7 @@ class MainWindow(QMainWindow):
                                 "completed_at": get_current_timestamp(),
                                 "error": str(exc),
                             }
-                            with open(_summary_path, 'w', encoding='utf-8') as _f:
-                                json.dump(_minimal, _f, indent=2, ensure_ascii=False)
+                            atomic_write_json(_summary_path, _minimal, indent=2, ensure_ascii=False)
                         except Exception as minimal_exc:
                             logger.debug(f"Failed to write minimal session summary fallback: {minimal_exc}")
 

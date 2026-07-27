@@ -374,6 +374,13 @@ class PackerLogic(QObject):
                 # Could be new format (with metadata) or old direct format
                 state_data = data
 
+            if not isinstance(state_data, dict):
+                # Valid JSON (e.g. [], null, a bare string/number) but not an object -
+                # treat as corrupt state rather than let .get()/`in` below raise.
+                logger.error("Session state root is not an object, starting fresh")
+                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+                return
+
             # Load core packing state with validation
             # CRITICAL FIX: Validate in_progress structure to prevent AttributeError on resume
             raw_in_progress = state_data.get('in_progress', {})
