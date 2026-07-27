@@ -1,19 +1,25 @@
 """Session Details Dialog - Detailed view of session with orders, items, metrics"""
 
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
-    QPushButton, QMessageBox, QFileDialog
-)
-
-from .overview_tab import OverviewTab
-from .orders_tab import OrdersTab
-from .metrics_tab import MetricsTab
-
-from pathlib import Path
 import json
 import logging
+from pathlib import Path
+
+from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+)
+
 from json_cache import get_cached_json
 from packer_logic import compute_order_timing_metrics
+
+from .metrics_tab import MetricsTab
+from .orders_tab import OrdersTab
+from .overview_tab import OverviewTab
 
 logger = logging.getLogger(__name__)
 
@@ -256,11 +262,11 @@ class SessionDetailsDialog(QDialog):
             )
 
         except Exception as e:
-            logger.error(f"Failed to export: {e}", exc_info=True)
+            logger.exception("Failed to export")
             QMessageBox.critical(
                 self,
                 "Export Failed",
-                f"Failed to export session details:\n{str(e)}"
+                f"Failed to export session details:\n{e!s}"
             )
 
     def _get_orders_for_export(self) -> list:

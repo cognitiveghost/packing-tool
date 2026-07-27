@@ -1,5 +1,13 @@
 import pytest
-from shared.theme import ThemeTokens, LIGHT_THEME, DARK_THEME, THEMES, get_theme, validate_theme, clamp_geometry
+
+from shared.theme import (
+    DARK_THEME,
+    LIGHT_THEME,
+    ThemeTokens,
+    clamp_geometry,
+    get_theme,
+    validate_theme,
+)
 
 
 def test_light_and_dark_themes_have_distinct_backgrounds():

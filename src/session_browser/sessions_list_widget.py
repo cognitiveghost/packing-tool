@@ -13,19 +13,27 @@ Filter / search works purely on already-loaded table data (no server I/O).
 """
 
 import csv
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
-
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-    QFileDialog, QMessageBox, QDateEdit, QFrame, QSizePolicy, QProgressBar
-)
-from PySide6.QtCore import Signal, Qt, QThread, QDate, QSize
-
 import logging
+from datetime import datetime
+
+from PySide6.QtCore import QDate, Qt, QThread, Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDateEdit,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from shared.metadata_utils import parse_timestamp
 from shared.theme import StatusDot
 
@@ -97,7 +105,7 @@ class RegistryRefreshWorker(QThread):
             entries = self._registry.get_all_entries(self._client_id)
             self.refresh_complete.emit(self._client_id, entries)
         except Exception as exc:
-            logger.error(f"RegistryRefreshWorker failed: {exc}", exc_info=True)
+            logger.exception("RegistryRefreshWorker failed")
             self.refresh_failed.emit(self._client_id, str(exc))
 
 
@@ -105,7 +113,7 @@ class RegistryRefreshWorker(QThread):
 #  Helper functions                                                    #
 # ------------------------------------------------------------------ #
 
-def _fmt_duration(seconds: Optional[float]) -> str:
+def _fmt_duration(seconds: float | None) -> str:
     if not seconds:
         return "—"
     h = int(seconds // 3600)
@@ -118,7 +126,7 @@ def _fmt_duration(seconds: Optional[float]) -> str:
     return f"{s}s"
 
 
-def _fmt_date(ts_str: Optional[str]) -> str:
+def _fmt_date(ts_str: str | None) -> str:
     if not ts_str:
         return "—"
     dt = parse_timestamp(ts_str)
@@ -162,9 +170,9 @@ class SessionsListWidget(QWidget):
         super().__init__(parent)
         self._registry = registry_manager
         self._history_mgr = session_history_manager
-        self._client_id: Optional[str] = None
+        self._client_id: str | None = None
         self._all_entries: list = []
-        self._refresh_worker: Optional[RegistryRefreshWorker] = None
+        self._refresh_worker: RegistryRefreshWorker | None = None
 
         self._init_ui()
 
@@ -365,7 +373,7 @@ class SessionsListWidget(QWidget):
         self._populate_table(entries)
         self._update_header_stats(entries)
         self._status_bar.setText(
-            f"Last refreshed: {datetime.now().strftime('%H:%M:%S')}  "
+            f"Last refreshed: {datetime.now().astimezone().strftime('%H:%M:%S')}  "
             f"({len(entries)} entries)"
         )
 
@@ -539,7 +547,7 @@ class SessionsListWidget(QWidget):
     #  Row selection / preview panel                                       #
     # ------------------------------------------------------------------ #
 
-    def _get_row_entry(self, row: int) -> Optional[dict]:
+    def _get_row_entry(self, row: int) -> dict | None:
         if row < 0:
             return None
         item = self._table.item(row, COL_STATUS)
@@ -639,7 +647,7 @@ class SessionsListWidget(QWidget):
             )
             dlg.exec()
         except Exception as e:
-            logger.error(f"Failed to open session details: {e}", exc_info=True)
+            logger.exception("Failed to open session details")
             QMessageBox.warning(self, "Error", f"Could not load session details:\n{e}")
 
     def _emit_resume_session(self, entry: dict):

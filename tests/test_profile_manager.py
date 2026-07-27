@@ -7,7 +7,6 @@ import pytest
 
 from profile_manager import ProfileManager, ValidationError
 
-
 # ---------------------------------------------------------------------------
 # validate_client_id
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ _scan_shopify_sessions() registry refresh call.
 import json
 
 from conftest import make_packing_list
+
 from session_registry_manager import SessionRegistryManager
 from session_selector import SessionSelectorDialog
 

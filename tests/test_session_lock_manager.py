@@ -44,7 +44,7 @@ def _write_foreign_lock(session_dir, *, hostname="OTHER-PC", process_id=99999, h
 # ---------------------------------------------------------------------------
 
 def test_acquire_lock_creates_lock_file(lock_manager, session_dir):
-    success, error, info = lock_manager.acquire_lock("M", session_dir, worker_id="w1", worker_name="Worker One")
+    success, error, _info = lock_manager.acquire_lock("M", session_dir, worker_id="w1", worker_name="Worker One")
     assert success is True
     assert error is None
     lock_path = session_dir / SessionLockManager.LOCK_FILENAME
@@ -60,9 +60,12 @@ def test_reacquiring_own_lock_succeeds_and_updates_heartbeat(lock_manager, sessi
     lock_path = session_dir / SessionLockManager.LOCK_FILENAME
     original_heartbeat = json.loads(lock_path.read_text(encoding="utf-8"))["heartbeat"]
 
-    success, error, info = lock_manager.acquire_lock("M", session_dir)
+    success, error, _info = lock_manager.acquire_lock("M", session_dir)
     assert success is True
     assert error is None
+
+    new_heartbeat = json.loads(lock_path.read_text(encoding="utf-8"))["heartbeat"]
+    assert new_heartbeat != original_heartbeat
 
 
 def test_acquire_lock_fails_when_actively_held_by_another_pc(lock_manager, session_dir):
@@ -167,6 +170,6 @@ def test_same_pc_different_process_is_treated_as_a_foreign_lock_until_stale(lock
     monkeypatch.setattr(lock_manager, "hostname", "MY-PC")
     _write_foreign_lock(session_dir, hostname="MY-PC", process_id=lock_manager.process_id + 1, heartbeat_age_seconds=5)
 
-    success, error, info = lock_manager.acquire_lock("M", session_dir)
+    success, _error, info = lock_manager.acquire_lock("M", session_dir)
     assert success is False  # blocked from resuming its own crashed session on the same PC
     assert info["locked_by"] == "MY-PC"

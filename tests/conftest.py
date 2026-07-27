@@ -10,11 +10,11 @@ Design notes:
   _reset_root_logger fixture is autouse there; this file doesn't need
   its own equivalent since no test here asserts on handler counts.
 """
+import configparser
+import json
 import logging
 import os
 import sys
-import json
-import configparser
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -24,10 +24,10 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
 import pytest
-
 from PySide6.QtWidgets import QApplication
-from profile_manager import ProfileManager
+
 from packer_logic import PackerLogic
+from profile_manager import ProfileManager
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -188,7 +188,7 @@ def loaded_logic(packer_logic_factory, session_factory):
             [{"sku": "SKU-CCC", "quantity": 1, "product_name": "Widget C"}],
         ),
     ]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     logic = packer_logic_factory("M", work_dir)
     logic.load_packing_list_json(list_path)
     return logic

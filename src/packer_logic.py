@@ -1,24 +1,24 @@
 # Standard library imports
+# Data persistence and utilities
+import json
+
+# Local imports
+import logging
 import os
+from datetime import datetime
+from pathlib import Path
+
+# Type hints for better code documentation
+from typing import Any
 
 # Third-party imports for data processing
 import pandas as pd  # Excel file handling and data manipulation
 
-# Data persistence and utilities
-import json
-from pathlib import Path
-from datetime import datetime
-
 # Qt framework for signals/slots pattern
 from PySide6.QtCore import QObject, Signal
 
-# Type hints for better code documentation
-from typing import List, Dict, Any, Tuple
-
-# Local imports
-import logging
-from json_cache import get_cached_json, invalidate_json_cache
 from async_state_writer import AsyncStateWriter
+from json_cache import get_cached_json, invalidate_json_cache
 from shared.atomic_write import atomic_write_json
 
 # Initialize module-level logger
@@ -76,7 +76,7 @@ STATE_FILE_NAME = "packing_state.json"
 SUMMARY_FILE_NAME = "session_summary.json"
 
 
-def compute_order_timing_metrics(orders_with_timing: List[Dict]) -> Dict[str, Any]:
+def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, Any]:
     """
     Compute per-order timing metrics from a list of completed-order dicts.
 
@@ -197,7 +197,7 @@ class PackerLogic(QObject):
         self.packing_list_df = None
         self.processed_df = None
         self.orders_data = {}
-        self._normalized_order_lookup: Dict[str, str] = {}
+        self._normalized_order_lookup: dict[str, str] = {}
         self._total_items: int = 0
         self.current_order_number = None
         self.current_order_state = {}
@@ -226,7 +226,7 @@ class PackerLogic(QObject):
         # Extra items tracking: normalized_sku → extra count (scanned beyond required).
         # Also initialized BEFORE _load_session_state() so crash-recovered extras
         # (from '_current_extras') survive a restart instead of being wiped.
-        self.current_extra_items: Dict[str, int] = {}
+        self.current_extra_items: dict[str, int] = {}
 
         # Per-order counters for 1.7 metrics — reset by start_order_packing()
         self.current_order_corrections: int = 0           # cancel_item_scan() events
@@ -240,7 +240,7 @@ class PackerLogic(QObject):
         self._load_session_state()
 
         # Unknown/incorrect scan tracking: raw barcodes that didn't match any SKU
-        self.unknown_scans: List[str] = []
+        self.unknown_scans: list[str] = []
 
         # Write-behind queue: state writes happen in background to avoid UI freezes.
         # sync_mode=True is used in tests to keep writes synchronous.
@@ -253,7 +253,7 @@ class PackerLogic(QObject):
         logger.debug(f"Loaded {len(self.sku_map)} SKU mappings")
         logger.debug("Phase 2b timing variables initialized (loaded from state if available)")
 
-    def _load_sku_mapping(self) -> Dict[str, str]:
+    def _load_sku_mapping(self) -> dict[str, str]:
         """
         Load SKU mapping from ProfileManager for the current client.
 
@@ -286,13 +286,13 @@ class PackerLogic(QObject):
 
             logger.debug(f"Loaded {len(normalized)} SKU mappings for client {self.client_id}")
             return normalized
-        except Exception as e:
+        except Exception:
             # Graceful degradation: if SKU mapping fails to load, continue without it
             # Scanned barcodes will be matched directly against order SKUs
-            logger.error(f"Error loading SKU mappings: {e}", exc_info=True)
+            logger.exception("Error loading SKU mappings")
             return {}
 
-    def set_sku_map(self, sku_map: Dict[str, str]):
+    def set_sku_map(self, sku_map: dict[str, str]):
         """
         Set the SKU map and save to ProfileManager.
 
@@ -315,8 +315,8 @@ class PackerLogic(QObject):
         try:
             self.profile_manager.save_sku_mapping(self.client_id, sku_map)
             logger.info("SKU mapping saved successfully")
-        except Exception as e:
-            logger.error(f"Failed to save SKU mapping: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to save SKU mapping")
 
     def _get_state_file_path(self) -> str:
         """
@@ -373,6 +373,13 @@ class PackerLogic(QObject):
             else:
                 # Could be new format (with metadata) or old direct format
                 state_data = data
+
+            if not isinstance(state_data, dict):
+                # Valid JSON (e.g. [], null, a bare string/number) but not an object -
+                # treat as corrupt state rather than let .get()/`in` below raise.
+                logger.error("Session state root is not an object, starting fresh")
+                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+                return
 
             # Load core packing state with validation
             # CRITICAL FIX: Validate in_progress structure to prevent AttributeError on resume
@@ -533,11 +540,11 @@ class PackerLogic(QObject):
 
             logger.info(f"Session state loaded: {in_progress_count} in progress, {completed_count} completed")
 
-        except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Error loading session state: {e}, starting fresh", exc_info=True)
+        except (OSError, json.JSONDecodeError):
+            logger.exception("Error loading session state, starting fresh")
             self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
 
-    def _build_state_dict(self) -> Dict[str, Any]:
+    def _build_state_dict(self) -> dict[str, Any]:
         """
         Build the complete state dictionary from current in-memory data.
 
@@ -597,7 +604,7 @@ class PackerLogic(QObject):
             "skipped_orders_timing": dict(self.session_packing_state.get('skipped_orders_timing', {})),
         }
 
-    def _do_atomic_write(self, state_data: Dict[str, Any]) -> None:
+    def _do_atomic_write(self, state_data: dict[str, Any]) -> None:
         """
         Write state_data to disk using the shared atomic (temp-file + rename)
         helper, with the same retry-on-transient-SMB-error behavior as every
@@ -618,8 +625,8 @@ class PackerLogic(QObject):
 
             logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
 
-        except Exception as e:
-            logger.error(f"CRITICAL: Failed to save session state: {e}", exc_info=True)
+        except Exception:
+            logger.exception("CRITICAL: Failed to save session state")
 
     def _save_session_state_async(self) -> None:
         """
@@ -653,7 +660,7 @@ class PackerLogic(QObject):
         """
         self._state_writer.shutdown()
 
-    def _build_completed_list(self) -> List[Dict[str, Any]]:
+    def _build_completed_list(self) -> list[dict[str, Any]]:
         """
         Build list of completed orders with timestamps and durations.
 
@@ -698,7 +705,7 @@ class PackerLogic(QObject):
 
         Phase 2b: Enhanced timing tracking
         """
-        from shared.metadata_utils import get_current_timestamp, calculate_duration
+        from shared.metadata_utils import calculate_duration, get_current_timestamp
 
         if not self.current_order_number:
             logger.warning("_complete_current_order called but no current order")
@@ -760,7 +767,7 @@ class PackerLogic(QObject):
         # for legacy state management. The reset happens in clear_current_order() or
         # when starting a new order.
 
-    def _initialize_session_metadata(self, session_id: str = None, packing_list_name: str = None):
+    def _initialize_session_metadata(self, session_id: str | None = None, packing_list_name: str | None = None):
         """
         Initialize session metadata for state tracking.
 
@@ -780,7 +787,7 @@ class PackerLogic(QObject):
             self.session_id = session_id
         elif not self.session_id:
             # Generate session_id from timestamp if not provided
-            self.session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.session_id = datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S")
 
         if packing_list_name:
             self.packing_list_name = packing_list_name
@@ -840,7 +847,7 @@ class PackerLogic(QObject):
             for order_number in self.orders_data
         }
 
-    def start_order_packing(self, scanned_text: str) -> Tuple[List[Dict] | None, str]:
+    def start_order_packing(self, scanned_text: str) -> tuple[list[dict] | None, str]:
         """
         Starts or resumes packing an order based on a scanned barcode.
 
@@ -938,7 +945,7 @@ class PackerLogic(QObject):
 
         return items, "ORDER_LOADED"
 
-    def process_sku_scan(self, sku: str) -> Tuple[Dict | None, str]:
+    def process_sku_scan(self, sku: str) -> tuple[dict | None, str]:
         """
         Processes a scanned SKU for the currently active order.
 
@@ -1031,7 +1038,7 @@ class PackerLogic(QObject):
             is_complete = found_item['packed'] == found_item['required']
 
             # Phase 2b: Record item scan with timestamp
-            from shared.metadata_utils import get_current_timestamp, calculate_duration
+            from shared.metadata_utils import calculate_duration, get_current_timestamp
 
             scan_timestamp = get_current_timestamp()
 
@@ -1191,7 +1198,7 @@ class PackerLogic(QObject):
         if self.current_order_number in skipped:
             skipped.remove(self.current_order_number)
 
-    def cancel_item_scan(self, row: int) -> Tuple[Dict, str]:
+    def cancel_item_scan(self, row: int) -> tuple[dict, str]:
         """
         Decrements the packed count for the item at the given row by 1.
 
@@ -1231,7 +1238,7 @@ class PackerLogic(QObject):
         self._save_session_state_async()
         return {"row": row, "packed": item['packed']}, "ITEM_DECREMENTED"
 
-    def force_confirm_item(self, row: int) -> Tuple[Dict, str]:
+    def force_confirm_item(self, row: int) -> tuple[dict, str]:
         """
         Forces an item row to fully packed (packed = required).
 
@@ -1251,7 +1258,7 @@ class PackerLogic(QObject):
 
         # Add a scan record for the force-confirmed quantity (remaining unpacked qty).
         # This ensures _complete_current_order() sees a full items list with timestamps.
-        from shared.metadata_utils import get_current_timestamp, calculate_duration
+        from shared.metadata_utils import calculate_duration, get_current_timestamp
         force_timestamp = get_current_timestamp()
         time_from_start = (
             calculate_duration(self.current_order_start_time, force_timestamp)
@@ -1307,7 +1314,7 @@ class PackerLogic(QObject):
         if total > 0 and (done + skipped) >= total:
             self.all_orders_complete.emit()
 
-    def confirm_keep_extra(self, normalized_sku: str) -> Tuple[Dict, str]:
+    def confirm_keep_extra(self, normalized_sku: str) -> tuple[dict, str]:
         """
         Acknowledges an extra item as intentionally included.
         Removes it from current_extra_items and checks if order can complete.
@@ -1317,7 +1324,7 @@ class PackerLogic(QObject):
         self.current_extra_items.pop(normalized_sku, None)
         return self._maybe_complete_after_extra_resolution()
 
-    def remove_extra_item(self, normalized_sku: str) -> Tuple[Dict, str]:
+    def remove_extra_item(self, normalized_sku: str) -> tuple[dict, str]:
         """
         Marks one extra item of a SKU as removed (acknowledged as a mistake).
         Decrements extra count; removes the key when count reaches 0.
@@ -1331,7 +1338,7 @@ class PackerLogic(QObject):
             self.current_extra_items.pop(normalized_sku, None)
         return self._maybe_complete_after_extra_resolution()
 
-    def _maybe_complete_after_extra_resolution(self) -> Tuple[Dict, str]:
+    def _maybe_complete_after_extra_resolution(self) -> tuple[dict, str]:
         """
         After an extra item is kept/removed, check if all extras are resolved
         and complete the order if so.
@@ -1356,7 +1363,7 @@ class PackerLogic(QObject):
         self._save_session_state_sync()  # Checkpoint: order now complete
         return {}, "ORDER_NOW_COMPLETE"
 
-    def load_packing_list_json(self, packing_list_path: Path) -> Tuple[int, str]:
+    def load_packing_list_json(self, packing_list_path: Path) -> tuple[int, str]:
         """
         Завантажити конкретний пакінг лист з JSON файлу.
 
@@ -1413,11 +1420,11 @@ class PackerLogic(QObject):
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in packing list file: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise ValueError(error_msg)
         except Exception as e:
             error_msg = f"Error reading packing list file: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise ValueError(error_msg)
 
         # Extract orders list
@@ -1547,10 +1554,10 @@ class PackerLogic(QObject):
 
         except Exception as e:
             error_msg = f"Error generating barcodes from packing list: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise RuntimeError(error_msg)
 
-    def load_from_shopify_analysis(self, session_path: Path) -> Tuple[int, str]:
+    def load_from_shopify_analysis(self, session_path: Path) -> tuple[int, str]:
         """
         Load orders data from Shopify Tool's analysis_data.json.
 
@@ -1611,11 +1618,11 @@ class PackerLogic(QObject):
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in analysis_data.json: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise ValueError(error_msg)
         except Exception as e:
             error_msg = f"Error reading analysis_data.json: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise ValueError(error_msg)
 
         # Extract orders list
@@ -1733,13 +1740,13 @@ class PackerLogic(QObject):
 
         except Exception as e:
             error_msg = f"Error loading Shopify data: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise RuntimeError(error_msg)
 
     def generate_session_summary(
         self,
-        worker_id: str = None,
-        worker_name: str = None,
+        worker_id: str | None = None,
+        worker_name: str | None = None,
         session_type: str = "shopify"
     ) -> dict:
         """
@@ -1786,7 +1793,7 @@ class PackerLogic(QObject):
             "orders": []
         }
         """
-        from shared.metadata_utils import get_current_timestamp, calculate_duration
+        from shared.metadata_utils import calculate_duration, get_current_timestamp
 
         logger.info("Generating session summary (v1.3.0 format)")
 
@@ -1800,7 +1807,7 @@ class PackerLogic(QObject):
                 # Fallback to old method if calculate_duration fails
                 try:
                     started_dt = datetime.fromisoformat(self.started_at)
-                    completed_dt = datetime.now()
+                    completed_dt = datetime.now().astimezone()
                     duration_seconds = int((completed_dt - started_dt).total_seconds())
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Could not parse started_at for duration calculation: {e}")
@@ -1933,9 +1940,9 @@ class PackerLogic(QObject):
 
     def save_session_summary(
         self,
-        summary_path: str = None,
-        worker_id: str = None,
-        worker_name: str = None,
+        summary_path: str | None = None,
+        worker_id: str | None = None,
+        worker_name: str | None = None,
         session_type: str = "shopify"
     ) -> str:
         """
@@ -1974,8 +1981,8 @@ class PackerLogic(QObject):
             return summary_path
 
         except Exception as e:
-            logger.error(f"Failed to save session summary: {e}", exc_info=True)
-            raise IOError(f"Failed to save session summary: {e}")
+            logger.exception("Failed to save session summary")
+            raise OSError(f"Failed to save session summary: {e}")
 
     def end_session_cleanup(self):
         """

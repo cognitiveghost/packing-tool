@@ -5,14 +5,21 @@ Phase 1.3: Redesigned to use ProfileManager for centralized storage on file serv
 All changes are synchronized across all PCs accessing the same client.
 """
 
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QMessageBox, QInputDialog, QHeaderView, QAbstractItemView,
-    QLabel
-)
-from typing import Dict
-
 import logging
+
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +57,7 @@ class SKUMappingDialog(QDialog):
             self.current_map = self.profile_manager.load_sku_mapping(client_id).copy()
             logger.info(f"Loaded {len(self.current_map)} SKU mappings for client {client_id}")
         except Exception as e:
-            logger.error(f"Failed to load SKU mappings: {e}", exc_info=True)
+            logger.exception("Failed to load SKU mappings")
             self.current_map = {}
             QMessageBox.warning(
                 self,
@@ -250,13 +257,12 @@ class SKUMappingDialog(QDialog):
             QMessageBox.StandardButton.No
         )
 
-        if reply == QMessageBox.StandardButton.Yes:
-            if barcode in self.current_map:
-                del self.current_map[barcode]
-                self._populate_table()
-                self.status_label.setText(f"{len(self.current_map)} mapping(s) - Not saved yet")
+        if reply == QMessageBox.StandardButton.Yes and barcode in self.current_map:
+            del self.current_map[barcode]
+            self._populate_table()
+            self.status_label.setText(f"{len(self.current_map)} mapping(s) - Not saved yet")
 
-                logger.info(f"Deleted SKU mapping: {barcode}")
+            logger.info(f"Deleted SKU mapping: {barcode}")
 
     def _reload_from_server(self):
         """Reload mappings from file server, discarding unsaved changes."""
@@ -281,7 +287,7 @@ class SKUMappingDialog(QDialog):
             logger.info(f"Reloaded {len(self.current_map)} SKU mappings from server")
 
         except Exception as e:
-            logger.error(f"Failed to reload SKU mappings: {e}", exc_info=True)
+            logger.exception("Failed to reload SKU mappings")
             QMessageBox.critical(
                 self,
                 "Reload Error",
@@ -314,7 +320,7 @@ class SKUMappingDialog(QDialog):
                 )
 
         except Exception as e:
-            logger.error(f"Error saving SKU mappings: {e}", exc_info=True)
+            logger.exception("Error saving SKU mappings")
             QMessageBox.critical(
                 self,
                 "Save Error",
@@ -322,7 +328,7 @@ class SKUMappingDialog(QDialog):
                 f"Your changes were NOT saved."
             )
 
-    def get_mappings(self) -> Dict[str, str]:
+    def get_mappings(self) -> dict[str, str]:
         """
         Returns the current mappings.
 

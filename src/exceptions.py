@@ -20,7 +20,6 @@ Exception hierarchy:
         └── StaleLockError (crashed session, can be force-released)
 """
 
-from typing import Dict, Optional
 
 
 class PackingToolError(Exception):
@@ -37,6 +36,13 @@ class PackingToolError(Exception):
 
     Note: This does NOT inherit from built-in errors like ValueError, IOError
     to maintain clear separation between application and system errors.
+    """
+
+
+class SessionAlreadyActiveError(PackingToolError):
+    """
+    Raised when starting a session while this SessionManager instance already
+    has one active. Callers must end_session() first.
     """
 
 
@@ -63,7 +69,7 @@ class SessionLockedError(PackingToolError):
         lock_info (Dict): Dictionary containing lock details from .session.lock file
     """
 
-    def __init__(self, message: str, lock_info: Optional[Dict] = None):
+    def __init__(self, message: str, lock_info: dict | None = None):
         """
         Initialize SessionLockedError with lock details.
 
@@ -159,7 +165,7 @@ class StaleLockError(SessionLockedError):
         stale_minutes (int): Minutes since last heartbeat update
     """
 
-    def __init__(self, message: str, lock_info: Optional[Dict] = None, stale_minutes: int = 0):
+    def __init__(self, message: str, lock_info: dict | None = None, stale_minutes: int = 0):
         """
         Initialize StaleLockError with staleness information.
 

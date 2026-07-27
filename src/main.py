@@ -1,8 +1,9 @@
-import sys
-import os
 import json
+import os
+import sys
 import threading
 from pathlib import Path
+from typing import ClassVar
 
 try:
     import winsound as _winsound
@@ -20,36 +21,54 @@ except ImportError:
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, QStackedWidget,
-    QHBoxLayout, QMessageBox, QLineEdit, QComboBox, QDialog, QFormLayout, QDialogButtonBox, QTabWidget,
-    QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem, QGroupBox, QScrollArea, QInputDialog,
-    QProgressDialog
-)
-from PySide6.QtGui import QAction, QFont, QCloseEvent, QKeySequence
-from PySide6.QtCore import QTimer, QSettings, QSize, Qt, QThread, Signal
-from datetime import datetime
-from openpyxl.styles import PatternFill
-import pandas as pd
-
 import logging
-from profile_manager import ProfileManager, NetworkError, ValidationError
-from session_lock_manager import SessionLockManager
+from datetime import datetime
+
+import pandas as pd
+from openpyxl.styles import PatternFill
+from PySide6.QtCore import QSettings, QSize, Qt, QThread, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QFont, QKeySequence
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QScrollArea,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from exceptions import SessionLockedError, StaleLockError
-from session_selector import SessionSelectorDialog
+from packer_logic import PackerLogic
 from packer_mode_widget import PackerModeWidget
-from packer_logic import PackerLogic, REQUIRED_COLUMNS
-from session_manager import SessionManager
-from shared.stats_manager import StatsManager
-from shared.session_id import derive_session_id
-from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
-from worker_manager import WorkerManager
-from sku_mapping_dialog import SKUMappingDialog
-from session_history_manager import SessionHistoryManager
+from profile_manager import NetworkError, ProfileManager
 from session_browser.session_browser_widget import SessionBrowserWidget
+from session_history_manager import SessionHistoryManager
+from session_lock_manager import SessionLockManager
+from session_manager import SessionManager
 from session_registry_manager import SessionRegistryManager
-from worker_selection_dialog import WorkerSelectionDialog
+from session_selector import SessionSelectorDialog
+from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
+from shared.session_id import derive_session_id
+from shared.stats_manager import StatsManager
+from sku_mapping_dialog import SKUMappingDialog
 from theme import load_saved_theme, toggle_theme
+from worker_manager import WorkerManager
+from worker_selection_dialog import WorkerSelectionDialog
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +151,7 @@ class SessionEndWorker(QThread):
         try:
             self._write_fn()
         except Exception as exc:
-            logger.error(f"SessionEndWorker: unexpected error: {exc}", exc_info=True)
+            logger.exception("SessionEndWorker: unexpected error")
             self.error = exc
 
 
@@ -184,12 +203,12 @@ class MainWindow(QMainWindow):
                 logger.info("ProfileManager initialized successfully")
                 break
             except NetworkError as e:
-                logger.error(f"Failed to initialize ProfileManager: {e}", exc_info=True)
+                logger.exception("Failed to initialize ProfileManager")
                 if prompt_for_recovery_path(self, str(e), "PackingTool"):
                     continue
                 sys.exit(1)
             except Exception as e:
-                logger.error(f"Unexpected error initializing ProfileManager: {e}", exc_info=True)
+                logger.exception("Unexpected error initializing ProfileManager")
                 QMessageBox.critical(self, "Error", f"Failed to initialize application:\n\n{e}")
             sys.exit(1)
 
@@ -590,12 +609,12 @@ class MainWindow(QMainWindow):
                 elif is_completed:
                     try:
                         scanned_qty = int(qty)
-                    except:
+                    except (ValueError, TypeError):
                         scanned_qty = 1
 
                 try:
                     qty_int = int(qty)
-                except:
+                except (ValueError, TypeError):
                     qty_int = 1
 
                 if scanned_qty >= qty_int:
@@ -753,7 +772,7 @@ class MainWindow(QMainWindow):
         completed_orders = len(completed_orders_list)
         total_items = len(df)
         unique_skus = df['SKU'].nunique()
-        progress_pct = int((completed_orders / total_orders * 100)) if total_orders > 0 else 0
+        progress_pct = int(completed_orders / total_orders * 100) if total_orders > 0 else 0
 
         self.stats_total_orders.setText(str(total_orders))
         self.stats_completed_orders.setText(str(completed_orders))
@@ -892,11 +911,11 @@ class MainWindow(QMainWindow):
             return False
 
         except Exception as e:
-            logger.error(f"Worker selection failed: {e}", exc_info=True)
+            logger.exception("Worker selection failed")
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to load worker profiles:\n{str(e)}\n\nApplication will exit."
+                f"Failed to load worker profiles:\n{e!s}\n\nApplication will exit."
             )
             return False
 
@@ -944,7 +963,7 @@ class MainWindow(QMainWindow):
             logger.info(f"Loaded {len(clients)} clients")
 
         except Exception as e:
-            logger.error(f"Error loading clients: {e}", exc_info=True)
+            logger.exception("Error loading clients")
             QMessageBox.warning(self, "Error", f"Failed to load clients:\n\n{e}")
 
         finally:
@@ -983,7 +1002,7 @@ class MainWindow(QMainWindow):
         logger.debug(f"Current client set to: {client_id}")
 
     # Muted theme-aware flash colors
-    _FLASH_COLORS = {
+    _FLASH_COLORS: ClassVar[dict[str, str]] = {
         "green": "#43a047",
         "red": "#c0392b",
         "orange": "#b06020",
@@ -1009,7 +1028,7 @@ class MainWindow(QMainWindow):
         )
 
 
-    def start_session(self, file_path: str = None, restore_dir: str = None):
+    def start_session(self, file_path: str | None = None, restore_dir: str | None = None):
         """
         Start a new packing session for the currently selected client.
 
@@ -1116,7 +1135,7 @@ class MainWindow(QMainWindow):
             self.logic = None
 
         except Exception as e:
-            logger.error(f"Failed to start session: {e}", exc_info=True)
+            logger.exception("Failed to start session")
             QMessageBox.critical(self, "Error", f"Failed to start session:\n\n{e}")
             if self.session_manager:
                 self.session_manager.end_session()
@@ -1169,7 +1188,7 @@ class MainWindow(QMainWindow):
                     self.status_label.setText("SKU mapping updated and synchronized across all PCs.")
                     logger.info("SKU mapping reloaded into active session")
                 except Exception as e:
-                    logger.error(f"Failed to reload SKU mapping into session: {e}", exc_info=True)
+                    logger.exception("Failed to reload SKU mapping into session")
                     QMessageBox.warning(
                         self,
                         "Reload Warning",
@@ -1193,8 +1212,8 @@ class MainWindow(QMainWindow):
             try:
                 self.lock_manager.update_heartbeat(Path(self.current_work_dir))
                 logger.debug("Lock heartbeat updated")
-            except Exception as e:
-                logger.error(f"Failed to update heartbeat: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Failed to update heartbeat")
 
     def _cleanup_failed_session_start(self):
         """
@@ -1304,9 +1323,9 @@ class MainWindow(QMainWindow):
 
             logger.info("Application cleanup completed successfully")
 
-        except Exception as e:
+        except Exception:
             # Log but don't prevent shutdown
-            logger.error(f"Error during application cleanup: {e}", exc_info=True)
+            logger.exception("Error during application cleanup")
 
         # Always accept the event (allow application to close)
         event.accept()
@@ -1465,52 +1484,52 @@ class MainWindow(QMainWindow):
             return True
 
         except FileNotFoundError as e:
-            logger.error(f"Packing list file not found: {e}", exc_info=True)
+            logger.exception("Packing list file not found")
             self._cleanup_failed_session_start()
             QMessageBox.critical(
                 self,
                 "File Not Found",
-                f"Packing list file not found:\n{str(e)}"
+                f"Packing list file not found:\n{e!s}"
             )
             return False
 
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in packing list: {e}", exc_info=True)
+            logger.exception("Invalid JSON in packing list")
             self._cleanup_failed_session_start()
             QMessageBox.critical(
                 self,
                 "Invalid JSON",
-                f"Packing list contains invalid JSON:\n{str(e)}"
+                f"Packing list contains invalid JSON:\n{e!s}"
             )
             return False
 
         except ValueError as e:
-            logger.error(f"Invalid packing data: {e}", exc_info=True)
+            logger.exception("Invalid packing data")
             self._cleanup_failed_session_start()
             QMessageBox.critical(
                 self,
                 "Invalid Data",
-                f"Packing list contains invalid data:\n{str(e)}"
+                f"Packing list contains invalid data:\n{e!s}"
             )
             return False
 
         except RuntimeError as e:
-            logger.error(f"Failed to start session: {e}", exc_info=True)
+            logger.exception("Failed to start session")
             self._cleanup_failed_session_start()
             QMessageBox.critical(
                 self,
                 "Session Start Failed",
-                f"Failed to start packing session:\n{str(e)}"
+                f"Failed to start packing session:\n{e!s}"
             )
             return False
 
         except Exception as e:
-            logger.error(f"Unexpected error starting session: {e}", exc_info=True)
+            logger.exception("Unexpected error starting session")
             self._cleanup_failed_session_start()
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Unexpected error starting packing session:\n{str(e)}"
+                f"Unexpected error starting packing session:\n{e!s}"
             )
             return False
 
@@ -1565,12 +1584,11 @@ class MainWindow(QMainWindow):
 
             # Add Completed At column
             final_df['Completed At'] = final_df['Order_Number'].apply(
-                lambda x: datetime.now().strftime("%Y-%m-%d %H:%M:%S") if x in completed_orders_set else ''
+                lambda x: datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S") if x in completed_orders_set else ''
             )
 
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 final_df.to_excel(writer, index=False, sheet_name='Sheet1')
-                workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
                 status_col_idx = final_df.columns.get_loc('Status') + 1
@@ -1603,6 +1621,12 @@ class MainWindow(QMainWindow):
                     if _session_info and 'started_at' in _session_info:
                         try:
                             _start_time = datetime.fromisoformat(_session_info['started_at'])
+                            if _start_time.tzinfo is None:
+                                # Legacy session_info.json from before timestamps were
+                                # made timezone-aware; interpret as local time so the
+                                # subtraction against tz-aware _end_time below doesn't
+                                # raise TypeError.
+                                _start_time = _start_time.astimezone()
                         except (ValueError, TypeError):
                             logger.warning("Could not parse started_at from session_info")
                 except Exception as e:
@@ -1610,7 +1634,7 @@ class MainWindow(QMainWindow):
                     _session_info = None
                     _start_time = None
 
-                _end_time = datetime.now()
+                _end_time = datetime.now().astimezone()
                 _completed_orders_list = self.logic.session_packing_state.get('completed_orders', [])
                 _completed_orders = len(_completed_orders_list)
                 _in_progress_orders_dict = self.logic.session_packing_state.get('in_progress', {})
@@ -1631,16 +1655,16 @@ class MainWindow(QMainWindow):
                             for _sd in _osl:
                                 if isinstance(_sd, dict):
                                     _items_packed += _sd.get('packed', 0)
-                except Exception as e:
-                    logger.error(f"Error calculating items_packed: {e}", exc_info=True)
+                except Exception:
+                    logger.exception("Error calculating items_packed")
 
                 _total_orders, _total_items = 0, 0
                 try:
                     if self.logic.processed_df is not None:
                         _total_orders = len(self.logic.processed_df['Order_Number'].unique())
                         _total_items = int(pd.to_numeric(self.logic.processed_df['Quantity'], errors='coerce').sum())
-                except Exception as e:
-                    logger.error(f"Error calculating totals: {e}", exc_info=True)
+                except Exception:
+                    logger.exception("Error calculating totals")
 
                 if _is_shopify:
                     _session_id = derive_session_id(getattr(self, 'current_session_path', ''))
@@ -1679,8 +1703,9 @@ class MainWindow(QMainWindow):
                         )
                         logger.info(f"Session summary saved to: {_summary_path}")
                     except Exception as exc:
-                        logger.error(f"save_session_summary failed: {exc}", exc_info=True)
+                        logger.exception("save_session_summary failed")
                         try:
+                            from shared.atomic_write import atomic_write_json
                             from shared.metadata_utils import get_current_timestamp
                             _minimal = {
                                 "version": "1.3.0",
@@ -1692,10 +1717,9 @@ class MainWindow(QMainWindow):
                                 "completed_at": get_current_timestamp(),
                                 "error": str(exc),
                             }
-                            with open(_summary_path, 'w', encoding='utf-8') as _f:
-                                json.dump(_minimal, _f, indent=2, ensure_ascii=False)
-                        except Exception:
-                            pass
+                            atomic_write_json(_summary_path, _minimal, indent=2, ensure_ascii=False)
+                        except Exception as minimal_exc:
+                            logger.debug(f"Failed to write minimal session summary fallback: {minimal_exc}")
 
                     # 2. Record to stats
                     try:
@@ -1719,8 +1743,8 @@ class MainWindow(QMainWindow):
                             },
                         )
                         logger.info(f"Recorded {_completed_orders} orders, {_items_packed} items to stats")
-                    except Exception as exc:
-                        logger.error(f"record_packing failed: {exc}", exc_info=True)
+                    except Exception:
+                        logger.exception("record_packing failed")
 
                     # 3. Update worker stats
                     try:
@@ -1734,8 +1758,8 @@ class MainWindow(QMainWindow):
                                 session_id=_session_id,
                             )
                             logger.info(f"Updated worker stats for {_worker_name}")
-                    except Exception as exc:
-                        logger.error(f"update_worker_stats failed: {exc}", exc_info=True)
+                    except Exception:
+                        logger.exception("update_worker_stats failed")
 
                     # 4. Update session metadata
                     try:
@@ -1784,7 +1808,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             self.status_label.setText(f"Could not save the report. Error: {e}")
-            logger.error(f"Error during end_session: {e}", exc_info=True)
+            logger.exception("Error during end_session")
 
         # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, 'heartbeat_timer'):
@@ -1795,8 +1819,8 @@ class MainWindow(QMainWindow):
             try:
                 self.lock_manager.release_lock(Path(self.current_work_dir))
                 logger.info("Lock released")
-            except Exception as e:
-                logger.error(f"Failed to release lock: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Failed to release lock")
 
         # Cleanup PackerLogic state
         if self.logic:
@@ -2074,7 +2098,7 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Save Failed", "Could not save mapping to file server.")
         except Exception as e:
-            logger.error(f"Failed to save quick SKU mapping: {e}", exc_info=True)
+            logger.exception("Failed to save quick SKU mapping")
             QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
 
         self.packer_mode_widget.set_focus_to_scanner()
@@ -2256,7 +2280,6 @@ class MainWindow(QMainWindow):
 
                 # Get order count for success message
                 order_count = self.packing_data.get('total_orders', 0)
-                list_name = self.packing_data.get('list_name', packing_list_name)
 
                 QMessageBox.information(
                     self,
@@ -2353,25 +2376,25 @@ class MainWindow(QMainWindow):
         except Exception as e:
             # Only handle exceptions from full_session mode
             # (packing_list mode errors are handled by unified method)
-            logger.error(f"Failed to load session: {e}", exc_info=True)
+            logger.exception("Failed to load session")
             self._cleanup_failed_session_start()
 
             # Determine error message based on exception type
             if isinstance(e, FileNotFoundError):
                 title = "File Not Found"
-                message = f"Session file not found:\n{str(e)}"
+                message = f"Session file not found:\n{e!s}"
             elif isinstance(e, json.JSONDecodeError):
                 title = "Invalid JSON"
-                message = f"Session contains invalid JSON:\n{str(e)}"
+                message = f"Session contains invalid JSON:\n{e!s}"
             elif isinstance(e, (KeyError, ValueError)):
                 title = "Invalid Data"
-                message = f"Session data validation failed:\n{str(e)}"
+                message = f"Session data validation failed:\n{e!s}"
             elif isinstance(e, RuntimeError):
                 title = "Session Load Failed"
-                message = f"Failed to load session:\n{str(e)}"
+                message = f"Failed to load session:\n{e!s}"
             else:
                 title = "Error"
-                message = f"Unexpected error loading session:\n{str(e)}"
+                message = f"Unexpected error loading session:\n{e!s}"
 
             QMessageBox.critical(self, title, message)
 
@@ -2632,7 +2655,7 @@ class MainWindow(QMainWindow):
             from datetime import datetime
             lock_dt = datetime.fromisoformat(lock_time)
             lock_time_formatted = lock_dt.strftime('%d.%m.%Y %H:%M')
-        except:
+        except (ValueError, TypeError):
             lock_time_formatted = lock_time
 
         msg = QMessageBox(self)
@@ -2674,7 +2697,7 @@ class MainWindow(QMainWindow):
             from datetime import datetime
             heartbeat_dt = datetime.fromisoformat(heartbeat)
             heartbeat_formatted = heartbeat_dt.strftime('%d.%m.%Y %H:%M')
-        except:
+        except (ValueError, TypeError):
             heartbeat_formatted = heartbeat
 
         msg = QMessageBox(self)
@@ -2711,7 +2734,7 @@ class MainWindow(QMainWindow):
                         "Failed to release the lock. Please try again or contact support."
                     )
             except Exception as e:
-                logger.error(f"Error force-releasing lock: {e}", exc_info=True)
+                logger.exception("Error force-releasing lock")
                 QMessageBox.critical(
                     self,
                     "Error",

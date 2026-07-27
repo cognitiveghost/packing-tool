@@ -5,20 +5,19 @@ This module manages client-specific configurations, SKU mappings, and session
 directories on a centralized file server. It provides robust file locking for
 concurrent access, caching for performance, and connection testing.
 """
+import configparser
+import json
 import logging
 import os
-import json
 import re
 import shutil
 import time
-import configparser
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
 
-from shared.file_lock import locked_file, FileLockError, WINDOWS_LOCKING_AVAILABLE
-from shared.server_connection import resolve_server_path, test_path_reachable
+from shared.file_lock import WINDOWS_LOCKING_AVAILABLE, FileLockError, locked_file
 from shared.logger import setup_logging
+from shared.server_connection import resolve_server_path, test_path_reachable
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +71,8 @@ class ProfileManager:
         # Cache for loaded configurations (client_id -> (data, timestamp)).
         # Per-instance (not class-level) so two managers pointed at different
         # base_path/file servers never share each other's cached data.
-        self._config_cache: Dict[str, Tuple[Dict, datetime]] = {}
-        self._sku_cache: Dict[str, Tuple[Dict, datetime]] = {}
+        self._config_cache: dict[str, tuple[dict, datetime]] = {}
+        self._sku_cache: dict[str, tuple[dict, datetime]] = {}
 
         # Load configuration
         self.config = self._load_config(config_path)
@@ -140,7 +139,7 @@ class ProfileManager:
         # Ensure directory structure exists
         self._ensure_directories()
 
-        logger.info(f"ProfileManager initialized successfully")
+        logger.info("ProfileManager initialized successfully")
         logger.info(f"Base path: {self.base_path}")
         logger.info(f"Cache dir: {self.cache_dir}")
 
@@ -156,8 +155,8 @@ class ProfileManager:
         try:
             config.read(config_path, encoding='utf-8')
             logger.info(f"Configuration loaded from {config_path}")
-        except Exception as e:
-            logger.error(f"Failed to load config: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to load config")
 
         return config
 
@@ -171,7 +170,7 @@ class ProfileManager:
             self.logs_dir.mkdir(parents=True, exist_ok=True)
             logger.debug("Directory structure verified")
         except Exception as e:
-            logger.error(f"Cannot create directories: {e}", exc_info=True)
+            logger.exception("Cannot create directories")
             raise ProfileManagerError(f"Cannot create directories on file server: {e}")
 
     # ========================================================================
@@ -179,7 +178,7 @@ class ProfileManager:
     # ========================================================================
 
     @staticmethod
-    def validate_client_id(client_id: str) -> Tuple[bool, str]:
+    def validate_client_id(client_id: str) -> tuple[bool, str]:
         """
         Validate client ID format.
 
@@ -222,7 +221,7 @@ class ProfileManager:
     # CLIENT PROFILE MANAGEMENT
     # ========================================================================
 
-    def get_available_clients(self) -> List[str]:
+    def get_available_clients(self) -> list[str]:
         """
         Get list of available client IDs.
 
@@ -243,8 +242,8 @@ class ProfileManager:
             logger.debug(f"Found {len(clients)} clients: {clients}")
             return sorted(clients)
 
-        except Exception as e:
-            logger.error(f"Error listing clients: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error listing clients")
             return []
 
     def client_exists(self, client_id: str) -> bool:
@@ -289,7 +288,7 @@ class ProfileManager:
             default_packer_config = {
                 "client_id": client_id,
                 "client_name": client_name,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now().astimezone().isoformat(),
                 "barcode_label": {
                     "width_mm": 65,
                     "height_mm": 35,
@@ -316,7 +315,7 @@ class ProfileManager:
                     "format": "CODE128"
                 },
                 "packing_rules": {},
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime.now().astimezone().isoformat(),
                 "updated_by": os.environ.get('COMPUTERNAME', 'Unknown')
             }
 
@@ -330,7 +329,7 @@ class ProfileManager:
             client_config = {
                 "client_id": client_id,
                 "client_name": client_name,
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().astimezone().isoformat()
             }
 
             client_config_path = client_dir / "client_config.json"
@@ -350,13 +349,13 @@ class ProfileManager:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to create client profile: {e}", exc_info=True)
+            logger.exception("Failed to create client profile")
             # Cleanup on failure
             if client_dir.exists():
                 shutil.rmtree(client_dir, ignore_errors=True)
             raise ProfileManagerError(f"Failed to create client profile: {e}")
 
-    def load_client_config(self, client_id: str) -> Optional[Dict]:
+    def load_client_config(self, client_id: str) -> dict | None:
         """
         Load packer configuration for a specific client with caching.
 
@@ -370,7 +369,7 @@ class ProfileManager:
         cache_key = f"config_{client_id}"
         if cache_key in self._config_cache:
             cached_data, cached_time = self._config_cache[cache_key]
-            age_seconds = (datetime.now() - cached_time).total_seconds()
+            age_seconds = (datetime.now().astimezone() - cached_time).total_seconds()
 
             if age_seconds < self.CACHE_TIMEOUT_SECONDS:
                 logger.debug(f"Using cached config for {client_id}")
@@ -391,16 +390,16 @@ class ProfileManager:
                 config = json.load(f)
 
             # Update cache
-            self._config_cache[cache_key] = (config, datetime.now())
+            self._config_cache[cache_key] = (config, datetime.now().astimezone())
 
             logger.debug(f"Loaded config for client {client_id} from {path_to_use.name}")
             return config.copy()
 
-        except Exception as e:
-            logger.error(f"Error loading config for {client_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error loading config for {client_id}")
             return None
 
-    def save_client_config(self, client_id: str, config: Dict) -> bool:
+    def save_client_config(self, client_id: str, config: dict) -> bool:
         """
         Save packer configuration for a specific client with backup.
 
@@ -419,7 +418,7 @@ class ProfileManager:
                 self._create_backup(client_id, packer_config_path, "packer_config")
 
             # Update timestamp
-            config['last_updated'] = datetime.now().isoformat()
+            config['last_updated'] = datetime.now().astimezone().isoformat()
             config['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
 
             # Save new config
@@ -433,8 +432,8 @@ class ProfileManager:
             logger.info(f"Saved packer_config for client {client_id}")
             return True
 
-        except Exception as e:
-            logger.error(f"Error saving config for {client_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error saving config for {client_id}")
             return False
 
     def _create_backup(self, client_id: str, file_path: Path, file_type: str):
@@ -442,7 +441,7 @@ class ProfileManager:
         backup_dir = self.clients_dir / f"CLIENT_{client_id}" / "backups"
         backup_dir.mkdir(exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"{file_type}_{timestamp}.json"
 
         try:
@@ -462,7 +461,7 @@ class ProfileManager:
     # SKU MAPPING WITH FILE LOCKING
     # ========================================================================
 
-    def load_sku_mapping(self, client_id: str) -> Dict[str, str]:
+    def load_sku_mapping(self, client_id: str) -> dict[str, str]:
         """
         Load SKU mapping for a specific client with caching.
         Now reads from packer_config.json instead of separate sku_mapping.json
@@ -477,7 +476,7 @@ class ProfileManager:
         cache_key = f"sku_{client_id}"
         if cache_key in self._sku_cache:
             cached_data, cached_time = self._sku_cache[cache_key]
-            age_seconds = (datetime.now() - cached_time).total_seconds()
+            age_seconds = (datetime.now().astimezone() - cached_time).total_seconds()
 
             if age_seconds < self.CACHE_TIMEOUT_SECONDS:
                 logger.debug(f"Using cached SKU mapping for {client_id}")
@@ -496,8 +495,8 @@ class ProfileManager:
                     data = json.load(f)
                     mappings = data.get("sku_mapping", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from packer_config for {client_id}")
-            except Exception as e:
-                logger.error(f"Error loading SKU mapping from packer_config for {client_id}: {e}", exc_info=True)
+            except Exception:
+                logger.exception(f"Error loading SKU mapping from packer_config for {client_id}")
 
         # Fall back to old sku_mapping.json if packer_config doesn't have mappings
         if not mappings and mapping_path.exists():
@@ -506,15 +505,15 @@ class ProfileManager:
                     data = json.load(f)
                     mappings = data.get("mappings", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from sku_mapping.json for {client_id}")
-            except Exception as e:
-                logger.error(f"Error loading SKU mapping from sku_mapping.json for {client_id}: {e}", exc_info=True)
+            except Exception:
+                logger.exception(f"Error loading SKU mapping from sku_mapping.json for {client_id}")
 
         # Update cache
-        self._sku_cache[cache_key] = (mappings, datetime.now())
+        self._sku_cache[cache_key] = (mappings, datetime.now().astimezone())
 
         return mappings.copy()
 
-    def save_sku_mapping(self, client_id: str, mappings: Dict[str, str]) -> bool:
+    def save_sku_mapping(self, client_id: str, mappings: dict[str, str]) -> bool:
         """
         Save SKU mapping to packer_config.json with file locking and merge support.
 
@@ -556,24 +555,23 @@ class ProfileManager:
                     with open(packer_config_path, 'w', encoding='utf-8') as f:
                         json.dump(default_config, f)
 
-                with open(packer_config_path, 'r+', encoding='utf-8') as f:
-                    with locked_file(f):
-                        # Read current data
-                        f.seek(0)
-                        current_data = json.load(f)
+                with open(packer_config_path, 'r+', encoding='utf-8') as f, locked_file(f):
+                    # Read current data
+                    f.seek(0)
+                    current_data = json.load(f)
 
-                        # Replace (not merge): callers pass the full desired mapping,
-                        # so a deleted entry must not survive by merging onto disk.
-                        current_data['sku_mapping'] = mappings
-                        current_data['last_updated'] = datetime.now().isoformat()
-                        current_data['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
+                    # Replace (not merge): callers pass the full desired mapping,
+                    # so a deleted entry must not survive by merging onto disk.
+                    current_data['sku_mapping'] = mappings
+                    current_data['last_updated'] = datetime.now().astimezone().isoformat()
+                    current_data['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
 
-                        # Write back (truncate and write)
-                        f.seek(0)
-                        f.truncate()
-                        json.dump(current_data, f, indent=2, ensure_ascii=False)
+                    # Write back (truncate and write)
+                    f.seek(0)
+                    f.truncate()
+                    json.dump(current_data, f, indent=2, ensure_ascii=False)
 
-                        logger.info(f"Successfully saved SKU mapping to packer_config for {client_id}")
+                    logger.info(f"Successfully saved SKU mapping to packer_config for {client_id}")
 
                 # Invalidate caches
                 cache_key = f"sku_{client_id}"
@@ -583,24 +581,24 @@ class ProfileManager:
 
                 return True
 
-            except (IOError, FileLockError) as e:
+            except (OSError, FileLockError):
                 # File is locked by another process
                 if attempt < max_retries - 1:
                     logger.warning(f"packer_config locked, retry {attempt + 1}/{max_retries}")
                     time.sleep(retry_delay)
                 else:
-                    logger.error(f"Could not acquire lock on packer_config after {max_retries} attempts", exc_info=True)
+                    logger.exception(f"Could not acquire lock on packer_config after {max_retries} attempts")
                     raise ProfileManagerError(
-                        f"Configuration is locked by another user. Please try again in a moment."
+                        "Configuration is locked by another user. Please try again in a moment."
                     )
 
             except Exception as e:
-                logger.error(f"Error saving SKU mapping: {e}", exc_info=True)
+                logger.exception("Error saving SKU mapping")
                 raise ProfileManagerError(f"Failed to save SKU mapping: {e}")
 
         return False
 
-    def _save_sku_mapping_simple(self, client_id: str, mappings: Dict[str, str]) -> bool:
+    def _save_sku_mapping_simple(self, client_id: str, mappings: dict[str, str]) -> bool:
         """
         Simple save without file locking (fallback).
         Saves to packer_config.json
@@ -628,7 +626,7 @@ class ProfileManager:
             # Replace (not merge): callers pass the full desired mapping, so a
             # deleted entry must not survive by merging onto disk.
             current_config['sku_mapping'] = mappings
-            current_config['last_updated'] = datetime.now().isoformat()
+            current_config['last_updated'] = datetime.now().astimezone().isoformat()
             current_config['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
 
             # Save
@@ -644,15 +642,15 @@ class ProfileManager:
             logger.info(f"Saved SKU mapping to packer_config for {client_id} (simple mode)")
             return True
 
-        except Exception as e:
-            logger.error(f"Error saving SKU mapping (simple): {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error saving SKU mapping (simple)")
             return False
 
     # ========================================================================
     # SESSION MANAGEMENT
     # ========================================================================
 
-    def get_session_dir(self, client_id: str, session_name: Optional[str] = None) -> Path:
+    def get_session_dir(self, client_id: str, session_name: str | None = None) -> Path:
         """
         Get session directory path for a client.
 
@@ -670,10 +668,10 @@ class ProfileManager:
             return client_sessions / session_name
 
         # Generate new session name with timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        timestamp = datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M")
         return client_sessions / timestamp
 
-    def get_incomplete_sessions(self, client_id: str) -> List[Path]:
+    def get_incomplete_sessions(self, client_id: str) -> list[Path]:
         """
         Get list of incomplete sessions for a client.
 
@@ -710,11 +708,11 @@ class ProfileManager:
             logger.debug(f"Found {len(incomplete_sessions)} incomplete sessions for client {client_id}")
             return incomplete_sessions
 
-        except Exception as e:
-            logger.error(f"Error getting incomplete sessions for {client_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error getting incomplete sessions for {client_id}")
             return []
 
-    def list_clients(self) -> List[str]:
+    def list_clients(self) -> list[str]:
         """
         Get list of all client IDs.
 
@@ -740,8 +738,8 @@ class ProfileManager:
             logger.debug(f"Found {len(clients)} clients")
             return sorted(clients)
 
-        except Exception as e:
-            logger.error(f"Error listing clients: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error listing clients")
             return []
 
     def get_sessions_root(self) -> Path:

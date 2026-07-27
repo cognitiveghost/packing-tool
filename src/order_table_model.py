@@ -1,8 +1,10 @@
-from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
+from typing import Any
+
+import pandas as pd
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
-import pandas as pd
-from typing import Any
+
 
 class OrderTableModel(QAbstractTableModel):
     """

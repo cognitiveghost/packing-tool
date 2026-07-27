@@ -31,11 +31,11 @@ Version: 1.0.0
 
 import copy
 import json
-import time
-import threading
-from pathlib import Path
-from typing import Dict, Any, Optional
 import logging
+import threading
+import time
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -90,14 +90,14 @@ class JSONCache:
         """
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._access_times: Dict[str, float] = {}
-        self._insert_times: Dict[str, float] = {}
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._access_times: dict[str, float] = {}
+        self._insert_times: dict[str, float] = {}
         self._lock = threading.RLock()
 
         logger.debug(f"JSONCache initialized: max_size={max_size}, ttl={ttl_seconds}s")
 
-    def get(self, file_path: Path, default: Optional[Any] = None) -> Any:
+    def get(self, file_path: Path, default: Any | None = None) -> Any:
         """
         Get JSON data from file with caching.
 
@@ -162,8 +162,8 @@ class JSONCache:
         except json.JSONDecodeError as e:
             logger.warning(f"Invalid JSON in {file_path}: {e}")
             return default
-        except Exception as e:
-            logger.error(f"Error reading {file_path}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error reading {file_path}")
             return default
 
         # Re-acquire lock to insert; another thread may have beat us here —
@@ -253,7 +253,7 @@ _json_cache = JSONCache(max_size=100, ttl_seconds=60)
 # Simple wrapper functions for common cache operations
 # These provide a clean API for the rest of the application
 
-def get_cached_json(file_path: Path, default: Optional[Any] = None) -> Any:
+def get_cached_json(file_path: Path, default: Any | None = None) -> Any:
     """
     Convenience function to get JSON from global cache.
 

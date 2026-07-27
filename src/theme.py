@@ -8,7 +8,8 @@ every call site) so packing-tool/src/main.py's existing
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from shared.theme import apply_theme as _apply_theme, THEME_DARK, THEME_LIGHT
+from shared.theme import THEME_DARK, THEME_LIGHT
+from shared.theme import apply_theme as _apply_theme
 
 __all__ = ["THEME_DARK", "THEME_LIGHT", "apply_theme", "load_saved_theme", "toggle_theme"]
 

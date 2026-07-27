@@ -11,9 +11,6 @@ import json
 
 import pytest
 
-from packer_logic import PackerLogic
-
-
 # ---------------------------------------------------------------------------
 # load_packing_list_json — exact field fidelity
 # ---------------------------------------------------------------------------
@@ -22,7 +19,7 @@ def test_loaded_items_preserve_original_sku_and_product_name_verbatim(packer_log
     orders = [("ORD-1", "DHL", [
         {"sku": "  SKU-123 (Special!) ", "quantity": 3, "product_name": "Крем для обличчя — 50 мл"},
     ])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     logic = packer_logic_factory("M", work_dir)
     logic.load_packing_list_json(list_path)
 
@@ -35,7 +32,7 @@ def test_loaded_items_preserve_original_sku_and_product_name_verbatim(packer_log
 
 
 def test_loaded_order_carries_extra_metadata_fields_unmodified(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     packing_list = {
         "list_name": "DHL_Orders",
         "orders": [{
@@ -61,7 +58,7 @@ def test_loaded_order_carries_extra_metadata_fields_unmodified(packer_logic_fact
 
 
 def test_missing_order_number_raises_instead_of_silently_dropping(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     packing_list = {
         "orders": [{"courier": "DHL", "items": [{"sku": "SKU-1", "quantity": 1}]}]  # no order_number
     }
@@ -73,7 +70,7 @@ def test_missing_order_number_raises_instead_of_silently_dropping(packer_logic_f
 
 
 def test_missing_courier_raises_for_packing_list(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     packing_list = {
         "orders": [{"order_number": "ORD-1", "items": [{"sku": "SKU-1", "quantity": 1}]}]  # no courier
     }
@@ -85,7 +82,7 @@ def test_missing_courier_raises_for_packing_list(packer_logic_factory, session_f
 
 
 def test_order_with_no_items_is_skipped_not_crashed(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     packing_list = {
         "orders": [
             {"order_number": "ORD-EMPTY", "courier": "DHL", "items": []},
@@ -102,7 +99,7 @@ def test_order_with_no_items_is_skipped_not_crashed(packer_logic_factory, sessio
 
 
 def test_missing_packing_list_file_raises_value_error(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     missing_path = list_path.parent / "does_not_exist.json"
     logic = packer_logic_factory("M", work_dir)
     with pytest.raises(ValueError):
@@ -110,7 +107,7 @@ def test_missing_packing_list_file_raises_value_error(packer_logic_factory, sess
 
 
 def test_invalid_json_raises_value_error_not_a_crash(packer_logic_factory, session_factory):
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     list_path.write_text("{not valid json", encoding="utf-8")
     logic = packer_logic_factory("M", work_dir)
     with pytest.raises(ValueError):
@@ -131,7 +128,7 @@ def test_garbage_quantity_silently_becomes_one_instead_of_erroring(loaded_logic,
     of unnoticed order-content drift target #1 cares about.
     """
     orders = [("ORD-1", "DHL", [{"sku": "SKU-1", "quantity": "N/A", "product_name": "Widget"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     logic = packer_logic_factory("M", work_dir)
     logic.load_packing_list_json(list_path)
 
@@ -141,7 +138,7 @@ def test_garbage_quantity_silently_becomes_one_instead_of_erroring(loaded_logic,
 
 def test_decimal_quantity_string_is_coerced_correctly(packer_logic_factory, session_factory):
     orders = [("ORD-1", "DHL", [{"sku": "SKU-1", "quantity": "3.0", "product_name": "Widget"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     logic = packer_logic_factory("M", work_dir)
     logic.load_packing_list_json(list_path)
     logic.start_order_packing("ORD-1")
@@ -162,7 +159,7 @@ def test_duplicate_order_number_silently_merges_items_and_keeps_last_metadata(pa
     show one merged order with items from both, under the second order's
     address/notes.
     """
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=[])
     packing_list = {
         "orders": [
             {

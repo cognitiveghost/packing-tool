@@ -4,12 +4,12 @@ Provides a fast session browser backed by per-client registry_index.json files.
 Session load time is < 1 second regardless of total session count.
 """
 
-from .session_browser_widget import SessionBrowserWidget
 from .client_selector_widget import ClientSelectorWidget
+from .session_browser_widget import SessionBrowserWidget
 from .sessions_list_widget import SessionsListWidget
 
 __all__ = [
-    'SessionBrowserWidget',
     'ClientSelectorWidget',
+    'SessionBrowserWidget',
     'SessionsListWidget',
 ]

@@ -6,12 +6,23 @@ No authentication - trust-based system.
 """
 
 import logging
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QWidget, QFrame, QMessageBox, QInputDialog, QApplication
-)
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
+
 from worker_manager import WorkerManager, WorkerProfile
 
 logger = logging.getLogger(__name__)
@@ -238,11 +249,11 @@ class WorkerSelectionDialog(QDialog):
             self.cards_layout.addStretch()
 
         except Exception as e:
-            logger.error(f"Failed to load workers: {e}", exc_info=True)
+            logger.exception("Failed to load workers")
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to load worker profiles:\n{str(e)}"
+                f"Failed to load worker profiles:\n{e!s}"
             )
 
     def _on_worker_selected(self, worker_id: str):
@@ -303,11 +314,11 @@ class WorkerSelectionDialog(QDialog):
                 str(e)
             )
         except Exception as e:
-            logger.error(f"Failed to create worker: {e}", exc_info=True)
+            logger.exception("Failed to create worker")
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to create worker:\n{str(e)}"
+                f"Failed to create worker:\n{e!s}"
             )
 
     def get_selected_worker_id(self) -> str:

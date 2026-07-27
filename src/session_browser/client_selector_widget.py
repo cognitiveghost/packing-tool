@@ -6,13 +6,18 @@ the user picks one.  The selection is persisted in QSettings so the
 last-used client is auto-restored on the next open.
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QFrame
-)
-from PySide6.QtCore import Signal, Qt, QSettings
-
 import logging
+
+from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +77,8 @@ class ClientSelectorWidget(QWidget):
         """Fetch client list from ProfileManager and populate the list."""
         try:
             clients = self.profile_manager.list_clients()
-        except Exception as e:
-            logger.error(f"Failed to list clients: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to list clients")
             clients = []
 
         saved = self._settings.value("last_client_id", "", type=str)
