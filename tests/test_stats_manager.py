@@ -8,8 +8,9 @@ surface end to end.
 """
 from datetime import datetime, timedelta
 
-from shared.stats_manager import StatsManager, FileLockError as StatsFileLockError
 from shared.file_lock import FileLockError as SharedFileLockError
+from shared.stats_manager import FileLockError as StatsFileLockError
+from shared.stats_manager import StatsManager
 
 
 def test_default_stats_version_is_the_unified_value(tmp_path):
@@ -133,8 +134,8 @@ def test_get_label_print_history_accepts_naive_dates_from_the_gui(tmp_path):
     manager = StatsManager(str(tmp_path))
     manager.record_label_print(client_id="M", sku="SKU-1", copies=1)
 
-    naive_start = datetime.now() - timedelta(days=1)
-    naive_end = datetime.now() + timedelta(days=1)
+    naive_start = datetime.now() - timedelta(days=1)  # noqa: DTZ005 -- naive on purpose, see docstring
+    naive_end = datetime.now() + timedelta(days=1)  # noqa: DTZ005 -- naive on purpose, see docstring
 
     history = manager.get_label_print_history(start_date=naive_start, end_date=naive_end)
     assert len(history) == 1
@@ -144,7 +145,7 @@ def test_get_label_print_history_filters_out_of_range_dates(tmp_path):
     manager = StatsManager(str(tmp_path))
     manager.record_label_print(client_id="M", sku="SKU-1", copies=1)
 
-    far_future_start = datetime.now() + timedelta(days=30)
+    far_future_start = datetime.now() + timedelta(days=30)  # noqa: DTZ005 -- naive input, same regression coverage as above
     history = manager.get_label_print_history(start_date=far_future_start)
     assert history == []
 

@@ -7,10 +7,10 @@ from datetime import datetime
 import pytest
 
 from shared.metadata_utils import (
-    get_current_timestamp,
-    parse_timestamp,
     calculate_duration,
+    get_current_timestamp,
     load_session_summary,
+    parse_timestamp,
 )
 
 

@@ -22,7 +22,6 @@ import pytest
 from shared.atomic_write import atomic_write_json
 from shared.stats_manager import StatsManager, StatsManagerError
 
-
 # ---------------------------------------------------------------------------
 # shared.atomic_write.atomic_write_json — the reference implementation
 # ---------------------------------------------------------------------------

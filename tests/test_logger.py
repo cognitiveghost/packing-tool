@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from shared.logger import setup_logging, _sweep_old_logs, _active_handlers
+from shared.logger import _active_handlers, _sweep_old_logs, setup_logging
 
 
 @pytest.fixture(autouse=True)

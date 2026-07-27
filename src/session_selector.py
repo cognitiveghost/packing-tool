@@ -12,19 +12,28 @@ Integration with Shopify Tool (Phase 1.3.2):
 - Returns selected session path for loading
 """
 
-from pathlib import Path
-from datetime import datetime
-from typing import Optional, List, Dict
-
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QListWidget, QListWidgetItem, QPushButton, QDateEdit,
-    QCheckBox, QMessageBox, QGroupBox, QApplication
-)
-from PySide6.QtGui import QPalette
-from PySide6.QtCore import Qt, QDate, QThread, Signal
-
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
+
+from PySide6.QtCore import QDate, Qt, QThread, Signal
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
+
 from json_cache import get_cached_json
 from session_registry_manager import SessionRegistryManager
 from shared.metadata_utils import parse_timestamp
@@ -53,7 +62,7 @@ class SessionScanWorker(QThread):
             sessions = self._scan_fn(self._client_id)
             self.scan_complete.emit(sessions)
         except Exception as exc:
-            logger.error(f"SessionScanWorker failed: {exc}", exc_info=True)
+            logger.exception("SessionScanWorker failed")
             self.scan_failed.emit(str(exc))
 
 
@@ -90,8 +99,8 @@ class SessionSelectorDialog(QDialog):
         self.selected_session_path = None
         self.selected_session_data = None
         self.selected_packing_list_path = None  # NEW: Selected packing list JSON path
-        self._all_sessions: Optional[List[Dict]] = None  # Cached raw session list
-        self._scan_worker: Optional[SessionScanWorker] = None
+        self._all_sessions: list[dict] | None = None  # Cached raw session list
+        self._scan_worker: SessionScanWorker | None = None
 
         self.setWindowTitle("Select Shopify Session to Pack")
         self.setMinimumWidth(700)
@@ -254,7 +263,7 @@ class SessionSelectorDialog(QDialog):
             logger.info(f"Loaded {len(clients)} clients")
 
         except Exception as e:
-            logger.error(f"Error loading clients: {e}", exc_info=True)
+            logger.exception("Error loading clients")
             QMessageBox.warning(self, "Error", f"Failed to load clients:\n\n{e}")
 
         finally:
@@ -287,7 +296,7 @@ class SessionSelectorDialog(QDialog):
                     display_name = f"{config.get('client_name', self.pre_selected_client)} ({self.pre_selected_client})"
                 else:
                     display_name = self.pre_selected_client
-            except:
+            except Exception:
                 display_name = self.pre_selected_client
 
             self.client_label = QLabel(f"Client: {display_name}")
@@ -356,7 +365,7 @@ class SessionSelectorDialog(QDialog):
         self._scan_worker.scan_failed.connect(self._on_scan_failed)
         self._scan_worker.start()
 
-    def _on_sessions_loaded(self, sessions: List[Dict]):
+    def _on_sessions_loaded(self, sessions: list[dict]):
         """Called on the UI thread when background session scan finishes."""
         self._all_sessions = sessions
         self._apply_filters_and_populate()
@@ -450,7 +459,7 @@ class SessionSelectorDialog(QDialog):
             # No cached data yet — trigger a full background scan
             self._refresh_sessions_for_client(client_id)
 
-    def _scan_shopify_sessions(self, client_id: str) -> List[Dict]:
+    def _scan_shopify_sessions(self, client_id: str) -> list[dict]:
         """
         Scan for Shopify sessions in Sessions/CLIENT_{ID}/ directory.
 
@@ -478,8 +487,8 @@ class SessionSelectorDialog(QDialog):
             registry_manager = SessionRegistryManager(self.profile_manager)
             registry_manager.ensure_registry(client_id)
             registry_manager.refresh_available_lists(client_id)
-        except Exception as e:
-            logger.error(f"Error refreshing packing-list registry: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error refreshing packing-list registry")
 
         sessions = []
 
@@ -491,7 +500,7 @@ class SessionSelectorDialog(QDialog):
                 session_info = {
                     'name': session_dir.name,
                     'path': session_dir,
-                    'modified': datetime.fromtimestamp(session_dir.stat().st_mtime),
+                    'modified': datetime.fromtimestamp(session_dir.stat().st_mtime).astimezone(),
                     'has_shopify_data': False,
                     'orders_count': 0
                 }
@@ -518,11 +527,11 @@ class SessionSelectorDialog(QDialog):
 
             return sessions
 
-        except Exception as e:
-            logger.error(f"Error scanning sessions: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error scanning sessions")
             return []
 
-    def _filter_by_date(self, sessions: List[Dict]) -> List[Dict]:
+    def _filter_by_date(self, sessions: list[dict]) -> list[dict]:
         """
         Filter sessions by date range.
 
@@ -543,7 +552,7 @@ class SessionSelectorDialog(QDialog):
 
         return filtered
 
-    def _scan_packing_lists(self, client_id: str, session_path: Path) -> List[Dict]:
+    def _scan_packing_lists(self, client_id: str, session_path: Path) -> list[dict]:
         """
         List packing lists for a session from registry_index.json instead of
         re-scanning session/packing_lists/*.json on the file server.
@@ -558,8 +567,8 @@ class SessionSelectorDialog(QDialog):
         try:
             registry_manager = SessionRegistryManager(self.profile_manager)
             entries = registry_manager.get_all_entries(client_id)
-        except Exception as e:
-            logger.error(f"Error reading registry for packing lists: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error reading registry for packing lists")
             return []
 
         session_path_str = str(session_path)
@@ -576,7 +585,7 @@ class SessionSelectorDialog(QDialog):
                 'name': name,
                 'filename': f"{name}.json",
                 'path': session_path / "packing_lists" / f"{name}.json",
-                'modified': parse_timestamp(timestamp) or datetime.min,
+                'modified': parse_timestamp(timestamp) or datetime.min.replace(tzinfo=timezone.utc),
                 'orders_count': entry.get('total_orders', 0),
                 'courier': entry.get('courier') or None,
                 'list_name': name,
@@ -611,7 +620,7 @@ class SessionSelectorDialog(QDialog):
 
         if session.get('has_shopify_data'):
             info_text += f"<b>Orders:</b> {session.get('orders_count', 0)}<br>"
-            info_text += f"<b>Type:</b> Shopify Session<br>"
+            info_text += "<b>Type:</b> Shopify Session<br>"
 
             # Show path to analysis data
             analysis_path = session['path'] / "analysis" / "analysis_data.json"
@@ -739,7 +748,7 @@ class SessionSelectorDialog(QDialog):
 
         self.accept()
 
-    def get_selected_session(self) -> Optional[Path]:
+    def get_selected_session(self) -> Path | None:
         """
         Get selected session path.
 
@@ -748,7 +757,7 @@ class SessionSelectorDialog(QDialog):
         """
         return self.selected_session_path
 
-    def get_session_data(self) -> Optional[Dict]:
+    def get_session_data(self) -> dict | None:
         """
         Get selected session's analysis data.
 
@@ -757,7 +766,7 @@ class SessionSelectorDialog(QDialog):
         """
         return self.selected_session_data
 
-    def get_selected_packing_list(self) -> Optional[Path]:
+    def get_selected_packing_list(self) -> Path | None:
         """
         Get selected packing list path.
 

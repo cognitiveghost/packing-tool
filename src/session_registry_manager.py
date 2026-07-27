@@ -25,12 +25,11 @@ Design notes:
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-import logging
 from shared.atomic_write import atomic_write_json
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
@@ -127,10 +126,10 @@ class SessionRegistryManager:
         try:
             atomic_write_json(path, registry, indent=2, ensure_ascii=False)
             return True
-        except Exception as e:
-            logger.error(
-                f"Failed to write registry for client {client_id} after 3 attempts: {e}"
-            , exc_info=True)
+        except Exception:
+            logger.exception(
+                f"Failed to write registry for client {client_id} after 3 attempts"
+            )
             return False
 
     def registry_exists(self, client_id: str) -> bool:
@@ -159,9 +158,9 @@ class SessionRegistryManager:
         try:
             registry = self.build_from_scan(client_id)
             return self.write_registry(client_id, registry)
-        except Exception as e:
-            logger.error(
-                f"Failed to build registry for client {client_id}: {e}", exc_info=True
+        except Exception:
+            logger.exception(
+                f"Failed to build registry for client {client_id}"
             )
             return False
 
@@ -193,8 +192,8 @@ class SessionRegistryManager:
                 session_count += 1
                 self._scan_session_dir(registry, client_id, session_id, session_dir)
 
-        except Exception as e:
-            logger.error(f"Error scanning {client_dir}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error scanning {client_dir}")
 
         logger.info(
             f"Registry scan for client {client_id} complete: "
@@ -280,8 +279,8 @@ class SessionRegistryManager:
                 with open(info_file, "r", encoding="utf-8") as f:
                     session_info = json.load(f)
                 pc_name = session_info.get("pc_name", pc_name)
-            except Exception:
-                pass
+            except Exception as info_exc:
+                logger.debug(f"Could not read pc_name from {info_file}: {info_exc}")
 
         if summary_file.exists():
             try:
@@ -390,8 +389,8 @@ class SessionRegistryManager:
         client_id: str,
         session_id: str,
         packing_list_name: str,
-        worker_id: Optional[str],
-        worker_name: Optional[str],
+        worker_id: str | None,
+        worker_name: str | None,
         pc_name: str,
         total_orders: int,
         total_items: int,
@@ -618,7 +617,7 @@ class SessionRegistryManager:
         return stored or "incomplete"
 
     @staticmethod
-    def _get_lock_heartbeat_age(lock_file: Path) -> Optional[float]:
+    def _get_lock_heartbeat_age(lock_file: Path) -> float | None:
         """
         Read .session.lock and return seconds since last heartbeat.
         Returns None if the file cannot be read or parsed.
@@ -702,8 +701,8 @@ class SessionRegistryManager:
                     new_count += 1
                     changed = True
 
-        except Exception as e:
-            logger.error(f"Error scanning for new available lists: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error scanning for new available lists")
 
         if changed:
             self.write_registry(client_id, registry)

@@ -6,10 +6,10 @@ session. These tests exercise the *real* file writes (via AsyncStateWriter's
 background thread + the atomic temp-file-then-rename in
 PackerLogic._do_atomic_write), not a stubbed writer.
 """
-import json
 import copy
+import json
 
-from json_cache import get_cached_json, invalidate_json_cache
+from json_cache import get_cached_json
 
 
 def _read_state_file(work_dir):
@@ -65,7 +65,7 @@ def test_sku_ok_writes_land_after_flush(loaded_logic):
 
 def test_legacy_item_format_is_migrated_on_load(packer_logic_factory, session_factory):
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-AAA", "quantity": 2, "product_name": "Widget"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
 
     legacy_state = {
         "in_progress": {
@@ -94,7 +94,7 @@ def test_malformed_order_state_is_skipped_without_crashing(packer_logic_factory,
         ("ORDER-BAD", "DHL", [{"sku": "SKU-2", "quantity": 1, "product_name": "B"}]),
         ("ORDER-BAD2", "DHL", [{"sku": "SKU-3", "quantity": 1, "product_name": "C"}]),
     ]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
 
     corrupt_state = {
         "in_progress": {
@@ -117,7 +117,7 @@ def test_malformed_order_state_is_skipped_without_crashing(packer_logic_factory,
 
 def test_missing_state_file_starts_fresh(packer_logic_factory, session_factory):
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-1", "quantity": 1, "product_name": "A"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, _list_path = session_factory(client_id="M", orders=orders)
 
     logic = packer_logic_factory("M", work_dir)
     assert logic.session_packing_state == {
@@ -127,7 +127,7 @@ def test_missing_state_file_starts_fresh(packer_logic_factory, session_factory):
 
 def test_corrupted_json_state_file_starts_fresh_instead_of_crashing(packer_logic_factory, session_factory):
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-1", "quantity": 1, "product_name": "A"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, _list_path = session_factory(client_id="M", orders=orders)
     (work_dir / "packing_state.json").write_text("{not valid json", encoding="utf-8")
 
     logic = packer_logic_factory("M", work_dir)  # must not raise
@@ -151,7 +151,7 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
         {"sku": "SKU-1", "quantity": 1, "product_name": "A1"},
         {"sku": "SKU-2", "quantity": 1, "product_name": "A2"},
     ])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
 
     instance1 = packer_logic_factory("M", work_dir)
     instance1.load_packing_list_json(list_path)
@@ -172,7 +172,7 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
     # it clean, even though a real extra unit is still sitting unresolved in the box.
     instance2.load_packing_list_json(list_path)
     instance2.start_order_packing("ORDER-A")
-    result, status = instance2.process_sku_scan("SKU-2")  # the only remaining required item
+    _result, status = instance2.process_sku_scan("SKU-2")  # the only remaining required item
     assert status == "ORDER_COMPLETE_WITH_EXTRAS", (
         f"expected the pending extra to block clean completion, got {status!r}"
     )
@@ -188,7 +188,7 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
 
 def test_json_cache_is_not_mutated_by_in_memory_migration(packer_logic_factory, session_factory):
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-AAA", "quantity": 2, "product_name": "Widget"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
 
     legacy_state = {
         "in_progress": {"ORDER-001": [{"sku": "SKU-AAA", "packed": 0}]},  # no 'required'/'row'
@@ -200,7 +200,7 @@ def test_json_cache_is_not_mutated_by_in_memory_migration(packer_logic_factory, 
     disk_snapshot_before = copy.deepcopy(json.loads(state_path.read_text(encoding="utf-8")))
 
     # Warm the cache the way Session Browser would, before packing starts.
-    pre_read = get_cached_json(state_path, default=None)
+    get_cached_json(state_path, default=None)
 
     logic = packer_logic_factory("M", work_dir)  # triggers the in-place migration
     logic.load_packing_list_json(list_path)

@@ -4,13 +4,12 @@ Session History Manager - Manages historical session data and analytics.
 This module provides functionality to retrieve, analyze, and search through
 completed packing sessions, enabling historical reporting and analytics.
 """
-import json
-from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
-
 import logging
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 from json_cache import get_cached_json
 
 logger = logging.getLogger(__name__)
@@ -39,20 +38,20 @@ class SessionHistoryRecord:
     """
     session_id: str
     client_id: str
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
-    duration_seconds: Optional[float]
+    start_time: datetime | None
+    end_time: datetime | None
+    duration_seconds: float | None
     total_orders: int
     completed_orders: int
     in_progress_orders: int
     total_items_packed: int
-    worker_id: Optional[str] = None
-    worker_name: Optional[str] = None
-    pc_name: Optional[str] = None
-    packing_list_path: Optional[str] = None
+    worker_id: str | None = None
+    worker_name: str | None = None
+    pc_name: str | None = None
+    packing_list_path: str | None = None
     session_path: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with datetime objects as ISO strings."""
         data = asdict(self)
         if self.start_time:
@@ -84,7 +83,7 @@ class SessionHistoryManager:
         self,
         client_id: str,
         session_dir: Path
-    ) -> List[SessionHistoryRecord]:
+    ) -> list[SessionHistoryRecord]:
         """
         Parse a session directory and extract metrics for all packing lists.
 
@@ -170,7 +169,7 @@ class SessionHistoryManager:
         client_id: str,
         session_dir: Path,
         summary_file: Path
-    ) -> Optional[SessionHistoryRecord]:
+    ) -> SessionHistoryRecord | None:
         """
         Parse session_summary.json for completed sessions (v1.3.0 format only).
 
@@ -217,8 +216,8 @@ class SessionHistoryManager:
                 session_path=str(session_dir)
             )
 
-        except Exception as e:
-            logger.error(f"Error parsing session summary {session_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error parsing session summary {session_id}")
             return None
 
     def _parse_packing_state(
@@ -226,7 +225,7 @@ class SessionHistoryManager:
         client_id: str,
         session_dir: Path,
         state_file: Path
-    ) -> Optional[SessionHistoryRecord]:
+    ) -> SessionHistoryRecord | None:
         """
         Parse packing_state.json for in-progress or completed sessions.
 
@@ -290,8 +289,8 @@ class SessionHistoryManager:
                     end_time = datetime.fromtimestamp(mtime, tz=timezone.utc)
                     if start_time:
                         duration_seconds = (end_time - start_time).total_seconds()
-                except Exception:
-                    pass
+                except Exception as mtime_exc:
+                    logger.debug(f"Could not derive end_time from file mtime: {mtime_exc}")
 
             # Extract session info details
             pc_name = session_info.get('pc_name') if session_info else None
@@ -318,11 +317,11 @@ class SessionHistoryManager:
                 session_path=str(session_dir)
             )
 
-        except Exception as e:
-            logger.error(f"Error parsing packing_state.json for {session_id}: {e}", exc_info=True)
+        except Exception:
+            logger.exception(f"Error parsing packing_state.json for {session_id}")
             return None
 
-    def _load_session_info(self, session_dir: Path) -> Optional[Dict[str, Any]]:
+    def _load_session_info(self, session_dir: Path) -> dict[str, Any] | None:
         """Load session_info.json if it exists."""
         info_file = session_dir / "session_info.json"
         if info_file.exists():
@@ -334,7 +333,7 @@ class SessionHistoryManager:
                 logger.warning(f"Error reading session_info.json: {e}")
         return None
 
-    def _parse_session_timestamp(self, session_id: str) -> Optional[datetime]:
+    def _parse_session_timestamp(self, session_id: str) -> datetime | None:
         """
         Parse timestamp from session ID.
 
@@ -344,12 +343,13 @@ class SessionHistoryManager:
         from datetime import timezone
         try:
             # Try standard format: YYYYMMDD_HHMMSS
-            dt = datetime.strptime(session_id, "%Y%m%d_%H%M%S")
+            # Session IDs carry no offset, so %z isn't available; made aware below.
+            dt = datetime.strptime(session_id, "%Y%m%d_%H%M%S")  # noqa: DTZ007
             return dt.replace(tzinfo=timezone.utc)
         except ValueError:
             try:
                 # Try alternative formats
-                dt = datetime.strptime(session_id, "%Y%m%d-%H%M%S")
+                dt = datetime.strptime(session_id, "%Y%m%d-%H%M%S")  # noqa: DTZ007
                 return dt.replace(tzinfo=timezone.utc)
             except ValueError:
                 logger.debug(f"Could not parse timestamp from session ID: {session_id}")
@@ -357,8 +357,8 @@ class SessionHistoryManager:
 
     def _count_packed_items(
         self,
-        in_progress: Dict[str, Any],
-        completed: List[str]
+        in_progress: dict[str, Any],
+        completed: list[str]
     ) -> int:
         """
         Count total items packed across all orders.
@@ -388,7 +388,7 @@ class SessionHistoryManager:
         self,
         client_id: str,
         session_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get detailed information about a specific session.
 
@@ -466,6 +466,6 @@ class SessionHistoryManager:
                 'session_summary': session_summary
             }
 
-        except Exception as e:
-            logger.error(f"Error getting session details: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error getting session details")
             return None

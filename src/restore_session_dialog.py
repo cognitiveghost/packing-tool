@@ -2,15 +2,20 @@
 Restore Session Dialog - UI for selecting incomplete sessions with lock status.
 """
 
-from pathlib import Path
-from typing import Optional
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QHBoxLayout, QMessageBox
-)
-from PySide6.QtCore import Qt
-
 import logging
+from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +139,7 @@ class RestoreSessionDialog(QDialog):
             logger.info(f"Loaded {len(sessions)} incomplete sessions for client {self.client_id}")
 
         except Exception as e:
-            logger.error(f"Failed to load sessions: {e}", exc_info=True)
+            logger.exception("Failed to load sessions")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -206,7 +211,7 @@ class RestoreSessionDialog(QDialog):
                         )
                         return
                 except Exception as e:
-                    logger.error(f"Error force-releasing lock: {e}", exc_info=True)
+                    logger.exception("Error force-releasing lock")
                     QMessageBox.critical(self, "Error", f"Failed to release lock:\n\n{e}")
                     return
             else:
@@ -216,7 +221,7 @@ class RestoreSessionDialog(QDialog):
         self.selected_session = session_dir
         self.accept()
 
-    def get_selected_session(self) -> Optional[Path]:
+    def get_selected_session(self) -> Path | None:
         """
         Get the selected session directory.
 

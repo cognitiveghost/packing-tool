@@ -1,14 +1,20 @@
 """Orders Tab - Hierarchical view of orders and items with timing data"""
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QLabel, QLineEdit
-)
+import logging
+from datetime import datetime
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-
-from datetime import datetime
-import logging
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 logger = logging.getLogger(__name__)
 

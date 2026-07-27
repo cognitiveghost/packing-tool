@@ -1,10 +1,14 @@
 """Metrics Tab - Performance statistics and rates"""
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QLabel,
-    QGroupBox, QScrollArea
-)
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QGroupBox,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class MetricsTab(QWidget):

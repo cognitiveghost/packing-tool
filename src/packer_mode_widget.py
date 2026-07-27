@@ -2,14 +2,29 @@ import logging
 import os
 from collections import defaultdict
 from functools import partial
+from typing import Any
+
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QLabel, QLineEdit, QHeaderView, QPushButton, QAbstractItemView, QFrame,
-    QGroupBox, QProgressBar, QMessageBox, QApplication, QStyle, QTabWidget
+    QAbstractItemView,
+    QApplication,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QStyle,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtGui import QFont, QColor, QPalette, QIcon
-from PySide6.QtCore import Qt, Signal, QSize
-from typing import List, Dict, Any
 
 from packer_logic import normalize_sku
 
@@ -451,10 +466,10 @@ class PackerModeWidget(QWidget):
 
     def display_order(
         self,
-        items: List[Dict[str, Any]],
-        order_state: List[Dict[str, Any]],
-        metadata: Dict[str, Any] = None,
-        sku_map: Dict[str, str] = None,
+        items: list[dict[str, Any]],
+        order_state: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
+        sku_map: dict[str, str] | None = None,
     ):
         """
         Populates the items table with the details of the current order.
@@ -558,7 +573,7 @@ class PackerModeWidget(QWidget):
             if cell_widget:
                 for btn in cell_widget.findChildren(QPushButton):
                     tip = btn.toolTip()
-                    if tip in ("Confirm Manually", "Force confirm all remaining quantity (qty > 5 only)"):  # noqa: E501
+                    if tip in ("Confirm Manually", "Force confirm all remaining quantity (qty > 5 only)"):
                         btn.setEnabled(False)
         else:
             # Re-apply amber highlight for multi-qty items still in progress
@@ -653,7 +668,7 @@ class PackerModeWidget(QWidget):
 
     # [J] Feature J ────────────────────────────────────────────────────────────
 
-    def show_extras_panel(self, extras: Dict[str, int]):
+    def show_extras_panel(self, extras: dict[str, int]):
         """
         Populates and shows the extras panel with Keep/Remove buttons.
 
@@ -700,7 +715,7 @@ class PackerModeWidget(QWidget):
         row: int,
         sku: str,
         required_qty: int,
-        sku_map: Dict[str, str],
+        sku_map: dict[str, str],
     ) -> QWidget:
         """
         Builds the multi-button widget for the Actions column.
@@ -771,7 +786,7 @@ class PackerModeWidget(QWidget):
         layout.addStretch()
         return container
 
-    def _update_metadata_banner(self, metadata: Dict[str, Any] = None):
+    def _update_metadata_banner(self, metadata: dict[str, Any] | None = None):
         """Populate and show/hide the order metadata banner as chip labels."""
         if not metadata:
             self.metadata_banner.setVisible(False)
@@ -817,17 +832,17 @@ class PackerModeWidget(QWidget):
 
     def _update_summary_panel(
         self,
-        items: List[Dict[str, Any]],
-        order_state: List[Dict[str, Any]],
+        items: list[dict[str, Any]],
+        order_state: list[dict[str, Any]],
     ):
         """
         Deduplicates items by SKU and updates the summary table with summed quantities.
         This handles duplicate SKU rows that can appear in Shopify exports.
         Columns: SKU | Product | Packed/Total | Status
         """
-        sku_totals: Dict[str, int] = defaultdict(int)
-        sku_packed: Dict[str, int] = defaultdict(int)
-        sku_name: Dict[str, str] = {}
+        sku_totals: dict[str, int] = defaultdict(int)
+        sku_packed: dict[str, int] = defaultdict(int)
+        sku_name: dict[str, str] = {}
 
         for item in items:
             sku = item.get('SKU', item.get('sku', ''))
@@ -876,9 +891,9 @@ class PackerModeWidget(QWidget):
         if self.summary_table.rowCount() == 0:
             return
 
-        sku_packed: Dict[str, int] = defaultdict(int)
-        sku_totals: Dict[str, int] = defaultdict(int)
-        sku_name: Dict[str, str] = {}
+        sku_packed: dict[str, int] = defaultdict(int)
+        sku_totals: dict[str, int] = defaultdict(int)
+        sku_name: dict[str, str] = {}
 
         for r in range(self.table.rowCount()):
             name_item = self.table.item(r, 0)

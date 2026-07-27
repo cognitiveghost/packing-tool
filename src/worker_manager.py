@@ -7,10 +7,8 @@ Simple trust-based system without authentication.
 
 import json
 import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List, Optional, Dict
-from datetime import datetime
-from dataclasses import dataclass, asdict
 
 from shared.atomic_write import atomic_write_json
 
@@ -36,8 +34,8 @@ class WorkerProfile:
     avg_orders_per_session: float = 0.0    # Average orders per session
 
     # Activity tracking
-    last_active: Optional[str] = None      # ISO timestamp with timezone
-    last_session_id: Optional[str] = None  # Last completed session
+    last_active: str | None = None      # ISO timestamp with timezone
+    last_session_id: str | None = None  # Last completed session
 
     # Metadata
     version: str = "1.3.0"
@@ -113,11 +111,11 @@ class WorkerManager:
         try:
             self.workers_dir.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Workers directory ready: {self.workers_dir}")
-        except Exception as e:
-            logger.error(f"Failed to create Workers directory: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to create Workers directory")
             raise
 
-    def _load_workers_registry(self) -> Dict[str, list]:
+    def _load_workers_registry(self) -> dict[str, list]:
         """Load workers.json registry
 
         Returns:
@@ -134,19 +132,19 @@ class WorkerManager:
             logger.debug(f"Loaded {len(data.get('workers', []))} workers from registry")
             return data
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Corrupted workers.json: {e}", exc_info=True)
+        except json.JSONDecodeError:
+            logger.exception("Corrupted workers.json")
             # Backup corrupted file
             backup_path = self.workers_file.with_suffix('.json.backup')
             self.workers_file.rename(backup_path)
             logger.warning(f"Corrupted file backed up to: {backup_path}")
             return {"workers": []}
 
-        except Exception as e:
-            logger.error(f"Failed to load workers registry: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to load workers registry")
             raise
 
-    def _save_workers_registry(self, data: Dict[str, list]):
+    def _save_workers_registry(self, data: dict[str, list]):
         """Save workers.json registry with version
 
         Args:
@@ -160,11 +158,11 @@ class WorkerManager:
 
             logger.debug(f"Saved {len(data['workers'])} workers to registry (v1.3.0)")
 
-        except Exception as e:
-            logger.error(f"Failed to save workers registry: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to save workers registry")
             raise
 
-    def get_all_workers(self) -> List[WorkerProfile]:
+    def get_all_workers(self) -> list[WorkerProfile]:
         """Get all worker profiles
 
         Returns:
@@ -176,7 +174,7 @@ class WorkerManager:
         logger.info(f"Retrieved {len(workers)} worker profiles")
         return workers
 
-    def get_worker(self, worker_id: str) -> Optional[WorkerProfile]:
+    def get_worker(self, worker_id: str) -> WorkerProfile | None:
         """Get specific worker profile
 
         Args:
@@ -246,7 +244,7 @@ class WorkerManager:
         logger.info(f"Created worker: {worker_id} ({name})")
         return worker
 
-    def _generate_worker_id(self, existing_workers: List[WorkerProfile]) -> str:
+    def _generate_worker_id(self, existing_workers: list[WorkerProfile]) -> str:
         """Generate unique worker ID
 
         Args:
@@ -276,7 +274,7 @@ class WorkerManager:
         orders: int = 0,
         items: int = 0,
         duration_seconds: int = 0,
-        session_id: str = None
+        session_id: str | None = None
     ):
         """Update worker statistics (incremental)
 

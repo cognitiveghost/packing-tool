@@ -68,7 +68,7 @@ def test_scan_completes_order_only_when_every_item_done(loaded_logic):
     loaded_logic.start_order_packing("ORDER-001")
     loaded_logic.process_sku_scan("SKU-AAA")
     loaded_logic.process_sku_scan("SKU-AAA")  # SKU-AAA fully packed, SKU-BBB still pending
-    result, status = loaded_logic.process_sku_scan("SKU-BBB")
+    _result, status = loaded_logic.process_sku_scan("SKU-BBB")
     assert status == "ORDER_COMPLETE"
     assert loaded_logic.current_order_number == "ORDER-001"  # not auto-cleared; caller's job
     assert "ORDER-001" in loaded_logic.session_packing_state["completed_orders"]
@@ -87,7 +87,7 @@ def test_scan_wrong_sku_returns_sku_not_found_and_is_recorded(loaded_logic):
 def test_scan_beyond_required_quantity_is_extra_not_silently_accepted(loaded_logic):
     loaded_logic.start_order_packing("ORDER-002")  # SKU-CCC requires 1
     loaded_logic.process_sku_scan("SKU-CCC")
-    result, status = loaded_logic.process_sku_scan("SKU-CCC")  # second scan of a qty-1 item
+    _result, status = loaded_logic.process_sku_scan("SKU-CCC")  # second scan of a qty-1 item
     assert status == "SKU_EXTRA"
     assert loaded_logic.current_extra_items == {"skuccc": 1}
 
@@ -101,7 +101,7 @@ def test_sku_normalization_ignores_case_and_punctuation(loaded_logic):
 
 def test_sku_map_translates_barcode_to_internal_sku(packer_logic_factory, session_factory, profile_manager):
     orders = [("ORDER-001", "DHL", [{"sku": "INTERNAL-SKU-1", "quantity": 1, "product_name": "Widget"}])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     profile_manager.create_client_profile("M", "Test Client")
     profile_manager.save_sku_mapping("M", {"7290018664100": "INTERNAL-SKU-1"})
 
@@ -135,7 +135,7 @@ def test_cancel_item_scan_at_zero_is_a_noop(loaded_logic):
 
 
 def test_cancel_item_scan_without_active_order(loaded_logic):
-    result, status = loaded_logic.cancel_item_scan(0)
+    _result, status = loaded_logic.cancel_item_scan(0)
     assert status == "NO_ACTIVE_ORDER"
 
 
@@ -151,7 +151,7 @@ def test_cancel_after_order_complete_is_rejected_because_current_order_is_cleare
 
     loaded_logic.clear_current_order()  # what the UI does right after ORDER_COMPLETE
 
-    result, status = loaded_logic.cancel_item_scan(0)
+    _result, status = loaded_logic.cancel_item_scan(0)
     assert status == "NO_ACTIVE_ORDER"
     # Order must not have been resurrected into in_progress
     assert "ORDER-002" not in loaded_logic.session_packing_state["in_progress"]
@@ -204,7 +204,7 @@ def test_force_confirm_on_partially_scanned_item_only_adds_remaining_record(load
 
 
 def test_force_confirm_without_active_order(loaded_logic):
-    result, status = loaded_logic.force_confirm_item(0)
+    _result, status = loaded_logic.force_confirm_item(0)
     assert status == "NO_ACTIVE_ORDER"
 
 
@@ -216,7 +216,7 @@ def test_extra_scan_on_a_not_yet_complete_order_does_not_finish_it(loaded_logic)
     loaded_logic.start_order_packing("ORDER-001")
     loaded_logic.process_sku_scan("SKU-AAA")
     loaded_logic.process_sku_scan("SKU-AAA")  # SKU-AAA done (2/2), SKU-BBB still pending
-    result, status = loaded_logic.process_sku_scan("SKU-AAA")  # over-scan SKU-AAA
+    _result, status = loaded_logic.process_sku_scan("SKU-AAA")  # over-scan SKU-AAA
     assert status == "SKU_EXTRA"
     assert "ORDER-001" not in loaded_logic.session_packing_state["completed_orders"]
 
@@ -230,14 +230,14 @@ def test_order_complete_with_extras_status_when_last_required_item_scanned(packe
         {"sku": "SKU-1", "quantity": 1, "product_name": "A"},
         {"sku": "SKU-2", "quantity": 1, "product_name": "B"},
     ])]
-    session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
     logic = packer_logic_factory("M", work_dir)
     logic.load_packing_list_json(list_path)
 
     logic.start_order_packing("ORDER-X")
     logic.process_sku_scan("SKU-1")        # 1/1, order not complete yet (SKU-2 pending)
     logic.process_sku_scan("SKU-1")        # extra on SKU-1
-    result, status = logic.process_sku_scan("SKU-2")  # completes required qty for every item
+    _result, status = logic.process_sku_scan("SKU-2")  # completes required qty for every item
 
     assert status == "ORDER_COMPLETE_WITH_EXTRAS"
     assert "ORDER-X" not in logic.session_packing_state["completed_orders"]
@@ -253,7 +253,7 @@ def test_confirm_keep_extra_completes_order_once_all_extras_resolved(loaded_logi
     assert loaded_logic.current_extra_items == {"skuaaa": 1}
     assert "ORDER-001" not in loaded_logic.session_packing_state["completed_orders"]
 
-    result, status = loaded_logic.confirm_keep_extra("skuaaa")
+    _result, status = loaded_logic.confirm_keep_extra("skuaaa")
     assert status == "ORDER_NOW_COMPLETE"
     assert "ORDER-001" in loaded_logic.session_packing_state["completed_orders"]
     assert loaded_logic.current_extra_items == {}

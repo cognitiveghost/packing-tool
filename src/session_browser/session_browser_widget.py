@@ -20,15 +20,18 @@ Migration: on first open for a client, if no registry file exists, a one-time
 directory scan builds the registry.  Shown as "Building session index…".
 """
 
+import logging
 import time
 
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QSplitter, QFrame
+    QCheckBox,
+    QHBoxLayout,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Signal, QTimer, Qt, QSettings
 
-import logging
 from .client_selector_widget import ClientSelectorWidget
 from .sessions_list_widget import SessionsListWidget
 

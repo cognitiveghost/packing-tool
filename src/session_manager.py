@@ -20,17 +20,16 @@ For small warehouse operations, this module ensures that:
 """
 
 # Standard library imports
-import os  # For environment variables (PC name)
 import json  # For session info persistence
-from pathlib import Path  # Modern path handling
-from typing import Optional  # Type hints
-
-from shared.atomic_write import atomic_write_json
-from shared.metadata_utils import get_current_timestamp
 
 # Local imports
 import logging
+import os  # For environment variables (PC name)
+from pathlib import Path  # Modern path handling
+
 from exceptions import SessionLockedError, StaleLockError
+from shared.atomic_write import atomic_write_json
+from shared.metadata_utils import get_current_timestamp
 
 # Initialize module-level logger
 logger = logging.getLogger(__name__)
@@ -64,8 +63,8 @@ class SessionManager:
         client_id: str,
         profile_manager,
         lock_manager,
-        worker_id: Optional[str] = None,
-        worker_name: Optional[str] = None
+        worker_id: str | None = None,
+        worker_name: str | None = None
     ):
         """
         Initialize SessionManager for a specific client.
@@ -90,7 +89,7 @@ class SessionManager:
 
         logger.info(f"SessionManager initialized for client {client_id} (Worker: {worker_name})")
 
-    def start_session(self, packing_list_path: str, restore_dir: str = None) -> str:
+    def start_session(self, packing_list_path: str, restore_dir: str | None = None) -> str:
         """
         Start a new packing session or restore a crashed session.
 
@@ -189,7 +188,7 @@ class SessionManager:
                         # Raise StaleLockError - UI will offer user option to force-release
                         # User can decide: "It's been 10 minutes, that PC probably crashed, I'll take over"
                         raise StaleLockError(
-                            f"Session has stale lock",
+                            "Session has stale lock",
                             lock_info=lock_info,
                             stale_minutes=stale_minutes
                         )
@@ -202,7 +201,7 @@ class SessionManager:
                         # Raise SessionLockedError - UI will show "User X on PC Y is working on this"
                         # User must wait or choose a different session
                         raise SessionLockedError(
-                            f"Session is locked by another process",
+                            "Session is locked by another process",
                             lock_info=lock_info
                         )
 
@@ -276,10 +275,10 @@ class SessionManager:
         try:
             atomic_write_json(info_path, session_info, indent=2)
             logger.debug(f"Created session info file: {info_path}")
-        except Exception as e:
+        except Exception:
             # Non-critical failure - session can still function
             # But recovery after crash will be harder without this file
-            logger.error(f"Failed to create session info file: {e}", exc_info=True)
+            logger.exception("Failed to create session info file")
 
         # === START HEARTBEAT MECHANISM ===
         # Start periodic timer that updates lock file every 60 seconds
@@ -350,7 +349,7 @@ class SessionManager:
         """
         return self.session_active
 
-    def get_output_dir(self) -> Optional[str]:
+    def get_output_dir(self) -> str | None:
         """
         Get the output directory for the current session.
 
@@ -359,7 +358,7 @@ class SessionManager:
         """
         return str(self.output_dir) if self.output_dir else None
 
-    def get_barcodes_dir(self) -> Optional[str]:
+    def get_barcodes_dir(self) -> str | None:
         """
         Get the barcodes subdirectory for the current session.
 
@@ -372,7 +371,7 @@ class SessionManager:
         barcodes_dir = self.output_dir / "barcodes"
         return str(barcodes_dir)
 
-    def get_session_info(self) -> Optional[dict]:
+    def get_session_info(self) -> dict | None:
         """
         Get session information from session_info.json.
 
@@ -390,8 +389,8 @@ class SessionManager:
         try:
             with open(info_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception as e:
-            logger.error(f"Error reading session info: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error reading session info")
             return None
 
     def _start_heartbeat(self):
@@ -451,10 +450,10 @@ class SessionManager:
             # PySide6 not available (e.g., running in test environment without Qt)
             # Non-fatal: session will work, but other PCs won't be able to detect crashes
             logger.warning("PySide6 not available, heartbeat disabled")
-        except Exception as e:
+        except Exception:
             # Unexpected error starting timer
             # Log but don't crash - session can still function without heartbeat
-            logger.error(f"Failed to start heartbeat timer: {e}", exc_info=True)
+            logger.exception("Failed to start heartbeat timer")
 
     def _stop_heartbeat(self):
         """
@@ -477,10 +476,10 @@ class SessionManager:
                 self.heartbeat_timer = None
 
                 logger.info("Heartbeat timer stopped")
-            except Exception as e:
+            except Exception:
                 # Non-critical failure - log and continue
                 # Timer will be garbage collected anyway when session ends
-                logger.error(f"Failed to stop heartbeat timer: {e}", exc_info=True)
+                logger.exception("Failed to stop heartbeat timer")
 
     def _update_heartbeat(self):
         """
@@ -521,10 +520,10 @@ class SessionManager:
                 logger.warning(f"Heartbeat update failed for session {self.session_id}")
                 # Note: We don't raise exception - session should continue working
 
-        except Exception as e:
+        except Exception:
             # Unexpected error during heartbeat update
             # Log but don't crash - this is a background operation
-            logger.error(f"Error updating heartbeat: {e}", exc_info=True)
+            logger.exception("Error updating heartbeat")
 
     def load_packing_list(self, session_path: str, packing_list_name: str) -> dict:
         """
@@ -571,8 +570,7 @@ class SessionManager:
 
         # 3. Remove .json extension if present (for flexibility)
         clean_name = packing_list_name
-        if clean_name.endswith('.json'):
-            clean_name = clean_name[:-5]
+        clean_name = clean_name.removesuffix('.json')
 
         # 4. Try to find the file with .json extension
         packing_list_file = packing_lists_dir / f"{clean_name}.json"
@@ -591,7 +589,7 @@ class SessionManager:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in packing list {packing_list_file}: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.exception(error_msg)
             raise
 
         # 7. Validate that 'orders' key exists
@@ -665,7 +663,7 @@ class SessionManager:
 
         # 5. Log directory creation
         logger.info(f"Created packing work directory: {work_dir}")
-        logger.debug(f"Subdirectories: barcodes/, reports/")
+        logger.debug("Subdirectories: barcodes/, reports/")
 
         # 6. Return work directory path
         return work_dir

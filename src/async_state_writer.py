@@ -6,10 +6,10 @@ The latest state is always kept in a single pending slot — never accumulates s
 """
 
 import copy
-import threading
-from typing import Callable, Dict, Any, Optional
-
 import logging
+import threading
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class AsyncStateWriter:
 
     def __init__(
         self,
-        write_fn: Callable[[Dict[str, Any]], None],
+        write_fn: Callable[[dict[str, Any]], None],
         sync_mode: bool = False,
     ) -> None:
         self._write_fn = write_fn
@@ -45,7 +45,7 @@ class AsyncStateWriter:
             return  # No thread needed
 
         self._condition = threading.Condition()
-        self._pending: Optional[Dict[str, Any]] = None
+        self._pending: dict[str, Any] | None = None
         self._is_writing: bool = False  # True while write_fn is executing
         self._stop = False
         self._thread = threading.Thread(
@@ -57,7 +57,7 @@ class AsyncStateWriter:
     # Public API
     # ------------------------------------------------------------------
 
-    def schedule(self, state_dict: Dict[str, Any]) -> None:
+    def schedule(self, state_dict: dict[str, Any]) -> None:
         """
         Non-blocking: schedule state_dict for writing.
 

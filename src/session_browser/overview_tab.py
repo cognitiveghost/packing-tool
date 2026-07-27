@@ -1,11 +1,8 @@
 """Overview Tab - Session metadata and summary"""
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QLabel,
-    QGroupBox
-)
-
 from datetime import datetime
+
+from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel, QVBoxLayout, QWidget
 
 
 class OverviewTab(QWidget):

@@ -1,6 +1,7 @@
-from PySide6.QtCore import QSortFilterProxyModel, Qt, QModelIndex
-from PySide6.QtWidgets import QWidget
 import pandas as pd
+from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtWidgets import QWidget
+
 
 class CustomFilterProxyModel(QSortFilterProxyModel):
     """

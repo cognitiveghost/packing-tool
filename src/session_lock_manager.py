@@ -6,16 +6,15 @@ user can work on a session at a time, with crash recovery support.
 """
 
 import json
+import logging
 import os
 import socket
 import time
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
-from shared.file_lock import locked_file, FileLockError
-import logging
+from shared.file_lock import FileLockError, locked_file
 
 
 class SessionLockManager:
@@ -64,9 +63,9 @@ class SessionLockManager:
         self,
         client_id: str,
         session_dir: Path,
-        worker_id: Optional[str] = None,
-        worker_name: Optional[str] = None
-    ) -> Tuple[bool, Optional[str], Optional[Dict]]:
+        worker_id: str | None = None,
+        worker_name: str | None = None
+    ) -> tuple[bool, str | None, dict | None]:
         """
         Attempt to acquire a lock on the session.
 
@@ -107,7 +106,7 @@ class SessionLockManager:
                     if self.is_lock_stale(lock_info):
                         error_msg = self._format_stale_lock_message(lock_info)
                         self.logger.warning(
-                            f"Session has stale lock",
+                            "Session has stale lock",
                             extra={
                                 "client_id": client_id,
                                 "session_dir": str(session_dir),
@@ -120,7 +119,7 @@ class SessionLockManager:
                         # Active lock by another process
                         error_msg = self._format_active_lock_message(lock_info)
                         self.logger.warning(
-                            f"Attempt to open locked session",
+                            "Attempt to open locked session",
                             extra={
                                 "client_id": client_id,
                                 "session_dir": str(session_dir),
@@ -147,7 +146,7 @@ class SessionLockManager:
             atomic_write_json(lock_path, lock_data, indent=2)
 
             self.logger.info(
-                f"Session lock acquired successfully",
+                "Session lock acquired successfully",
                 extra={
                     "client_id": client_id,
                     "session_dir": str(session_dir),
@@ -158,10 +157,9 @@ class SessionLockManager:
             return True, None, None
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to acquire lock: {e}",
+            self.logger.exception(
+                "Failed to acquire lock",
                 extra={"client_id": client_id, "session_dir": str(session_dir)},
-                exc_info=True
             )
             return False, f"Failed to create lock file: {e}", None
 
@@ -190,14 +188,14 @@ class SessionLockManager:
                     # It's our lock, safe to delete
                     lock_path.unlink()
                     self.logger.info(
-                        f"Session lock released",
+                        "Session lock released",
                         extra={"session_dir": str(session_dir)}
                     )
                     return True
                 else:
                     # Not our lock, don't delete
                     self.logger.warning(
-                        f"Attempted to release lock owned by another process",
+                        "Attempted to release lock owned by another process",
                         extra={
                             "session_dir": str(session_dir),
                             "lock_owner": lock_info.get('locked_by'),
@@ -210,15 +208,14 @@ class SessionLockManager:
                 lock_path.unlink()
                 return True
 
-        except Exception as e:
-            self.logger.error(
-                f"Failed to release lock: {e}",
+        except Exception:
+            self.logger.exception(
+                "Failed to release lock",
                 extra={"session_dir": str(session_dir)},
-                exc_info=True
             )
             return False
 
-    def is_locked(self, session_dir: Path) -> Tuple[bool, Optional[Dict]]:
+    def is_locked(self, session_dir: Path) -> tuple[bool, dict | None]:
         """
         Check if a session is locked.
 
@@ -256,7 +253,7 @@ class SessionLockManager:
 
             return True, lock_info
 
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             self.logger.warning(
                 f"Failed to read lock file: {e}",
                 extra={"session_dir": str(session_dir)}
@@ -280,7 +277,7 @@ class SessionLockManager:
 
         if not lock_path.exists():
             self.logger.warning(
-                f"Cannot update heartbeat: lock file doesn't exist",
+                "Cannot update heartbeat: lock file doesn't exist",
                 extra={"session_dir": str(session_dir)}
             )
             return False
@@ -288,36 +285,35 @@ class SessionLockManager:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                with open(lock_path, 'r+', encoding='utf-8') as f:
-                    with locked_file(f):
-                        # Read current data
-                        f.seek(0)
-                        data = json.load(f)
+                with open(lock_path, 'r+', encoding='utf-8') as f, locked_file(f):
+                    # Read current data
+                    f.seek(0)
+                    data = json.load(f)
 
-                        # Verify it's our lock
-                        if (data.get('locked_by') != self.hostname or
-                            data.get('process_id') != self.process_id):
-                            self.logger.warning(
-                                f"Attempted to update heartbeat for lock owned by another process",
-                                extra={"session_dir": str(session_dir)}
-                            )
-                            return False
-
-                        # Update heartbeat
-                        data['heartbeat'] = datetime.now().astimezone().isoformat()
-
-                        # Write back
-                        f.seek(0)
-                        f.truncate()
-                        json.dump(data, f, indent=2)
-
-                        self.logger.debug(
-                            f"Heartbeat updated",
+                    # Verify it's our lock
+                    if (data.get('locked_by') != self.hostname or
+                        data.get('process_id') != self.process_id):
+                        self.logger.warning(
+                            "Attempted to update heartbeat for lock owned by another process",
                             extra={"session_dir": str(session_dir)}
                         )
-                        return True
+                        return False
 
-            except (IOError, OSError, FileLockError, json.JSONDecodeError) as e:
+                    # Update heartbeat
+                    data['heartbeat'] = datetime.now().astimezone().isoformat()
+
+                    # Write back
+                    f.seek(0)
+                    f.truncate()
+                    json.dump(data, f, indent=2)
+
+                    self.logger.debug(
+                        "Heartbeat updated",
+                        extra={"session_dir": str(session_dir)}
+                    )
+                    return True
+
+            except (OSError, FileLockError, json.JSONDecodeError) as e:
                 # Network issue or file error - don't crash
                 self.logger.warning(
                     f"Failed to update heartbeat (attempt {attempt + 1}/{max_retries}): {e}",
@@ -330,7 +326,7 @@ class SessionLockManager:
 
         return False
 
-    def is_lock_stale(self, lock_info: Dict) -> bool:
+    def is_lock_stale(self, lock_info: dict) -> bool:
         """
         Check if a lock is stale (no recent heartbeat).
 
@@ -377,7 +373,7 @@ class SessionLockManager:
 
         try:
             # Get lock info for logging
-            is_locked, lock_info = self.is_locked(session_dir)
+            _is_locked, lock_info = self.is_locked(session_dir)
 
             # Delete the lock file
             lock_path.unlink()
@@ -385,7 +381,7 @@ class SessionLockManager:
             if lock_info:
                 stale_minutes = self._get_stale_minutes(lock_info)
                 self.logger.warning(
-                    f"Stale lock force-released",
+                    "Stale lock force-released",
                     extra={
                         "session_dir": str(session_dir),
                         "original_lock_by": lock_info.get('locked_by'),
@@ -395,21 +391,20 @@ class SessionLockManager:
                 )
             else:
                 self.logger.info(
-                    f"Invalid lock file removed",
+                    "Invalid lock file removed",
                     extra={"session_dir": str(session_dir)}
                 )
 
             return True
 
-        except Exception as e:
-            self.logger.error(
-                f"Failed to force-release lock: {e}",
+        except Exception:
+            self.logger.exception(
+                "Failed to force-release lock",
                 extra={"session_dir": str(session_dir)},
-                exc_info=True
             )
             return False
 
-    def _get_stale_minutes(self, lock_info: Dict) -> int:
+    def _get_stale_minutes(self, lock_info: dict) -> int:
         """Get how many minutes the lock has been stale."""
         try:
             heartbeat_str = lock_info.get('heartbeat')
@@ -427,7 +422,7 @@ class SessionLockManager:
         except (ValueError, TypeError):
             return 0
 
-    def _format_active_lock_message(self, lock_info: Dict) -> str:
+    def _format_active_lock_message(self, lock_info: dict) -> str:
         """Format error message for active lock."""
         locked_by = lock_info.get('locked_by', 'Unknown PC')
         user_name = lock_info.get('user_name', 'Unknown user')
@@ -438,7 +433,7 @@ class SessionLockManager:
             f"Please wait or choose another session."
         )
 
-    def _format_stale_lock_message(self, lock_info: Dict) -> str:
+    def _format_stale_lock_message(self, lock_info: dict) -> str:
         """Format error message for stale lock."""
         locked_by = lock_info.get('locked_by', 'Unknown PC')
         user_name = lock_info.get('user_name', 'Unknown user')
