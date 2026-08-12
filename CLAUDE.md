@@ -46,6 +46,15 @@ Rules:
 
 ---
 
+## DO NOT
+
+- **No direct commits to `main`** — this repo is PR-only, with no exception for "trivial"
+  docs-only changes. A cleanup commit (e.g. removing shipped plan/spec docs) that lands
+  directly on local `main` never reaches `origin` and has to be un-done later. Always branch
+  + PR, even for a one-file docs change.
+
+---
+
 ## Tooling
 
 - **Ponytail is active by default** — climb the ladder before writing code; don't ask permission to apply it.
