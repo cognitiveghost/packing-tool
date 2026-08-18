@@ -81,3 +81,75 @@ def test_missing_session_info_does_not_raise(tmp_path):
         str(tmp_path), "ALL_ORDERS", "completed", completed_orders=["#A"]
     )
     assert not (tmp_path / "session_info.json").exists()
+
+
+def test_write_happens_inside_the_sidecar_lock(tmp_path, monkeypatch):
+    """The Shopify tool guards this same file with an exclusive lock on the
+    sidecar .lock. Without taking it here, its read-modify-write and ours
+    interleave and one side's order numbers are silently lost. This pins both
+    that the lock is taken and that the write happens inside it."""
+    import contextlib
+
+    import session_manager as sm
+
+    events = []
+    real_locked_file = sm.locked_file
+    real_atomic_write = sm.atomic_write_json
+
+    @contextlib.contextmanager
+    def spy_locked_file(handle, *args, **kwargs):
+        events.append(("lock_acquired", handle.name))
+        with real_locked_file(handle, *args, **kwargs):
+            yield
+        events.append(("lock_released", handle.name))
+
+    def spy_atomic_write(path, *args, **kwargs):
+        events.append(("write", str(path)))
+        return real_atomic_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(sm, "locked_file", spy_locked_file)
+    monkeypatch.setattr(sm, "atomic_write_json", spy_atomic_write)
+
+    _seed_session_info(tmp_path)
+    _mgr().update_session_metadata(
+        str(tmp_path), "ALL_ORDERS", "completed", completed_orders=["#1"]
+    )
+
+    names = [e[0] for e in events]
+    assert names == ["lock_acquired", "write", "lock_released"], events
+    assert events[0][1].endswith("session_info.json.lock")
+
+
+def test_lock_guards_the_read_too_not_just_the_write(tmp_path, monkeypatch):
+    """A lock taken only around the write still loses updates: two callers
+    read the same snapshot first. Pin that the read is inside the lock."""
+    import contextlib
+
+    import session_manager as sm
+
+    events = []
+    real_locked_file = sm.locked_file
+    real_open = open
+
+    @contextlib.contextmanager
+    def spy_locked_file(handle, *args, **kwargs):
+        events.append("lock_acquired")
+        with real_locked_file(handle, *args, **kwargs):
+            yield
+        events.append("lock_released")
+
+    def spy_open(path, *args, **kwargs):
+        if str(path).endswith("session_info.json"):
+            events.append("read")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(sm, "locked_file", spy_locked_file)
+    monkeypatch.setattr("builtins.open", spy_open)
+
+    _seed_session_info(tmp_path)
+    _mgr().update_session_metadata(
+        str(tmp_path), "ALL_ORDERS", "completed", completed_orders=["#1"]
+    )
+
+    assert events.index("lock_acquired") < events.index("read")
+    assert events.index("read") < events.index("lock_released")

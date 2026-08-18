@@ -37,3 +37,7 @@ test_*.log
 
 # graphify skill output
 /graphify-out/
+
+# Local virtualenv (worktrees symlink the main checkout's)
+.venv
+.venv/
