@@ -29,6 +29,7 @@ from pathlib import Path  # Modern path handling
 
 from exceptions import SessionAlreadyActiveError, SessionLockedError, StaleLockError
 from shared.atomic_write import atomic_write_json
+from shared.file_lock import locked_file
 from shared.metadata_utils import get_current_timestamp
 
 # Initialize module-level logger
@@ -668,7 +669,13 @@ class SessionManager:
         # 6. Return work directory path
         return work_dir
 
-    def update_session_metadata(self, session_path: str, packing_list_name: str, status: str):
+    def update_session_metadata(
+        self,
+        session_path: str,
+        packing_list_name: str,
+        status: str,
+        completed_orders: list[str] | None = None,
+    ):
         """
         Update Shopify session metadata with packing progress.
 
@@ -679,6 +686,10 @@ class SessionManager:
             session_path: Path to Shopify session
             packing_list_name: Name of packing list
             status: Status ('in_progress', 'completed', 'paused')
+            completed_orders: Order numbers packed in this session, if any.
+                The Shopify tool reads these back for repeat-order detection.
+                Merged with any already recorded, so resuming a session does
+                not drop orders packed before the resume.
         """
         session_info_file = Path(session_path) / SESSION_INFO_FILE
 
@@ -687,26 +698,32 @@ class SessionManager:
             return
 
         try:
-            # Load existing session info
-            with open(session_info_file, 'r', encoding='utf-8') as f:
-                session_info = json.load(f)
+            # The Shopify tool guards this same file with an exclusive lock on
+            # the sidecar .lock (its SessionManager._locked_session_info). Take
+            # the same lock: without it, its read-modify-write and ours can
+            # interleave and silently drop one side's changes.
+            lock_path = session_info_file.with_name(SESSION_INFO_FILE + ".lock")
+            with open(lock_path, "a+") as lock_handle, locked_file(lock_handle):
+                with open(session_info_file, 'r', encoding='utf-8') as f:
+                    session_info = json.load(f)
 
-            # Add packing progress section if not exists
-            if 'packing_progress' not in session_info:
-                session_info['packing_progress'] = {}
+                if 'packing_progress' not in session_info:
+                    session_info['packing_progress'] = {}
 
-            # Update for this packing list
-            if packing_list_name not in session_info['packing_progress']:
-                session_info['packing_progress'][packing_list_name] = {
-                    'started_at': get_current_timestamp(),
-                    'status': status
-                }
-            else:
-                session_info['packing_progress'][packing_list_name]['status'] = status
-                session_info['packing_progress'][packing_list_name]['updated_at'] = get_current_timestamp()
+                block = session_info['packing_progress'].setdefault(
+                    packing_list_name, {'started_at': get_current_timestamp()}
+                )
+                block['status'] = status
+                block['updated_at'] = get_current_timestamp()
 
-            # Save updated session info atomically (temp → move)
-            atomic_write_json(session_info_file, session_info, indent=2, ensure_ascii=False)
+                if completed_orders:
+                    merged = list(block.get('completed_orders', []))
+                    merged.extend(o for o in completed_orders if o not in merged)
+                    block['completed_orders'] = merged
+
+                atomic_write_json(
+                    session_info_file, session_info, indent=2, ensure_ascii=False
+                )
 
             logger.info(f"Updated session metadata: {packing_list_name} -> {status}")
 
