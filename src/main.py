@@ -1765,7 +1765,14 @@ class MainWindow(QMainWindow):
                     try:
                         if _cur_sess_path and _cur_pack_list:
                             _sess_mgr.update_session_metadata(
-                                _cur_sess_path, _cur_pack_list, 'completed'
+                                _cur_sess_path,
+                                _cur_pack_list,
+                                'completed',
+                                completed_orders=list(
+                                    _logic_ref.session_packing_state.get(
+                                        'completed_orders', []
+                                    )
+                                ) if _logic_ref else None,
                             )
                             logger.info("Updated session metadata to 'completed'")
                     except Exception as exc:
