@@ -58,7 +58,15 @@ def test_acquire_lock_creates_lock_file(lock_manager, session_dir):
 def test_reacquiring_own_lock_succeeds_and_updates_heartbeat(lock_manager, session_dir):
     lock_manager.acquire_lock("M", session_dir)
     lock_path = session_dir / SessionLockManager.LOCK_FILENAME
-    original_heartbeat = json.loads(lock_path.read_text(encoding="utf-8"))["heartbeat"]
+
+    # Backdate the heartbeat rather than trusting the wall clock to tick between two
+    # acquire_lock() calls: datetime.now() is ~15.6ms-granular on Windows (CI), so a
+    # genuinely rewritten heartbeat can come back byte-identical to the previous one.
+    # 60s is well inside STALE_TIMEOUT (120s), so this stays a live lock, not a stale one.
+    data = json.loads(lock_path.read_text(encoding="utf-8"))
+    original_heartbeat = (datetime.now().astimezone() - timedelta(seconds=60)).isoformat()
+    data["heartbeat"] = original_heartbeat
+    lock_path.write_text(json.dumps(data), encoding="utf-8")
 
     success, error, _info = lock_manager.acquire_lock("M", session_dir)
     assert success is True
