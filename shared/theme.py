@@ -117,6 +117,28 @@ def validate_theme(theme: ThemeTokens) -> None:
             )
 
 
+def _relative_luminance(hex_color: str) -> float:
+    """WCAG 2.1 relative luminance of an #RRGGBB color."""
+    raw = hex_color.lstrip("#")
+    channels = [int(raw[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    linear = [
+        c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        for c in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(fg: str, bg: str) -> float:
+    """WCAG 2.1 contrast ratio between two #RRGGBB colors, 1.0 to 21.0.
+
+    Symmetric in its arguments -- the names are for the caller's benefit.
+    """
+    lighter, darker = sorted(
+        (_relative_luminance(fg), _relative_luminance(bg)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def clamp_geometry(
     x: int, y: int, w: int, h: int,
     avail_x: int, avail_y: int, avail_w: int, avail_h: int,

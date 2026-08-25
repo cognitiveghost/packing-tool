@@ -5,6 +5,7 @@ from shared.theme import (
     LIGHT_THEME,
     ThemeTokens,
     clamp_geometry,
+    contrast_ratio,
     get_theme,
     validate_theme,
 )
@@ -72,3 +73,20 @@ def test_clamp_geometry_pulls_window_back_onto_screen():
 def test_clamp_geometry_pulls_window_up_from_negative_position():
     result = clamp_geometry(-500, -500, 800, 600, 0, 0, 1920, 1080)
     assert result == (0, 0, 800, 600)
+
+
+def test_contrast_ratio_extremes():
+    assert contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0, abs=0.01)
+    assert contrast_ratio("#FFFFFF", "#FFFFFF") == pytest.approx(1.0, abs=0.01)
+
+
+def test_contrast_ratio_is_symmetric():
+    assert contrast_ratio("#006DB7", "#FFFFFF") == pytest.approx(
+        contrast_ratio("#FFFFFF", "#006DB7")
+    )
+
+
+def test_contrast_ratio_matches_published_wcag_value():
+    # #767676 on #FFFFFF is the canonical 4.54:1 example in the WCAG 2.1
+    # docs -- if the sRGB linearisation is wrong this lands near 4.0 or 5.1.
+    assert contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.01)
