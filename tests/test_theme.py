@@ -1,14 +1,13 @@
-import pytest
-
 import dataclasses
 
+import pytest
+
 from shared.theme import (
+    _COLOR_FIELDS,
+    _SURFACE_PLANES,
     DARK_THEME,
     LIGHT_THEME,
     ThemeTokens,
-    _ALIAS_PAIRS,
-    _COLOR_FIELDS,
-    _SURFACE_PLANES,
     clamp_geometry,
     contrast_ratio,
     get_theme,
