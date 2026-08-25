@@ -8,6 +8,7 @@ from shared.theme import (
     ThemeTokens,
     _ALIAS_PAIRS,
     _COLOR_FIELDS,
+    _SURFACE_PLANES,
     clamp_geometry,
     contrast_ratio,
     get_theme,
@@ -95,6 +96,59 @@ def test_validate_theme_rejects_a_drifted_alias():
     drifted = dataclasses.replace(LIGHT_THEME, name="drifted", accent_blue="#123456")
     with pytest.raises(ValueError, match="drifted from its canonical token"):
         validate_theme(drifted)
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("role", ["info", "success", "warning", "danger"])
+def test_status_foregrounds_clear_aa_on_every_plane_and_their_own_tint(theme, role):
+    """A badge has to be readable in a table, on a card and in a dialog
+    alike. A test built from a single background per theme would pass green
+    while every dialog failed AA -- which is what the spec's own first draft
+    did (spec 3.4)."""
+    fg = getattr(theme, f"status_{role}")
+    backgrounds = [getattr(theme, plane) for plane in _SURFACE_PLANES]
+    backgrounds.append(getattr(theme, f"status_{role}_bg"))
+    for bg in backgrounds:
+        assert contrast_ratio(fg, bg) >= 4.5, f"{theme.name} status_{role} on {bg}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("token,floor", [
+    ("text", 7.0),
+    ("text_secondary", 4.5),
+    ("text_disabled", 3.0),
+    ("text_placeholder", 4.5),
+    ("border", 3.0),
+    ("focus_ring", 3.0),
+    ("selection_border", 3.0),
+])
+def test_foreground_tokens_clear_their_floor_on_every_plane(theme, token, floor):
+    value = getattr(theme, token)
+    for plane in _SURFACE_PLANES:
+        ratio = contrast_ratio(value, getattr(theme, plane))
+        assert ratio >= floor, f"{theme.name}.{token} on {plane} = {ratio:.2f}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_on_accent_clears_aa_against_the_solid_fill(theme):
+    # shared/theme.py paints white on accent_blue in five places and
+    # build_palette pairs Highlight/HighlightedText the same way (spec 3.4a).
+    assert contrast_ratio(theme.on_accent, theme.accent_fill) >= 4.5
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_body_text_is_readable_on_a_selected_row(theme):
+    assert contrast_ratio(theme.text, theme.selection_bg) >= 4.5
+
+
+def test_validate_theme_rejects_a_status_colour_that_fails_on_a_dialog():
+    """The exact silent failure 8.2 exists to end: a value that passes on
+    the window background and fails on the overlay plane."""
+    # #0075EE is 4.51:1 on dark surface -- a pass -- but 3.56:1 on
+    # surface_overlay. A one-background check would call this fine.
+    sunk = dataclasses.replace(DARK_THEME, name="sunk", status_info="#0075EE")
+    with pytest.raises(ValueError, match="contrast"):
+        validate_theme(sunk)
 
 
 def test_clamp_geometry_leaves_window_untouched_when_it_fits():

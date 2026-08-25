@@ -231,8 +231,41 @@ _ALIAS_PAIRS = (
 )
 
 
+# token -> minimum contrast ratio against every plane in _SURFACE_PLANES.
+# Text floors are AAA for body and AA for secondary; 3.0 is WCAG's non-text
+# minimum, applied to disabled text as well because a warehouse operator who
+# cannot read a disabled control files a support ticket.
+_MIN_CONTRAST_ON_PLANES = {
+    "text": 7.0,
+    "text_secondary": 4.5,
+    "text_disabled": 3.0,
+    "text_placeholder": 4.5,
+    "border": 3.0,
+    "focus_ring": 3.0,
+    "selection_border": 3.0,
+    "status_info": 4.5,
+    "status_success": 4.5,
+    "status_warning": 4.5,
+    "status_danger": 4.5,
+}
+
+_STATUS_ROLES = ("info", "success", "warning", "danger")
+
+
 def validate_theme(theme: ThemeTokens) -> None:
-    """Raise ValueError if any color field isn't a valid #RRGGBB string."""
+    """Raise ValueError if a theme violates the 8.1 design-system contract.
+
+    Checks three things: every color field is a valid #RRGGBB string, every
+    alias still equals its canonical token, and every foreground clears its
+    WCAG minimum on all three surface planes -- not just on the window
+    background. The plane matrix is the point: light mode shipped three
+    status colors below AA for months because nothing ever measured them,
+    and a check against a single background per theme would have stayed
+    green throughout.
+
+    See docs/superpowers/specs/2026-08-25-phase8.1-design-system-design.md
+    section 6 in shopify-fulfillment-tool for the acceptance criterion.
+    """
     for field_name in _COLOR_FIELDS:
         value = getattr(theme, field_name)
         if not _HEX_RE.match(value):
@@ -247,6 +280,39 @@ def validate_theme(theme: ThemeTokens) -> None:
                 f"from its canonical token {canonical} = "
                 f"{getattr(theme, canonical)!r}"
             )
+
+    for token, floor in _MIN_CONTRAST_ON_PLANES.items():
+        value = getattr(theme, token)
+        for plane in _SURFACE_PLANES:
+            ratio = contrast_ratio(value, getattr(theme, plane))
+            if ratio < floor:
+                raise ValueError(
+                    f"{theme.name}.{token} has {ratio:.2f}:1 contrast against "
+                    f"{plane}, below the {floor}:1 minimum"
+                )
+
+    for role in _STATUS_ROLES:
+        fg, tint = f"status_{role}", f"status_{role}_bg"
+        ratio = contrast_ratio(getattr(theme, fg), getattr(theme, tint))
+        if ratio < 4.5:
+            raise ValueError(
+                f"{theme.name}.{fg} has {ratio:.2f}:1 contrast against its own "
+                f"tint {tint}, below the 4.5:1 minimum"
+            )
+
+    on_accent = contrast_ratio(theme.on_accent, theme.accent_fill)
+    if on_accent < 4.5:
+        raise ValueError(
+            f"{theme.name}.on_accent has {on_accent:.2f}:1 contrast against "
+            f"accent_fill, below the 4.5:1 minimum"
+        )
+
+    selected_text = contrast_ratio(theme.text, theme.selection_bg)
+    if selected_text < 4.5:
+        raise ValueError(
+            f"{theme.name}.text has {selected_text:.2f}:1 contrast against "
+            f"selection_bg, below the 4.5:1 minimum"
+        )
 
 
 def _relative_luminance(hex_color: str) -> float:
