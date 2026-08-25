@@ -1,29 +1,74 @@
+import dataclasses
+
 import pytest
 
 from shared.theme import (
+    _COLOR_FIELDS,
+    _SURFACE_PLANES,
     DARK_THEME,
     LIGHT_THEME,
     ThemeTokens,
     clamp_geometry,
+    contrast_ratio,
     get_theme,
     validate_theme,
 )
 
 
-def test_light_and_dark_themes_have_distinct_backgrounds():
-    assert LIGHT_THEME.background == "#FFFFFF"
-    assert DARK_THEME.background == "#000000"
+def test_dark_base_is_not_pure_black():
+    # Pure black gives elevation nowhere to go: every raised plane can only
+    # get lighter, and the first step reads as a smudge (spec 3.1).
+    assert DARK_THEME.surface == "#0A0A0A"
+    assert LIGHT_THEME.surface == "#FFFFFF"
 
 
-def test_light_theme_border_is_near_black_not_soft_gray():
-    # The approved design change: light theme borders mirror dark theme's
-    # crisp borders instead of the old #CCCCCC soft gray.
-    assert LIGHT_THEME.border == "#1A1A1A"
+def test_border_is_the_missing_middle_and_the_old_value_survives():
+    # border was pure text contrast (17.4:1) used for every box outline,
+    # which is what made both apps look harsh (spec 3.3).
+    assert LIGHT_THEME.border == "#868686"
+    assert DARK_THEME.border == "#6D6D6D"
+    assert LIGHT_THEME.border_strong == "#1A1A1A"
+    assert DARK_THEME.border_strong == "#F2F2F2"
 
 
-def test_both_themes_share_the_same_accent_and_radius():
-    assert LIGHT_THEME.accent_blue == DARK_THEME.accent_blue == "#007ACC"
-    assert LIGHT_THEME.radius == DARK_THEME.radius == 4
+def test_accent_blue_aliases_the_fill_not_the_info_foreground():
+    # A fill token sits behind white; a foreground token sits on a surface.
+    # One value cannot serve both -- aliasing accent_blue to status_info
+    # would ship every dark-mode primary button below AA (spec 3.4a).
+    for theme in (LIGHT_THEME, DARK_THEME):
+        assert theme.accent_blue == theme.accent_fill
+        assert theme.accent_blue != theme.status_info
+
+
+def test_status_colours_now_differ_per_theme():
+    # They were dataclass defaults, so both themes rendered identical status
+    # colours on opposite backgrounds -- the root cause of the light-mode
+    # failure (spec 1).
+    assert LIGHT_THEME.status_warning != DARK_THEME.status_warning
+    assert LIGHT_THEME.status_success != DARK_THEME.status_success
+
+
+def test_selection_no_longer_shares_a_value_with_success():
+    # active_border was #4CAF50, the same green as success. Selection and
+    # success are unrelated meanings; neither could be retuned (spec 3.5).
+    for theme in (LIGHT_THEME, DARK_THEME):
+        assert theme.selection_border != theme.status_success
+
+
+def test_radius_and_spacing_scales_exist():
+    assert (LIGHT_THEME.radius_sm, LIGHT_THEME.radius_md, LIGHT_THEME.radius_lg) == (3, 6, 10)
+    assert LIGHT_THEME.spacing_2xl == 32
+    assert LIGHT_THEME.radius == 4  # unchanged, still read by build_stylesheet
+
+
+def test_every_colour_field_is_declared_per_theme_not_defaulted():
+    """Spec 1's root cause: accent_* were dataclass defaults neither theme
+    overrode. A default on a colour field silently reintroduces that."""
+    defaulted = [
+        f.name for f in dataclasses.fields(ThemeTokens)
+        if f.name in _COLOR_FIELDS and f.default is not dataclasses.MISSING
+    ]
+    assert not defaulted, f"colour fields must not carry defaults: {defaulted}"
 
 
 def test_get_theme_returns_correct_instance():
@@ -41,15 +86,68 @@ def test_validate_theme_passes_for_both_builtin_themes():
 
 
 def test_validate_theme_rejects_bad_hex():
-    bad = ThemeTokens(
-        name="bad", background="not-a-color", background_elevated="#FFFFFF",
-        text="#000000", text_secondary="#000000", text_disabled="#000000",
-        text_placeholder="#000000", border="#000000", border_subtle="#000000",
-        hover="#000000", active_background="#000000", active_border="#000000",
-        button_hover_light="#000000", button_hover_dark="#000000",
-    )
-    with pytest.raises(ValueError):
+    bad = dataclasses.replace(LIGHT_THEME, name="bad", surface="not-a-color")
+    with pytest.raises(ValueError, match="not a valid #RRGGBB"):
         validate_theme(bad)
+
+
+def test_validate_theme_rejects_a_drifted_alias():
+    drifted = dataclasses.replace(LIGHT_THEME, name="drifted", accent_blue="#123456")
+    with pytest.raises(ValueError, match="drifted from its canonical token"):
+        validate_theme(drifted)
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("role", ["info", "success", "warning", "danger"])
+def test_status_foregrounds_clear_aa_on_every_plane_and_their_own_tint(theme, role):
+    """A badge has to be readable in a table, on a card and in a dialog
+    alike. A test built from a single background per theme would pass green
+    while every dialog failed AA -- which is what the spec's own first draft
+    did (spec 3.4)."""
+    fg = getattr(theme, f"status_{role}")
+    backgrounds = [getattr(theme, plane) for plane in _SURFACE_PLANES]
+    backgrounds.append(getattr(theme, f"status_{role}_bg"))
+    for bg in backgrounds:
+        assert contrast_ratio(fg, bg) >= 4.5, f"{theme.name} status_{role} on {bg}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("token,floor", [
+    ("text", 7.0),
+    ("text_secondary", 4.5),
+    ("text_disabled", 3.0),
+    ("text_placeholder", 4.5),
+    ("border", 3.0),
+    ("focus_ring", 3.0),
+    ("selection_border", 3.0),
+])
+def test_foreground_tokens_clear_their_floor_on_every_plane(theme, token, floor):
+    value = getattr(theme, token)
+    for plane in _SURFACE_PLANES:
+        ratio = contrast_ratio(value, getattr(theme, plane))
+        assert ratio >= floor, f"{theme.name}.{token} on {plane} = {ratio:.2f}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_on_accent_clears_aa_against_the_solid_fill(theme):
+    # shared/theme.py paints white on accent_blue in five places and
+    # build_palette pairs Highlight/HighlightedText the same way (spec 3.4a).
+    assert contrast_ratio(theme.on_accent, theme.accent_fill) >= 4.5
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_body_text_is_readable_on_a_selected_row(theme):
+    assert contrast_ratio(theme.text, theme.selection_bg) >= 4.5
+
+
+def test_validate_theme_rejects_a_status_colour_that_fails_on_a_dialog():
+    """The exact silent failure 8.2 exists to end: a value that passes on
+    the window background and fails on the overlay plane."""
+    # #0075EE is 4.51:1 on dark surface -- a pass -- but 3.56:1 on
+    # surface_overlay. A one-background check would call this fine.
+    sunk = dataclasses.replace(DARK_THEME, name="sunk", status_info="#0075EE")
+    with pytest.raises(ValueError, match="contrast"):
+        validate_theme(sunk)
 
 
 def test_clamp_geometry_leaves_window_untouched_when_it_fits():
@@ -72,3 +170,20 @@ def test_clamp_geometry_pulls_window_back_onto_screen():
 def test_clamp_geometry_pulls_window_up_from_negative_position():
     result = clamp_geometry(-500, -500, 800, 600, 0, 0, 1920, 1080)
     assert result == (0, 0, 800, 600)
+
+
+def test_contrast_ratio_extremes():
+    assert contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0, abs=0.01)
+    assert contrast_ratio("#FFFFFF", "#FFFFFF") == pytest.approx(1.0, abs=0.01)
+
+
+def test_contrast_ratio_is_symmetric():
+    assert contrast_ratio("#006DB7", "#FFFFFF") == pytest.approx(
+        contrast_ratio("#FFFFFF", "#006DB7")
+    )
+
+
+def test_contrast_ratio_matches_published_wcag_value():
+    # #767676 on #FFFFFF is the canonical 4.54:1 example in the WCAG 2.1
+    # docs -- if the sRGB linearisation is wrong this lands near 4.0 or 5.1.
+    assert contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.01)
