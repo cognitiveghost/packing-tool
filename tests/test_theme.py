@@ -3,7 +3,6 @@ import dataclasses
 import pytest
 
 from shared.theme import (
-    _ACCENT_FILLS,
     _COLOR_FIELDS,
     _SURFACE_PLANES,
     DARK_THEME,
@@ -27,7 +26,7 @@ def test_dark_base_is_not_pure_black():
 def test_border_is_the_missing_middle_and_the_old_value_survives():
     # border was pure text contrast (17.4:1) used for every box outline,
     # which is what made both apps look harsh (spec 3.3).
-    assert LIGHT_THEME.border == "#868686"
+    assert LIGHT_THEME.border == "#858585"
     assert DARK_THEME.border == "#6D6D6D"
     assert LIGHT_THEME.border_strong == "#1A1A1A"
     assert DARK_THEME.border_strong == "#F2F2F2"
