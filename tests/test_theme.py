@@ -3,6 +3,7 @@ import dataclasses
 import pytest
 
 from shared.theme import (
+    _ACCENT_FILLS,
     _COLOR_FIELDS,
     _SURFACE_PLANES,
     DARK_THEME,
@@ -165,6 +166,10 @@ def test_the_three_accent_fills_are_theme_independent():
         assert theme.accent_fill == "#006FBA"
         assert theme.accent_fill_hover == "#0A78C4"
         assert theme.accent_fill_active == "#005A9E"
+    # Same tripwire the plane tuple gets above: both are derived from
+    # _COLOR_FIELDS by prefix, so this fails if a fill is renamed out of the
+    # matrix or a non-fill token wanders into it.
+    assert _ACCENT_FILLS == ("accent_fill", "accent_fill_hover", "accent_fill_active")
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
