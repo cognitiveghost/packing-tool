@@ -5,6 +5,7 @@ every call site) so packing-tool/main.py's existing
 `from gui.theme import load_saved_theme, toggle_theme` keeps working unchanged.
 """
 from dataclasses import replace
+from functools import lru_cache
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
@@ -32,11 +33,24 @@ _current: str | None = None
 
 
 def _tokens(theme_name: str) -> ThemeTokens:
-    """shared.theme's tokens with the bundled family layered on, when available."""
-    theme = get_theme(theme_name)
+    """shared.theme's tokens with the bundled family layered on, when available.
+
+    Memoized because current_tokens() runs twice per table row on the scan
+    path and replace() re-runs __init__ over all 50 fields every call.
+
+    Only the success path is memoized: load_bundled_fonts() returns None
+    before a QApplication exists, and caching that would leave the app on the
+    fallback font for the rest of the process over one early call.
+    """
     family = load_bundled_fonts()
     if family is None:          # no QApplication yet, or the TTF is missing
-        return theme
+        return get_theme(theme_name)
+    return _tokens_with_font(theme_name, family)
+
+
+@lru_cache(maxsize=2)
+def _tokens_with_font(theme_name: str, family: str) -> ThemeTokens:
+    theme = get_theme(theme_name)
     return replace(theme, font_family=f"'{family}', {theme.font_family}")
 
 
