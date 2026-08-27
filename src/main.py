@@ -1016,10 +1016,11 @@ class MainWindow(QMainWindow):
         Provides visual feedback for scan results (green = success, red = error).
 
         Args:
-            color (str): Key color: "green", "red", or "orange".
+            color (str): Key color: "green", "red", or "orange". Anything
+                else raises -- a silently-passed-through value would emit
+                dead CSS that Qt discards, and would sail past style_lint.
         """
-        role = self._FLASH_COLORS.get(color, color)
-        hex_color = getattr(current_tokens(), role, role)
+        hex_color = getattr(current_tokens(), self._FLASH_COLORS[color])
         self.packer_mode_widget.table_frame.setStyleSheet(
             f"QFrame#TableFrame {{ border: 2px solid {hex_color}; border-radius: 3px; }}"
         )

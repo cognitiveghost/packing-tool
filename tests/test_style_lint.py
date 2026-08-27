@@ -81,3 +81,31 @@ def test_the_allow_marker_suppresses_one_line(tmp_path):
 def test_f_string_fragments_are_scanned(tmp_path):
     out = _scan(tmp_path, 'S = f"color: {x}; background: #ffffff;"')
     assert len(out) == 1 and "#ffffff" in out[0]
+
+
+def test_a_multiline_string_reports_the_line_the_literal_is_actually_on(tmp_path):
+    findings = _scan(tmp_path, '''
+        w.setStyleSheet("""
+            QLabel { color: red; }
+            QFrame { background: #123456; }
+        """)
+    ''')
+    assert [f.split(":")[1] for f in findings] == ["3", "4"]
+
+
+def test_the_full_css_name_set_is_covered_not_just_the_common_dozen(tmp_path):
+    findings = _scan(tmp_path, 'S = "color: forestgreen; background: whitesmoke;"')
+    assert len(findings) == 2
+
+
+def test_rgb_and_hsl_functions_pin_a_value_just_like_a_hex(tmp_path):
+    findings = _scan(tmp_path, 'S = "color: rgba(1,2,3,0.5); border: 1px solid hsl(0,0%,0%)"')
+    assert len(findings) == 2 and all("css-func" in f for f in findings)
+
+
+def test_the_font_shorthand_hides_a_pixel_size_too(tmp_path):
+    assert _scan(tmp_path, 'S = "font: bold 13px \'Segoe UI\'"')
+
+
+def test_a_colour_word_in_prose_is_still_not_a_finding(tmp_path):
+    assert not _scan(tmp_path, 'S = "Tan leather and peru spice are in stock"')
