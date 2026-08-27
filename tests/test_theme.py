@@ -260,3 +260,19 @@ def test_contrast_ratio_matches_published_wcag_value():
     # #767676 on #FFFFFF is the canonical 4.54:1 example in the WCAG 2.1
     # docs -- if the sRGB linearisation is wrong this lands near 4.0 or 5.1.
     assert contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.01)
+
+
+def test_built_stylesheet_names_no_css_colour():
+    from shared.style_lint import _CSS_NAME
+    from shared.theme import DARK_THEME, LIGHT_THEME, build_stylesheet
+    for theme in (LIGHT_THEME, DARK_THEME):
+        assert not _CSS_NAME.findall(build_stylesheet(theme))
+
+
+def test_current_tokens_returns_the_applied_theme(qapp):
+    from shared.theme import THEME_DARK, THEME_LIGHT, get_theme
+    from theme import apply_theme, current_tokens
+    apply_theme(qapp, THEME_LIGHT)
+    assert current_tokens() is get_theme(THEME_LIGHT)
+    apply_theme(qapp, THEME_DARK)
+    assert current_tokens() is get_theme(THEME_DARK)
