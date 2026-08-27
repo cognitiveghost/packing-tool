@@ -9,7 +9,9 @@ from shared.style_lint import find_style_literals
 def _scan(tmp_path: Path, source: str) -> list[str]:
     f = tmp_path / "sample.py"
     f.write_text(textwrap.dedent(source), encoding="utf-8")
-    return find_style_literals([f])
+    # Drop the path prefix: on Windows it carries a drive-letter colon, so
+    # findings ("path:line: kind: text") cannot be split on ":" positionally.
+    return [s.removeprefix(f"{f}:") for s in find_style_literals([f])]
 
 
 def test_flags_six_digit_and_three_digit_hex(tmp_path):
@@ -90,7 +92,7 @@ def test_a_multiline_string_reports_the_line_the_literal_is_actually_on(tmp_path
             QFrame { background: #123456; }
         """)
     ''')
-    assert [f.split(":")[1] for f in findings] == ["3", "4"]
+    assert [f.split(":")[0] for f in findings] == ["3", "4"]
 
 
 def test_the_full_css_name_set_is_covered_not_just_the_common_dozen(tmp_path):
