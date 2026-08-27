@@ -386,19 +386,30 @@ def clamp_geometry(
 class StatusDot(QWidget):
     """Small colored circle for status indicators in tables/lists.
 
-    Replaces emoji glyphs (previously concatenated into table-cell text,
-    e.g. packing-tool's sessions_list_widget.py STATUS_CONFIG icons) with a
-    theme-independent painted widget — consistent rendering across OS/fonts.
+    Takes a *token field name* plus the tokens to resolve it against -- never a
+    hex string. Constructing it with a colour is what let the palette escape
+    the theme; a name is checked by getattr, so a typo raises here rather than
+    rendering the wrong colour in production.
+
+    `role` is any ThemeTokens colour field, not only the four status roles:
+    packing-tool's STATUS_CONFIG maps "not_started" to text_secondary.
+
+    `theme` is explicit because shared/ cannot know which theme is live -- that
+    answer lives in each app (packing-tool's gui.theme.current_tokens(),
+    shopify's get_theme_manager()), and shared/ must not import either.
     """
 
-    def __init__(self, color: str, diameter: int = 10, parent=None):
+    def __init__(self, role: str, theme: ThemeTokens, diameter: int = 10, parent=None):
         super().__init__(parent)
-        self._color = QColor(color)
+        self._color = QColor(getattr(theme, role))
         self._diameter = diameter
         self.setFixedSize(diameter, diameter)
 
-    def set_color(self, color: str) -> None:
-        self._color = QColor(color)
+    def color(self) -> QColor:
+        return self._color
+
+    def set_role(self, role: str, theme: ThemeTokens) -> None:
+        self._color = QColor(getattr(theme, role))
         self.update()
 
     def paintEvent(self, event):
@@ -677,9 +688,11 @@ if __name__ == "__main__":
     apply_theme(app, "dark")
     assert (theme_app_stylesheet := app.styleSheet())
 
-    dot = StatusDot(DARK_THEME.accent_green)
+    dot = StatusDot("status_success", DARK_THEME)
     assert dot.width() == 10 and dot.height() == 10
-    dot.set_color(DARK_THEME.accent_red)
+    assert dot.color().name().upper() == DARK_THEME.status_success.upper()
+    dot.set_role("status_danger", DARK_THEME)
+    assert dot.color().name().upper() == DARK_THEME.status_danger.upper()
 
     from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QMainWindow

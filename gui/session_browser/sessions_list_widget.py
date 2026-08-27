@@ -428,7 +428,7 @@ class SessionsListWidget(QWidget):
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(8, 0, 4, 0)
         layout.setSpacing(6)
-        layout.addWidget(StatusDot(getattr(current_tokens(), cfg["role"])))
+        layout.addWidget(StatusDot(cfg["role"], current_tokens()))
         layout.addWidget(QLabel(cfg["label"]))
         layout.addStretch()
         return cell
