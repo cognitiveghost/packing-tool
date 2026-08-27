@@ -7,8 +7,8 @@ import json
 
 from conftest import make_packing_list
 
-from session_registry_manager import SessionRegistryManager
-from session_selector import SessionSelectorDialog
+from gui.session_selector import SessionSelectorDialog
+from packing_tool.session_registry_manager import SessionRegistryManager
 
 
 def test_session_selector_sees_packing_list_uploaded_after_registry_build(

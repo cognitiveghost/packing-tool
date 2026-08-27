@@ -72,7 +72,7 @@ def test_parse_timestamp_none_and_empty_return_none():
 # ---------------------------------------------------------------------------
 
 def test_session_manager_metadata_timestamps_are_timezone_aware_like_the_rest_of_the_app(tmp_path):
-    import session_manager
+    from packing_tool import session_manager
 
     session_info_path = tmp_path / "session_info.json"
     session_info_path.write_text(json.dumps({"session_id": "s1"}), encoding="utf-8")

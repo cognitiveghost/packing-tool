@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-import json_cache as json_cache_module
-from json_cache import JSONCache
+from packing_tool import json_cache as json_cache_module
+from packing_tool.json_cache import JSONCache
 
 
 @pytest.fixture

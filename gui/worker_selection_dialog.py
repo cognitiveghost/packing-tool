@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from theme import current_tokens
-from worker_manager import WorkerManager, WorkerProfile
+from gui.theme import current_tokens
+from packing_tool.worker_manager import WorkerManager, WorkerProfile
 
 logger = logging.getLogger(__name__)
 

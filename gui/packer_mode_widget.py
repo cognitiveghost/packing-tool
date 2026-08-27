@@ -26,8 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from packer_logic import normalize_sku
-from theme import current_tokens
+from gui.theme import current_tokens
+from packing_tool.packer_logic import normalize_sku
 
 logger = logging.getLogger(__name__)
 

@@ -270,8 +270,8 @@ def test_built_stylesheet_names_no_css_colour():
 
 
 def test_current_tokens_returns_the_applied_theme(qapp):
+    from gui.theme import apply_theme, current_tokens
     from shared.theme import THEME_DARK, THEME_LIGHT, get_theme
-    from theme import apply_theme, current_tokens
     apply_theme(qapp, THEME_LIGHT)
     assert current_tokens() is get_theme(THEME_LIGHT)
     apply_theme(qapp, THEME_DARK)
