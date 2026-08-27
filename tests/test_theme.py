@@ -271,8 +271,12 @@ def test_built_stylesheet_names_no_css_colour():
 
 def test_current_tokens_returns_the_applied_theme(qapp):
     from gui.theme import apply_theme, current_tokens
-    from shared.theme import THEME_DARK, THEME_LIGHT, get_theme
+    from shared.theme import THEME_DARK, THEME_LIGHT
+
+    # Not `is` identity: current_tokens() layers the bundled font onto the
+    # shared ThemeTokens singleton via dataclasses.replace, which always
+    # returns a new object (see gui/theme.py's _tokens()).
     apply_theme(qapp, THEME_LIGHT)
-    assert current_tokens() is get_theme(THEME_LIGHT)
+    assert current_tokens().name == THEME_LIGHT
     apply_theme(qapp, THEME_DARK)
-    assert current_tokens() is get_theme(THEME_DARK)
+    assert current_tokens().name == THEME_DARK
