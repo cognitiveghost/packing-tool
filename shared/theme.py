@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLabel, QWidget
 
 THEME_DARK = "dark"
 THEME_LIGHT = "light"
@@ -420,6 +420,58 @@ class StatusDot(QWidget):
         painter.drawEllipse(0, 0, self._diameter, self._diameter)
 
 
+CHIP_VARIANTS = ("chip", "edge")
+
+
+class StatusChip(QLabel):
+    """A read-only status badge: a role name, a label, and the live tokens.
+
+    Two variants. `chip` is a pill filled with the role's own tint --
+    validate_theme already proves every status_* against its status_*_bg at
+    4.5:1, so the chip's contrast is guaranteed by the existing gate. `edge`
+    is a row/lane marker: a coloured left border on a transparent ground.
+
+    A role with no `<role>_bg` partner (text_secondary, for the "Not Started"
+    row) falls back to surface_sunken. That is the one place a missing token
+    is tolerated rather than raised -- the role itself is still resolved with
+    getattr, so a typo in the role name still fails loudly.
+
+    This is deliberately not the filter chip: a filter chip is interactive and
+    dismissible. Merging them would mean one widget with a `clickable` flag.
+    """
+
+    def __init__(
+        self,
+        role: str,
+        text: str,
+        theme: ThemeTokens,
+        variant: str = "chip",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        if variant not in CHIP_VARIANTS:
+            raise ValueError(
+                f"Unknown chip variant {variant!r}; expected one of {CHIP_VARIANTS}"
+            )
+        self._variant = variant
+        self.set_status(role, text, theme)
+
+    def set_status(self, role: str, text: str, theme: ThemeTokens) -> None:
+        fg = getattr(theme, role)
+        self.setText(text)
+        if self._variant == "edge":
+            self.setStyleSheet(
+                f"background-color: transparent; color: {theme.text}; "
+                f"border-left: 3px solid {fg}; padding: 2px 8px;"
+            )
+            return
+        tint = getattr(theme, f"{role}_bg", theme.surface_sunken)
+        self.setStyleSheet(
+            f"background-color: {tint}; color: {fg}; "
+            f"border: none; border-radius: {theme.radius}px; padding: 2px 8px;"
+        )
+
+
 def save_window_geometry(window, settings, key: str = "window_geometry") -> None:
     """Save a QMainWindow/QWidget's geometry to QSettings."""
     settings.setValue(key, window.saveGeometry())
@@ -693,6 +745,11 @@ if __name__ == "__main__":
     assert dot.color().name().upper() == DARK_THEME.status_success.upper()
     dot.set_role("status_danger", DARK_THEME)
     assert dot.color().name().upper() == DARK_THEME.status_danger.upper()
+
+    chip = StatusChip("status_success", "Completed", DARK_THEME)
+    assert DARK_THEME.status_success_bg in chip.styleSheet()
+    edge = StatusChip("status_danger", "Incomplete", DARK_THEME, variant="edge")
+    assert "border-left: 3px solid" in edge.styleSheet()
 
     from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QMainWindow
