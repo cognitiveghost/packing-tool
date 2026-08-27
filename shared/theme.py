@@ -502,6 +502,29 @@ def restore_window_geometry(window, settings, key: str = "window_geometry") -> b
     return True
 
 
+# Opt-in on purpose: a QPushButton with no `role` property keeps exactly its
+# current accent-filled appearance. Neutral-by-default is fewer edits but
+# restyles 147 buttons across both apps at once, leaving no screen with a
+# primary until 8.6/8.7 designate one. The flip belongs in the cycle that
+# touches screens, not here.
+BUTTON_ROLES = ("primary", "secondary", "ghost", "danger")
+
+
+def set_button_role(button, role: str) -> None:
+    """Mark a button primary / secondary / ghost / danger.
+
+    Qt does not restyle a widget when a dynamic property changes after the
+    stylesheet was applied -- the classic trap. Call sites set the role at
+    construction, where it would not matter, but unpolish/polish runs
+    unconditionally so a later live-flipping caller cannot step in it.
+    """
+    if role not in BUTTON_ROLES:
+        raise ValueError(f"Unknown button role {role!r}; expected one of {BUTTON_ROLES}")
+    button.setProperty("role", role)
+    button.style().unpolish(button)
+    button.style().polish(button)
+
+
 def build_stylesheet(theme: ThemeTokens) -> str:
     """Build the global Qt stylesheet (QSS) for one theme."""
     r = theme.radius
@@ -523,6 +546,52 @@ def build_stylesheet(theme: ThemeTokens) -> str:
         QPushButton:hover {{ background-color: {theme.accent_fill_hover}; }}
         QPushButton:pressed {{ background-color: {theme.accent_fill_active}; }}
         QPushButton:disabled {{
+            background-color: {theme.surface};
+            color: {theme.text_disabled};
+            border: 1px solid {theme.border_subtle};
+        }}
+
+        QPushButton[role="primary"] {{
+            background-color: {theme.accent_fill};
+            color: {theme.on_accent};
+            border: 1px solid {theme.accent_fill};
+            font-weight: bold;
+        }}
+        QPushButton[role="primary"]:hover {{ background-color: {theme.accent_fill_hover}; }}
+        QPushButton[role="primary"]:pressed {{ background-color: {theme.accent_fill_active}; }}
+
+        QPushButton[role="secondary"] {{
+            background-color: {theme.surface_raised};
+            color: {theme.text};
+            border: 1px solid {theme.border};
+        }}
+        QPushButton[role="secondary"]:hover {{ background-color: {theme.hover}; }}
+        /* the bare QPushButton rule presses to dark accent-blue, which reads as
+           primary for the fraction of a second it is held. */
+        QPushButton[role="secondary"]:pressed {{ background-color: {theme.selection_bg}; }}
+
+        QPushButton[role="ghost"] {{
+            background-color: transparent;
+            color: {theme.text};
+            border: none;
+        }}
+        QPushButton[role="ghost"]:hover {{ background-color: {theme.hover}; }}
+        QPushButton[role="ghost"]:pressed {{ background-color: {theme.selection_bg}; }}
+
+        /* danger is an outline, not a fill: a destructive action must be findable
+           without competing with the screen's one primary. */
+        QPushButton[role="danger"] {{
+            background-color: transparent;
+            color: {theme.status_danger};
+            border: 1px solid {theme.status_danger};
+        }}
+        QPushButton[role="danger"]:hover {{ background-color: {theme.status_danger_bg}; }}
+        QPushButton[role="danger"]:pressed {{ background-color: {theme.status_danger_bg}; }}
+
+        QPushButton[role="primary"]:disabled,
+        QPushButton[role="secondary"]:disabled,
+        QPushButton[role="ghost"]:disabled,
+        QPushButton[role="danger"]:disabled {{
             background-color: {theme.surface};
             color: {theme.text_disabled};
             border: 1px solid {theme.border_subtle};
@@ -735,6 +804,8 @@ if __name__ == "__main__":
     for theme in (LIGHT_THEME, DARK_THEME):
         sheet = build_stylesheet(theme)
         assert "QPushButton" in sheet and theme.accent_fill in sheet
+        for _role in BUTTON_ROLES:
+            assert f'QPushButton[role="{_role}"]' in sheet
         palette = build_palette(theme)
         assert palette.color(palette.ColorRole.Window).name().upper() == theme.surface.upper()
     apply_theme(app, "dark")
