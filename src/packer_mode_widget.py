@@ -215,7 +215,7 @@ class PackerModeWidget(QWidget):
         self.extras_panel = QFrame()
         self.extras_panel.setObjectName("ExtrasPanel")
         self.extras_panel.setStyleSheet(
-            "QFrame#ExtrasPanel { border: 2px solid #b06020; border-radius: 3px; }"
+            f"QFrame#ExtrasPanel {{ border: 2px solid {current_tokens().status_warning}; border-radius: 3px; }}"
         )
         self.extras_panel.setVisible(False)
         _epl = QVBoxLayout(self.extras_panel)
@@ -288,8 +288,8 @@ class PackerModeWidget(QWidget):
         if self._sim_mode or os.environ.get("PACKER_DEV_SIM"):
             sim_group = QGroupBox("Scan Simulator (Dev Mode)")
             sim_group.setStyleSheet(
-                "QGroupBox { border: 2px dashed #e67e22; border-radius: 6px; "
-                "margin-top: 6px; padding: 4px; color: #e67e22; font-weight: bold; }"
+                f"QGroupBox {{ border: 2px dashed {current_tokens().status_warning}; border-radius: 6px; "
+                f"margin-top: 6px; padding: 4px; color: {current_tokens().status_warning}; font-weight: bold; }}"
                 "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
             )
             sim_layout = QHBoxLayout(sim_group)
@@ -307,7 +307,7 @@ class PackerModeWidget(QWidget):
         self.scan_info_frame = QFrame()
         self.scan_info_frame.setObjectName("ScanInfoFrame")
         self.scan_info_frame.setStyleSheet(
-            "QFrame#ScanInfoFrame { border: 1px solid #555555; border-radius: 8px; }"
+            f"QFrame#ScanInfoFrame {{ border: 1px solid {current_tokens().border}; border-radius: 8px; }}"
         )
         _sif = QVBoxLayout(self.scan_info_frame)
         _sif.setContentsMargins(0, 4, 0, 4)
@@ -331,7 +331,7 @@ class PackerModeWidget(QWidget):
         _divider = QFrame()
         _divider.setFrameShape(QFrame.Shape.HLine)
         _divider.setFrameShadow(QFrame.Shadow.Sunken)
-        _divider.setStyleSheet("color: #444444;")
+        _divider.setStyleSheet(f"color: {current_tokens().border};")
         _sif.addWidget(_divider)
 
         # ── Scan feedback section — no individual border ───────────────────────
@@ -501,8 +501,8 @@ class PackerModeWidget(QWidget):
             # [C] Amber highlight when quantity > 1
             qty_item = QTableWidgetItem(f"0 / {quantity_int}")
             if quantity_int > 1:
-                qty_item.setBackground(QColor("#5a4000"))
-                qty_item.setForeground(QColor("#f39c12"))
+                qty_item.setBackground(QColor(current_tokens().status_warning_bg))
+                qty_item.setForeground(QColor(current_tokens().status_warning))
             self.table.setItem(row, 2, qty_item)
 
             status_item = QTableWidgetItem("Pending")
@@ -561,8 +561,8 @@ class PackerModeWidget(QWidget):
 
         if is_complete:
             status_item = QTableWidgetItem("Packed")
-            status_item.setBackground(QColor("#1e4d2b"))  # muted dark green
-            status_item.setForeground(QColor("#43a047"))
+            status_item.setBackground(QColor(current_tokens().status_success_bg))
+            status_item.setForeground(QColor(current_tokens().status_success))
             self.table.setItem(row, 3, status_item)
             # Clear amber on completion — use palette text color to avoid black-on-dark rendering
             quantity_item.setBackground(QColor())
@@ -579,8 +579,8 @@ class PackerModeWidget(QWidget):
         else:
             # Re-apply amber highlight for multi-qty items still in progress
             if req_int > 1:
-                quantity_item.setBackground(QColor("#5a4000"))
-                quantity_item.setForeground(QColor("#f39c12"))
+                quantity_item.setBackground(QColor(current_tokens().status_warning_bg))
+                quantity_item.setForeground(QColor(current_tokens().status_warning))
 
         # [Fix 8] Keep summary panel live during scanning
         self._refresh_summary_from_table()
@@ -652,7 +652,7 @@ class PackerModeWidget(QWidget):
         display_text = f"{order_number} {status}".strip()
         item = QTableWidgetItem(display_text)
         if status == "[SKIPPED]":
-            item.setForeground(QColor("#b06020"))
+            item.setForeground(QColor(current_tokens().status_warning))
         self.history_table.setItem(0, 0, item)
 
     # [B] Feature B ────────────────────────────────────────────────────────────
@@ -707,7 +707,7 @@ class PackerModeWidget(QWidget):
         self.extras_panel.setVisible(is_visible)
         if is_visible:
             self._extras_section_title.setText("EXTRA ITEMS DETECTED")
-            self._extras_section_title.setStyleSheet("color: #e67e22;")
+            self._extras_section_title.setStyleSheet(f"color: {current_tokens().status_warning};")
         else:
             self._extras_section_title.setText("")
             self._extras_section_title.setStyleSheet("")
@@ -874,7 +874,7 @@ class PackerModeWidget(QWidget):
             status_text = "Done" if packed >= total else "Pending"
             status_item = QTableWidgetItem(status_text)
             if packed >= total:
-                status_item.setForeground(QColor("#43a047"))
+                status_item.setForeground(QColor(current_tokens().status_success))
             self.summary_table.setItem(i, 3, status_item)
 
         total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
@@ -928,7 +928,7 @@ class PackerModeWidget(QWidget):
             status_text = "Done" if packed >= total else "Pending"
             status_item = QTableWidgetItem(status_text)
             if packed >= total:
-                status_item.setForeground(QColor("#43a047"))
+                status_item.setForeground(QColor(current_tokens().status_success))
             self.summary_table.setItem(i, 3, status_item)
 
         total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
