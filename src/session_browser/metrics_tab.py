@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from theme import current_tokens
+
 
 class MetricsTab(QWidget):
     """Tab showing session performance metrics"""
@@ -50,7 +52,7 @@ class MetricsTab(QWidget):
                 "Timing metrics are not available for this session."
             )
             no_data_label.setObjectName("no_metrics_label")
-            no_data_label.setStyleSheet("color: #888888; font-weight: bold;")
+            no_data_label.setStyleSheet(f"color: {current_tokens().text_secondary}; font-weight: bold;")
             no_data_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(no_data_label)
             layout.addStretch()
@@ -63,7 +65,7 @@ class MetricsTab(QWidget):
                 "Only data from completed orders is shown."
             )
             notice.setObjectName("incomplete_session_notice")
-            notice.setStyleSheet("color: #c87800; font-style: italic; padding: 4px;")
+            notice.setStyleSheet(f"color: {current_tokens().status_warning}; font-style: italic; padding: 4px;")
             notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(notice)
 

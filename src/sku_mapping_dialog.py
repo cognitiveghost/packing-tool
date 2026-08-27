@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from theme import current_tokens
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +84,7 @@ class SKUMappingDialog(QDialog):
             "Map product barcodes to internal SKU codes. "
             "Changes are saved to the file server and synchronized across all PCs."
         )
-        info_label.setStyleSheet("color: gray; font-size: 9pt;")
+        info_label.setStyleSheet(f"color: {current_tokens().text_secondary}; font-size: 9pt;")
         info_label.setWordWrap(True)
         header_layout.addWidget(info_label)
 
@@ -100,7 +102,7 @@ class SKUMappingDialog(QDialog):
 
         # Status label
         self.status_label = QLabel(f"{len(self.current_map)} mapping(s) loaded from file server")
-        self.status_label.setStyleSheet("color: gray; font-size: 9pt;")
+        self.status_label.setStyleSheet(f"color: {current_tokens().text_secondary}; font-size: 9pt;")
         layout.addWidget(self.status_label)
 
         # CRUD Buttons

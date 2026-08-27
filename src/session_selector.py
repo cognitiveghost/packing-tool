@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from json_cache import get_cached_json
 from session_registry_manager import SessionRegistryManager
 from shared.metadata_utils import parse_timestamp
+from theme import current_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ class SessionSelectorDialog(QDialog):
 
         packing_info = QLabel("Select a specific packing list to load only those orders, or load the entire session")
         packing_info.setWordWrap(True)
-        packing_info.setStyleSheet("color: gray; font-style: italic;")
+        packing_info.setStyleSheet(f"color: {current_tokens().text_secondary}; font-style: italic;")
         packing_lists_layout.addWidget(packing_info)
 
         self.packing_lists_widget = QListWidget()
@@ -300,7 +301,7 @@ class SessionSelectorDialog(QDialog):
                 display_name = self.pre_selected_client
 
             self.client_label = QLabel(f"Client: {display_name}")
-            self.client_label.setStyleSheet("font-weight: bold; font-size: 11pt; color: #2E7D32;")
+            self.client_label.setStyleSheet(f"font-weight: bold; font-size: 11pt; color: {current_tokens().status_success};")
 
             # Insert into client group layout (before combo)
             client_group = self.client_combo.parent()

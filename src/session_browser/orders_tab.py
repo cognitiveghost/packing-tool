@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from theme import current_tokens
+
 logger = logging.getLogger(__name__)
 
 
@@ -130,7 +132,7 @@ class OrdersTab(QWidget):
         # Update info label
         if not self.all_orders:
             self.info_label.setText("No order data available for this session.")
-            self.info_label.setStyleSheet("color: #888888; font-weight: bold;")
+            self.info_label.setStyleSheet(f"color: {current_tokens().text_secondary}; font-weight: bold;")
             return
         else:
             self.info_label.setText(f"Showing {len(self.filtered_orders)} of {len(self.all_orders)} orders")
