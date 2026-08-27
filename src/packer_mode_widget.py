@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from packer_logic import normalize_sku
+from theme import current_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -584,16 +585,19 @@ class PackerModeWidget(QWidget):
         # [Fix 8] Keep summary panel live during scanning
         self._refresh_summary_from_table()
 
-    def show_notification(self, text: str, color_name: str):
-        """
-        Displays a large, colored notification message.
+    def show_notification(self, text: str, role: str):
+        """Displays a large notification message.
 
         Args:
             text: The message to display.
-            color_name: The color string for the text (e.g., "#c0392b" or "red").
+            role: A shared.theme status role -- "status_success", "status_warning",
+                "status_danger" or "status_info" -- or the literal "transparent"
+                to clear the notification. A colour here is what let the
+                palette escape the theme; the role is the contract.
         """
         self.notification_label.setText(text)
-        self.notification_label.setStyleSheet(f"color: {color_name};")
+        color = "transparent" if role == "transparent" else getattr(current_tokens(), role)
+        self.notification_label.setStyleSheet(f"color: {color};")
 
     def clear_screen(self):
         """

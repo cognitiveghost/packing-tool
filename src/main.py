@@ -66,7 +66,7 @@ from shared.server_connection import ConnectionSettingsDialog, prompt_for_recove
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
 from sku_mapping_dialog import SKUMappingDialog
-from theme import load_saved_theme, toggle_theme
+from theme import current_tokens, load_saved_theme, toggle_theme
 from worker_manager import WorkerManager
 from worker_selection_dialog import WorkerSelectionDialog
 
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow):
             "border-top: 1px solid palette(mid); "
             "padding: 4px 6px; "
             "font-size: 10pt; "
-            "color: #aaaaaa; "
+            f"color: {current_tokens().text_secondary}; "
             "}"
         )
         main_layout.addWidget(self.status_label)
@@ -705,14 +705,14 @@ class MainWindow(QMainWindow):
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(12, 8, 12, 8)
             card_layout.setSpacing(2)
-            card.setStyleSheet("QWidget { border: 1px solid #2a2a2a; border-radius: 4px; }")
+            card.setStyleSheet(f"QWidget {{ border: 1px solid {current_tokens().border}; border-radius: 4px; }}")
             value_lbl = QLabel("0")
             value_lbl.setFont(bold_font)
             value_lbl.setAlignment(Qt.AlignCenter)
             title_lbl = QLabel(title)
             title_lbl.setFont(label_font)
             title_lbl.setAlignment(Qt.AlignCenter)
-            title_lbl.setStyleSheet("color: #888888; border: none;")
+            title_lbl.setStyleSheet(f"color: {current_tokens().text_secondary}; border: none;")
             card_layout.addWidget(value_lbl)
             card_layout.addWidget(title_lbl)
             totals_row.addWidget(card)
@@ -808,18 +808,18 @@ class MainWindow(QMainWindow):
                 card_layout.setContentsMargins(12, 8, 12, 8)
                 card_layout.setSpacing(2)
                 card.setObjectName("courier_card")
-                card.setStyleSheet("#courier_card { border: 1px solid #2a2a2a; border-radius: 4px; }")
+                card.setStyleSheet(f"#courier_card {{ border: 1px solid {current_tokens().border}; border-radius: 4px; }}")
                 value_lbl = QLabel(str(orders))
                 value_lbl.setFont(card_bold_font)
                 value_lbl.setAlignment(Qt.AlignCenter)
                 courier_lbl = QLabel(courier)
                 courier_lbl.setFont(card_label_font)
                 courier_lbl.setAlignment(Qt.AlignCenter)
-                courier_lbl.setStyleSheet("color: #888888; border: none;")
+                courier_lbl.setStyleSheet(f"color: {current_tokens().text_secondary}; border: none;")
                 items_lbl = QLabel(f"{items} items")
                 items_lbl.setFont(card_label_font)
                 items_lbl.setAlignment(Qt.AlignCenter)
-                items_lbl.setStyleSheet("color: #666666; border: none;")
+                items_lbl.setStyleSheet(f"color: {current_tokens().text_disabled}; border: none;")
                 card_layout.addWidget(value_lbl)
                 card_layout.addWidget(courier_lbl)
                 card_layout.addWidget(items_lbl)
@@ -1003,9 +1003,9 @@ class MainWindow(QMainWindow):
 
     # Muted theme-aware flash colors
     _FLASH_COLORS: ClassVar[dict[str, str]] = {
-        "green": "#43a047",
-        "red": "#c0392b",
-        "orange": "#b06020",
+        "green": "status_success",
+        "red": "status_danger",
+        "orange": "status_warning",
     }
     _FRAME_DEFAULT_STYLE = PackerModeWidget.FRAME_DEFAULT_STYLE
 
@@ -1018,7 +1018,8 @@ class MainWindow(QMainWindow):
         Args:
             color (str): Key color: "green", "red", or "orange".
         """
-        hex_color = self._FLASH_COLORS.get(color, color)
+        role = self._FLASH_COLORS.get(color, color)
+        hex_color = getattr(current_tokens(), role, role)
         self.packer_mode_widget.table_frame.setStyleSheet(
             f"QFrame#TableFrame {{ border: 2px solid {hex_color}; border-radius: 3px; }}"
         )
@@ -1046,7 +1047,7 @@ class MainWindow(QMainWindow):
         # Check if client is selected
         if not self.current_client_id:
             logger.warning("Attempted to start session without selecting client")
-            self.client_combo.setStyleSheet("border: 2px solid red;")
+            self.client_combo.setStyleSheet(f"border: 2px solid {current_tokens().status_danger};")
             QMessageBox.warning(
                 self,
                 "No Client Selected",
@@ -1926,17 +1927,17 @@ class MainWindow(QMainWindow):
                 self.update_order_status(order_number_from_scan, "In Progress")
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
-                self.packer_mode_widget.show_notification(f"ORDER {text} ALREADY COMPLETED", "#b06020")
+                self.packer_mode_widget.show_notification(f"ORDER {text} ALREADY COMPLETED", "status_warning")
                 self.flash_border("orange")
             else:
-                self.packer_mode_widget.show_notification("ORDER NOT FOUND", "#c0392b")
+                self.packer_mode_widget.show_notification("ORDER NOT FOUND", "status_danger")
                 self.flash_border("red")
                 _beep(400, 350)
         else:
             result, status = self.logic.process_sku_scan(text)
             if status == "SKU_OK":
                 self.packer_mode_widget.update_item_row(result["row"], result["packed"], result["is_complete"])
-                self.packer_mode_widget.show_notification("ITEM OK", "#43a047")
+                self.packer_mode_widget.show_notification("ITEM OK", "status_success")
                 self.flash_border("green")
                 _beep(1200, 80)
             elif status == "SKU_NOT_FOUND":
@@ -1946,18 +1947,18 @@ class MainWindow(QMainWindow):
                 else:
                     detail = f"Unknown: {text}"
                 self.packer_mode_widget.show_notification(
-                    f"INCORRECT ITEM!\n{detail}", "#c0392b"
+                    f"INCORRECT ITEM!\n{detail}", "status_danger"
                 )
                 self.flash_border("red")
                 _beep(400, 350)
             elif status == "SKU_EXTRA":
-                self.packer_mode_widget.show_notification("EXTRA ITEM!", "#b06020")
+                self.packer_mode_widget.show_notification("EXTRA ITEM!", "status_warning")
                 self.flash_border("orange")
                 _beep(700, 200)
                 self.packer_mode_widget.show_extras_panel(self.logic.current_extra_items)
             elif status == "ORDER_COMPLETE_WITH_EXTRAS":
                 self.packer_mode_widget.update_item_row(result["row"], result["packed"], result["is_complete"])
-                self.packer_mode_widget.show_notification("REVIEW EXTRA ITEMS!", "#e67e22")
+                self.packer_mode_widget.show_notification("REVIEW EXTRA ITEMS!", "status_warning")
                 self.flash_border("orange")
                 self.packer_mode_widget.show_extras_panel(self.logic.current_extra_items)
             elif status == "ORDER_COMPLETE":
@@ -2004,7 +2005,7 @@ class MainWindow(QMainWindow):
 
     def _handle_order_completion(self, order_number: str):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
-        self.packer_mode_widget.show_notification(f"ORDER {order_number} COMPLETE!", "#43a047")
+        self.packer_mode_widget.show_notification(f"ORDER {order_number} COMPLETE!", "status_success")
         self.flash_border("green")
         _beep(1200, 80)
         QTimer.singleShot(180, lambda: _beep(1200, 80))
@@ -2034,7 +2035,7 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.update_item_row(row, result["packed"], False)
             self.flash_border("orange")
         elif status == "ITEM_ALREADY_ZERO":
-            self.packer_mode_widget.show_notification("Already at 0!", "#b06020")
+            self.packer_mode_widget.show_notification("Already at 0!", "status_warning")
         self.packer_mode_widget.set_focus_to_scanner()
 
     def _on_force_confirm(self, row: int):
@@ -2052,7 +2053,7 @@ class MainWindow(QMainWindow):
             elif self.logic.current_extra_items:
                 # All items packed but extra items need resolution before completing
                 self.flash_border("orange")
-                self.packer_mode_widget.show_notification("REVIEW EXTRA ITEMS!", "#e67e22")
+                self.packer_mode_widget.show_notification("REVIEW EXTRA ITEMS!", "status_warning")
                 self.packer_mode_widget.show_extras_panel(self.logic.current_extra_items)
             else:
                 self.flash_border("green")
@@ -2101,7 +2102,7 @@ class MainWindow(QMainWindow):
                         self.logic._normalize_sku(k): v for k, v in existing.items()
                     }
                     logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
-                self.packer_mode_widget.show_notification(f"Mapped: {barcode} → {sku}", "#43a047")
+                self.packer_mode_widget.show_notification(f"Mapped: {barcode} → {sku}", "status_success")
             else:
                 QMessageBox.warning(self, "Save Failed", "Could not save mapping to file server.")
         except Exception as e:
@@ -2122,7 +2123,7 @@ class MainWindow(QMainWindow):
             self.logic.clear_current_order()
         elif status == "EXTRA_CLEARED":
             self.packer_mode_widget.show_notification(
-                "Extra cleared — continue scanning", "#43a047"
+                "Extra cleared — continue scanning", "status_success"
             )
         self.packer_mode_widget.set_focus_to_scanner()
 
@@ -2138,7 +2139,7 @@ class MainWindow(QMainWindow):
             self.logic.clear_current_order()
         elif status == "EXTRA_CLEARED":
             self.packer_mode_widget.show_notification(
-                "Extra cleared — continue scanning", "#43a047"
+                "Extra cleared — continue scanning", "status_success"
             )
         self.packer_mode_widget.set_focus_to_scanner()
 
@@ -2197,7 +2198,7 @@ class MainWindow(QMainWindow):
         # Check if client is selected
         if not self.current_client_id:
             logger.warning("Attempted to open Shopify session without selecting client")
-            self.client_combo.setStyleSheet("border: 2px solid red;")
+            self.client_combo.setStyleSheet(f"border: 2px solid {current_tokens().status_danger};")
             QMessageBox.warning(
                 self,
                 "No Client Selected",
