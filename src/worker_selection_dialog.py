@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from theme import current_tokens
 from worker_manager import WorkerManager, WorkerProfile
 
 logger = logging.getLogger(__name__)
@@ -44,21 +45,22 @@ class WorkerCard(QFrame):
         self.setLineWidth(2)
         self.setCursor(Qt.PointingHandCursor)
 
-        self.setStyleSheet("""
-            WorkerCard {
-                background-color: #000000;
-                border: 1px solid #ffffff;
+        theme = current_tokens()
+        self.setStyleSheet(f"""
+            WorkerCard {{
+                background-color: {theme.surface_raised};
+                border: 1px solid {theme.text};
                 border-radius: 6px;
                 padding: 12px;
-            }
-            WorkerCard:hover {
-                background-color: #1a3a5c;
-                border: 1px solid #5a9fd4;
-            }
-            WorkerCard:hover QLabel {
-                color: #ffffff;
+            }}
+            WorkerCard:hover {{
+                background-color: {theme.selection_bg};
+                border: 1px solid {theme.selection_border};
+            }}
+            WorkerCard:hover QLabel {{
+                color: {theme.text};
                 background-color: transparent;
-            }
+            }}
         """)
 
         layout = QVBoxLayout(self)
@@ -74,7 +76,7 @@ class WorkerCard(QFrame):
         # Stats
         stats_text = self._format_stats()
         stats_label = QLabel(stats_text)
-        stats_label.setStyleSheet("color: #888888;")
+        stats_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(stats_label)
 
         # Last active
@@ -84,7 +86,7 @@ class WorkerCard(QFrame):
             if last_active:
                 time_str = self._format_time_ago(last_active)
                 active_label = QLabel(f"Last active: {time_str}")
-                active_label.setStyleSheet("color: #666666; font-size: 10pt;")
+                active_label.setStyleSheet(f"color: {theme.text_disabled}; font-size: 10pt;")
                 layout.addWidget(active_label)
 
     def _format_stats(self) -> str:
@@ -173,7 +175,7 @@ class WorkerSelectionDialog(QDialog):
 
         # Subtitle
         subtitle = QLabel("Choose your worker profile to continue")
-        subtitle.setStyleSheet("color: #888; margin-bottom: 20px;")
+        subtitle.setStyleSheet(f"color: {current_tokens().text_secondary}; margin-bottom: 20px;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
@@ -227,7 +229,7 @@ class WorkerSelectionDialog(QDialog):
             if not workers:
                 # Show message if no workers
                 msg = QLabel("No workers found. Create your first worker profile below.")
-                msg.setStyleSheet("color: #888; padding: 20px;")
+                msg.setStyleSheet(f"color: {current_tokens().text_secondary}; padding: 20px;")
                 msg.setAlignment(Qt.AlignCenter)
                 self.cards_layout.addWidget(msg)
                 return

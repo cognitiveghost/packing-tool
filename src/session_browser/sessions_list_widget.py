@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from shared.metadata_utils import parse_timestamp
 from shared.theme import StatusDot
+from theme import current_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +44,18 @@ logger = logging.getLogger(__name__)
 #  Status display configuration                                         #
 # ------------------------------------------------------------------ #
 
+# The stale/paused and abandoned/incomplete pairs render identically until
+# 8.9's StatusChip work adds a distinguishing _bg tint -- 8.3 only removes
+# the literals. Still better than today's #E74C3C vs #C0392B, which a
+# supervisor could not tell apart either.
 STATUS_CONFIG = {
-    "not_started":  {"label": "Not Started",  "color": "#4A90D9"},
-    "in_progress":  {"label": "Active",        "color": "#27AE60"},
-    "stale":        {"label": "Stale",         "color": "#E67E22"},
-    "paused":       {"label": "Paused",        "color": "#F1C40F"},
-    "completed":    {"label": "Completed",     "color": "#2ECC71"},
-    "incomplete":   {"label": "Incomplete",    "color": "#E74C3C"},
-    "abandoned":    {"label": "Abandoned",     "color": "#C0392B"},
+    "not_started": {"label": "Not Started", "role": "text_secondary"},
+    "in_progress": {"label": "Active",      "role": "status_info"},
+    "paused":      {"label": "Paused",      "role": "status_warning"},
+    "stale":       {"label": "Stale",       "role": "status_warning"},
+    "completed":   {"label": "Completed",   "role": "status_success"},
+    "incomplete":  {"label": "Incomplete",  "role": "status_danger"},
+    "abandoned":   {"label": "Abandoned",   "role": "status_danger"},
 }
 
 # Column indices
@@ -188,7 +193,7 @@ class SessionsListWidget(QWidget):
         # --- placeholder shown before client is selected ---
         self._placeholder = QLabel("← Select a client to view sessions")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._placeholder.setStyleSheet("color: #888; font-size: 14px;")
+        self._placeholder.setStyleSheet(f"color: {current_tokens().text_secondary};")
         root.addWidget(self._placeholder)
 
         # --- main container (hidden until client selected) ---
@@ -201,7 +206,7 @@ class SessionsListWidget(QWidget):
 
         # Header: client name + quick stats
         self._header_label = QLabel()
-        self._header_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self._header_label.setStyleSheet("font-weight: bold;")
         main_layout.addWidget(self._header_label)
 
         # Filter bar
@@ -243,7 +248,7 @@ class SessionsListWidget(QWidget):
 
         # Progress / status bar for refresh
         self._status_bar = QLabel("")
-        self._status_bar.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
+        self._status_bar.setStyleSheet(f"color: {current_tokens().text_secondary}; font-style: italic;")
         main_layout.addWidget(self._status_bar)
 
         # Table
@@ -418,12 +423,12 @@ class SessionsListWidget(QWidget):
         return 0.0
 
     def _make_status_cell(self, status: str) -> QWidget:
-        cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title(), "color": "#888888"})
+        cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title(), "role": "text_secondary"})
         cell = QWidget()
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(8, 0, 4, 0)
         layout.setSpacing(6)
-        layout.addWidget(StatusDot(cfg["color"]))
+        layout.addWidget(StatusDot(getattr(current_tokens(), cfg["role"])))
         layout.addWidget(QLabel(cfg["label"]))
         layout.addStretch()
         return cell

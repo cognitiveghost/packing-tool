@@ -49,7 +49,7 @@ class ClientSelectorWidget(QWidget):
         layout.setSpacing(4)
 
         header = QLabel("Clients")
-        header.setStyleSheet("font-weight: bold; font-size: 13px;")
+        header.setStyleSheet("font-weight: bold;")
         layout.addWidget(header)
 
         sep = QFrame()
