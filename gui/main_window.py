@@ -16,17 +16,12 @@ except ImportError:
     def _beep(frequency: int, duration_ms: int) -> None:  # type: ignore[misc]
         pass
 
-# Add project root to Python path to find 'shared' module
-# This allows imports like 'from shared.stats_manager import StatsManager' to work
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 import logging
 from datetime import datetime
 
 import pandas as pd
 from openpyxl.styles import PatternFill
-from PySide6.QtCore import QSettings, QSize, Qt, QThread, QTimer
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -52,107 +47,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from exceptions import SessionLockedError, StaleLockError
-from packer_logic import PackerLogic
-from packer_mode_widget import PackerModeWidget
-from profile_manager import NetworkError, ProfileManager
-from session_browser.session_browser_widget import SessionBrowserWidget
-from session_history_manager import SessionHistoryManager
-from session_lock_manager import SessionLockManager
-from session_manager import SessionManager
-from session_registry_manager import SessionRegistryManager
-from session_selector import SessionSelectorDialog
+from gui.packer_mode_widget import PackerModeWidget
+from gui.session_browser.session_browser_widget import SessionBrowserWidget
+from gui.session_selector import SessionSelectorDialog
+from gui.sku_mapping_dialog import SKUMappingDialog
+from gui.theme import current_tokens, toggle_theme
+from gui.worker_selection_dialog import WorkerSelectionDialog
+from gui.workers import SessionEndWorker, SessionStartWorker
+from packing_tool.exceptions import SessionLockedError, StaleLockError
+from packing_tool.packer_logic import PackerLogic
+from packing_tool.profile_manager import NetworkError, ProfileManager
+from packing_tool.session_history_manager import SessionHistoryManager
+from packing_tool.session_lock_manager import SessionLockManager
+from packing_tool.session_manager import SessionManager
+from packing_tool.session_registry_manager import SessionRegistryManager
+from packing_tool.worker_manager import WorkerManager
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from sku_mapping_dialog import SKUMappingDialog
-from theme import current_tokens, load_saved_theme, toggle_theme
-from worker_manager import WorkerManager
-from worker_selection_dialog import WorkerSelectionDialog
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = "config.ini"
-
-
-class SessionStartWorker(QThread):
-    """
-    Background worker for the slow I/O steps when starting a session.
-
-    Performs PackerLogic construction (reads packer_config + packing_state from server)
-    and load_packing_list_json (reads + parses the packing list JSON) off the UI thread.
-
-    Lock acquisition and heartbeat setup remain on the main thread because stale-lock
-    handling requires a QMessageBox interaction.
-
-    Usage (blocking-with-progress pattern):
-        worker = SessionStartWorker(client_id, profile_manager, work_dir, packing_list_path)
-        worker.start()
-        while not worker.wait(50):
-            QApplication.processEvents()
-        if worker.error:
-            raise worker.error
-        self.logic = worker.logic
-    """
-
-    def __init__(self, client_id, profile_manager, work_dir, packing_list_path, parent=None):
-        super().__init__(parent)
-        self._client_id = client_id
-        self._profile_manager = profile_manager
-        self._work_dir = work_dir
-        self._packing_list_path = packing_list_path
-        # Results (read by main thread after wait())
-        self.logic = None
-        self.order_count = 0
-        self.list_name = ""
-        self.error = None  # Exception instance if failed
-
-    def run(self) -> None:
-        try:
-            from packer_logic import PackerLogic
-            logic = PackerLogic(
-                client_id=self._client_id,
-                profile_manager=self._profile_manager,
-                work_dir=str(self._work_dir),
-            )
-            order_count, list_name = logic.load_packing_list_json(str(self._packing_list_path))
-            # Move Qt object ownership back to the main thread
-            logic.moveToThread(QApplication.instance().thread())
-            self.logic = logic
-            self.order_count = order_count
-            self.list_name = list_name
-        except Exception as exc:
-            self.error = exc
-
-
-class SessionEndWorker(QThread):
-    """
-    Background worker for the slow server-write operations at session end.
-
-    Accepts a single callable (write_fn) that captures all necessary context
-    via closure, keeping this class generic and the caller readable.
-
-    Usage (blocking-with-progress pattern):
-        worker = SessionEndWorker(lambda: _do_all_slow_writes())
-        worker.start()
-        while not worker.wait(50):
-            QApplication.processEvents()
-        if worker.error:
-            logger.error(...)
-        # Proceed with lock release / UI reset
-    """
-
-    def __init__(self, write_fn, parent=None):
-        super().__init__(parent)
-        self._write_fn = write_fn
-        self.error = None
-
-    def run(self) -> None:
-        try:
-            self._write_fn()
-        except Exception as exc:
-            logger.exception("SessionEndWorker: unexpected error")
-            self.error = exc
 
 
 class MainWindow(QMainWindow):
@@ -2752,29 +2668,3 @@ class MainWindow(QMainWindow):
         else:
             logger.info("User cancelled force-release of stale lock")
             self.status_label.setText("Session opening cancelled.")
-
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Packer's Assistant")
-    parser.add_argument(
-        '--config',
-        default=DEFAULT_CONFIG_PATH,
-        metavar='PATH',
-        help=f'Path to config file (default: {DEFAULT_CONFIG_PATH}). '
-             'Use config.dev.ini for local development / mock server.'
-    )
-    args = parser.parse_args()
-
-    app = QApplication(sys.argv)
-
-    # Load saved theme (dark by default)
-    load_saved_theme(app)
-
-    window = MainWindow(config_path=args.config)
-
-    window.show()
-    sys.exit(app.exec())

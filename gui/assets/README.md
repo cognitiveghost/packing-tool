@@ -1,0 +1,21 @@
+# Bundled UI assets
+
+Static assets for the live GUI, loaded by `gui/icons.py` and `gui/fonts.py`.
+
+## icons/ — Lucide 1.31.0 (ISC, see LICENSE)
+
+Source: https://github.com/lucide-icons/lucide/tree/1.31.0/icons
+
+Only the glyphs the app actually uses are vendored. To add one, download it from
+the pinned tag above into this directory; `tests/test_assets.py` will pick it up.
+
+Pin the tag. Lucide renames glyphs between releases — `filter` became `funnel`
+in 2025 and `filter.svg` now 404s on `main`.
+
+## fonts/ — Inter 4.1 (SIL OFL 1.1, see OFL.txt)
+
+Source: https://github.com/rsms/inter/releases/tag/v4.1, from `extras/ttf/`.
+
+Regular and Bold only: `shared/theme.py`'s type scale expresses no other
+weight, and no italic. The variable `InterVariable.ttf` is deliberately not
+used.

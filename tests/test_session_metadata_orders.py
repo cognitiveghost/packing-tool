@@ -1,6 +1,6 @@
 import json
 
-from session_manager import SessionManager
+from packing_tool.session_manager import SessionManager
 
 
 def _mgr():
@@ -90,7 +90,7 @@ def test_write_happens_inside_the_sidecar_lock(tmp_path, monkeypatch):
     that the lock is taken and that the write happens inside it."""
     import contextlib
 
-    import session_manager as sm
+    import packing_tool.session_manager as sm
 
     events = []
     real_locked_file = sm.locked_file
@@ -125,7 +125,7 @@ def test_lock_guards_the_read_too_not_just_the_write(tmp_path, monkeypatch):
     read the same snapshot first. Pin that the read is inside the lock."""
     import contextlib
 
-    import session_manager as sm
+    import packing_tool.session_manager as sm
 
     events = []
     real_locked_file = sm.locked_file

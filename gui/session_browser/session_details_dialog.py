@@ -14,8 +14,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from json_cache import get_cached_json
-from packer_logic import compute_order_timing_metrics
+from packing_tool.json_cache import get_cached_json
+from packing_tool.packer_logic import compute_order_timing_metrics
 
 from .metrics_tab import MetricsTab
 from .orders_tab import OrdersTab

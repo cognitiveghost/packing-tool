@@ -1,15 +1,24 @@
 """Theme manager for Packing Tool — thin wrapper over shared.theme.
 
 Kept as its own module (rather than importing shared.theme directly at
-every call site) so packing-tool/src/main.py's existing
-`from theme import load_saved_theme, toggle_theme` keeps working unchanged.
+every call site) so packing-tool/main.py's existing
+`from gui.theme import load_saved_theme, toggle_theme` keeps working unchanged.
 """
+from dataclasses import replace
+from functools import lru_cache
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from shared.theme import THEME_DARK, THEME_LIGHT, ThemeTokens, get_theme
-from shared.theme import apply_theme as _apply_theme
+from gui.fonts import load_bundled_fonts
+from shared.theme import (
+    THEME_DARK,
+    THEME_LIGHT,
+    ThemeTokens,
+    build_palette,
+    build_stylesheet,
+    get_theme,
+)
 
 __all__ = [
     "THEME_DARK", "THEME_LIGHT", "apply_theme", "current_tokens",
@@ -23,11 +32,34 @@ __all__ = [
 _current: str | None = None
 
 
+def _tokens(theme_name: str) -> ThemeTokens:
+    """shared.theme's tokens with the bundled family layered on, when available.
+
+    Memoized because current_tokens() runs twice per table row on the scan
+    path and replace() re-runs __init__ over all 50 fields every call.
+
+    Only the success path is memoized: load_bundled_fonts() returns None
+    before a QApplication exists, and caching that would leave the app on the
+    fallback font for the rest of the process over one early call.
+    """
+    family = load_bundled_fonts()
+    if family is None:          # no QApplication yet, or the TTF is missing
+        return get_theme(theme_name)
+    return _tokens_with_font(theme_name, family)
+
+
+@lru_cache(maxsize=2)
+def _tokens_with_font(theme_name: str, family: str) -> ThemeTokens:
+    theme = get_theme(theme_name)
+    return replace(theme, font_family=f"'{family}', {theme.font_family}")
+
+
 def apply_theme(app: QApplication, theme: str = THEME_DARK) -> None:
     global _current
-    _apply_theme(app, theme)
-    settings = QSettings("PackingTool", "Theme")
-    settings.setValue("current_theme", theme)
+    tokens = _tokens(theme)
+    app.setStyleSheet(build_stylesheet(tokens))
+    app.setPalette(build_palette(tokens))
+    QSettings("PackingTool", "Theme").setValue("current_theme", theme)
     _current = theme
 
 
@@ -58,6 +90,6 @@ def current_tokens() -> ThemeTokens:
     if _current is None:
         # Nothing applied yet (a dialog constructed before load_saved_theme,
         # or a test importing the module standalone).
-        return get_theme(QSettings("PackingTool", "Theme")
-                         .value("current_theme", THEME_DARK))
-    return get_theme(_current)
+        return _tokens(QSettings("PackingTool", "Theme")
+                       .value("current_theme", THEME_DARK))
+    return _tokens(_current)

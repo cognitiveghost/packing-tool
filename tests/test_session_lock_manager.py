@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from session_lock_manager import SessionLockManager
+from packing_tool.session_lock_manager import SessionLockManager
 
 
 @pytest.fixture

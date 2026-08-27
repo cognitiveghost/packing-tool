@@ -34,9 +34,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.theme import current_tokens
 from shared.metadata_utils import parse_timestamp
 from shared.theme import StatusDot
-from theme import current_tokens
 
 logger = logging.getLogger(__name__)
 

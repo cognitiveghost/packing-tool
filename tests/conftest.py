@@ -14,20 +14,14 @@ import configparser
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT))
 
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from packer_logic import PackerLogic
-from profile_manager import ProfileManager
+from packing_tool.packer_logic import PackerLogic
+from packing_tool.profile_manager import ProfileManager
 
 
 @pytest.fixture(scope="session", autouse=True)

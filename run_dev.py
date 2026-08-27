@@ -37,7 +37,7 @@ AutoRefreshInterval = 0
 
 if __name__ == "__main__":
     result = subprocess.run(
-        [sys.executable, str(ROOT / "src" / "main.py"), "--config", str(CONFIG_DEV)],
+        [sys.executable, str(ROOT / "main.py"), "--config", str(CONFIG_DEV)],
         check=False,
     )
     sys.exit(result.returncode)

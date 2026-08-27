@@ -11,7 +11,7 @@ Windows-only in production; development happens on Linux. Version per `README.md
 
 ```bash
 # Run application (production, uses config.ini)
-python src/main.py
+python main.py
 
 # Run against a local dev server — requires shopify-fulfillment-tool's
 # run_dev.py to have been run first to create ../shopify-fulfillment-tool/dev-server

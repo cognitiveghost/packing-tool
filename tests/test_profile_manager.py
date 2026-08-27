@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from profile_manager import ProfileManager, ValidationError
+from packing_tool.profile_manager import ProfileManager, ValidationError
 
 # ---------------------------------------------------------------------------
 # validate_client_id

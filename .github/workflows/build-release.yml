@@ -11,6 +11,7 @@ on:
       - main
       - master
       - develop
+  workflow_dispatch:
 
 jobs:
   sanity-check:
@@ -37,12 +38,9 @@ jobs:
 
       - name: Compile all sources
         shell: bash
-        run: python -m py_compile src/*.py src/session_browser/*.py shared/*.py
+        run: python -m py_compile gui/*.py gui/session_browser/*.py packing_tool/*.py shared/*.py main.py
 
       - name: Import main module
-        working-directory: src
-        env:
-          PYTHONPATH: ${{ github.workspace }}
         run: python -c "import main"
 
       - name: Run tests
@@ -52,7 +50,7 @@ jobs:
     name: Build Windows Executable
     runs-on: windows-latest
     needs: sanity-check
-    if: github.event_name == 'release'
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Check out repository code
@@ -71,11 +69,38 @@ jobs:
       - name: Build executable with PyInstaller
         run: pyinstaller main.spec
 
+      - name: Verify bundled assets shipped
+        # A missing gui/assets does not degrade: icon() raises during
+        # MainWindow construction, and --windowed means the user double-clicks
+        # an exe that silently never opens.
+        shell: pwsh
+        run: |
+          foreach ($name in "package.svg", "Inter-Regular.ttf") {
+            if (-not (Get-ChildItem -Path "dist\Packers-Assistant" -Recurse -Filter $name)) {
+              throw "PyInstaller did not bundle $name -- the app would not start."
+            }
+          }
+
+      - name: Zip artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\Packers-Assistant\*" -DestinationPath "Packers-Assistant-v${{ github.ref_name }}.zip"
+
+      # Without this a workflow_dispatch run builds the zip and throws it
+      # away, so nobody can download the bundle to check it actually launches
+      # -- which is the reason the dispatch trigger exists.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packers-Assistant-${{ github.ref_name }}
+          path: Packers-Assistant-v${{ github.ref_name }}.zip
+
       - name: Upload Release Asset
+        if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/Packers-Assistant.exe
-          asset_name: Packers-Assistant-v${{ github.ref_name }}.exe
+          file: Packers-Assistant-v${{ github.ref_name }}.zip
+          asset_name: Packers-Assistant-v${{ github.ref_name }}.zip
           tag: ${{ github.event.release.tag_name }}
           overwrite: true

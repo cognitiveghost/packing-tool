@@ -12,7 +12,7 @@ from shared.style_lint import find_style_literals
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # shared/ ships widget code too (server_connection.ConnectionSettingsDialog).
 # shared/theme.py is the one file where a colour literal belongs.
-SCOPE = [REPO_ROOT / "src", REPO_ROOT / "shared"]
+SCOPE = [REPO_ROOT / "gui", REPO_ROOT / "packing_tool", REPO_ROOT / "shared"]
 EXCLUDE = {REPO_ROOT / "shared" / "theme.py"}
 
 

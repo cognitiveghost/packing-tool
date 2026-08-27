@@ -9,7 +9,7 @@ PackerLogic._do_atomic_write), not a stubbed writer.
 import copy
 import json
 
-from json_cache import get_cached_json
+from packing_tool.json_cache import get_cached_json
 
 
 def _read_state_file(work_dir):

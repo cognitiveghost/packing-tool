@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from theme import current_tokens
+from gui.theme import current_tokens
 
 logger = logging.getLogger(__name__)
 

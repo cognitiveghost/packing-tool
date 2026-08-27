@@ -14,7 +14,7 @@ Performance Benefits:
 - Repeated state file reads: Instant from cache
 
 Usage Example:
-    from json_cache import get_cached_json, invalidate_json_cache
+    from packing_tool.json_cache import get_cached_json, invalidate_json_cache
 
     # Reading with cache
     data = get_cached_json('/path/to/file.json', default={})

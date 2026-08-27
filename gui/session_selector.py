@@ -34,10 +34,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from json_cache import get_cached_json
-from session_registry_manager import SessionRegistryManager
+from gui.theme import current_tokens
+from packing_tool.json_cache import get_cached_json
+from packing_tool.session_registry_manager import SessionRegistryManager
 from shared.metadata_utils import parse_timestamp
-from theme import current_tokens
 
 logger = logging.getLogger(__name__)
 

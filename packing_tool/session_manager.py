@@ -27,7 +27,11 @@ import logging
 import os  # For environment variables (PC name)
 from pathlib import Path  # Modern path handling
 
-from exceptions import SessionAlreadyActiveError, SessionLockedError, StaleLockError
+from packing_tool.exceptions import (
+    SessionAlreadyActiveError,
+    SessionLockedError,
+    StaleLockError,
+)
 from shared.atomic_write import atomic_write_json
 from shared.file_lock import locked_file
 from shared.metadata_utils import get_current_timestamp

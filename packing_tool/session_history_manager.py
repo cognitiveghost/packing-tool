@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from json_cache import get_cached_json
+from packing_tool.json_cache import get_cached_json
 
 logger = logging.getLogger(__name__)
 

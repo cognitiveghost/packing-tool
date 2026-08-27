@@ -115,22 +115,24 @@ in QThread workers.
 
 | File | Responsibility |
 | ---- | -------------- |
-| `src/main.py` | Main window, session orchestration, background workers |
-| `src/packer_logic.py` | Order loading, barcode scan processing, state machine |
-| `src/packer_mode_widget.py` | Scanning UI widget (3-column layout) |
-| `src/session_manager.py` | Session lifecycle, directory creation |
-| `src/session_lock_manager.py` | File-based locking with heartbeat |
-| `src/session_history_manager.py` | Historical session queries |
-| `src/async_state_writer.py` | Write-behind queue for packing_state.json |
-| `src/profile_manager.py` | Client profiles, SKU mappings, file server I/O |
-| `src/session_browser/` | Session Browser widget and tab implementations |
-| `src/session_selector.py` | Dialog for selecting an available Shopify session |
-| `src/sku_mapping_dialog.py` | Barcode-to-SKU mapping editor |
-| `src/worker_selection_dialog.py` | Worker selection at startup |
-| `src/json_cache.py` | JSON file caching layer |
-| `src/theme.py` | Dark/light theme switching |
+| `main.py` | Entry point (argument parsing, QApplication startup) |
+| `gui/main_window.py` | Main window, session orchestration |
+| `gui/workers.py` | Background QThread workers for session start/end |
+| `packing_tool/packer_logic.py` | Order loading, barcode scan processing, state machine |
+| `gui/packer_mode_widget.py` | Scanning UI widget (3-column layout) |
+| `packing_tool/session_manager.py` | Session lifecycle, directory creation |
+| `packing_tool/session_lock_manager.py` | File-based locking with heartbeat |
+| `packing_tool/session_history_manager.py` | Historical session queries |
+| `packing_tool/async_state_writer.py` | Write-behind queue for packing_state.json |
+| `packing_tool/profile_manager.py` | Client profiles, SKU mappings, file server I/O |
+| `gui/session_browser/` | Session Browser widget and tab implementations |
+| `gui/session_selector.py` | Dialog for selecting an available Shopify session |
+| `gui/sku_mapping_dialog.py` | Barcode-to-SKU mapping editor |
+| `gui/worker_selection_dialog.py` | Worker selection at startup |
+| `packing_tool/json_cache.py` | JSON file caching layer |
+| `gui/theme.py` | Dark/light theme switching |
+| `packing_tool/worker_manager.py` | Worker profile management |
 | `shared/stats_manager.py` | Unified statistics (shared with Shopify Tool) |
-| `shared/worker_manager.py` | Worker profile management |
 
 ### State Persistence
 
@@ -172,7 +174,7 @@ pip install -r requirements.txt
 ### Running
 
 ```bash
-python src/main.py --config config.dev.ini
+python main.py --config config.dev.ini
 ```
 
 ### Testing
