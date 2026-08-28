@@ -278,6 +278,14 @@ _MIN_CONTRAST_ON_PLANES = {
 
 _STATUS_ROLES = ("info", "success", "warning", "danger")
 
+# Foregrounds that can land on a selected row. Selection is selection_bg with
+# a selection_border ring, so the selected row is a fifth plane -- it is just
+# not a `surface_*` one, which is exactly why it escaped _SURFACE_PLANES.
+_SELECTION_FOREGROUNDS = (
+    "text", "text_secondary",
+    "status_info", "status_success", "status_warning", "status_danger",
+)
+
 
 def validate_theme(theme: ThemeTokens) -> None:
     """Raise ValueError if a theme violates the design-system contract.
@@ -309,6 +317,21 @@ def validate_theme(theme: ThemeTokens) -> None:
                 f"{getattr(theme, canonical)!r}"
             )
 
+    for token in _SELECTION_FOREGROUNDS:
+        ratio = contrast_ratio(getattr(theme, token), theme.selection_bg)
+        if ratio < 4.5:
+            raise ValueError(
+                f"{theme.name}.{token} has {ratio:.2f}:1 contrast against "
+                f"selection_bg, below the 4.5:1 minimum"
+            )
+
+    ring = contrast_ratio(theme.selection_border, theme.selection_bg)
+    if ring < 3.0:
+        raise ValueError(
+            f"{theme.name}.selection_border has {ring:.2f}:1 contrast against "
+            f"selection_bg, below the 3.0:1 minimum"
+        )
+
     for token, floor in _MIN_CONTRAST_ON_PLANES.items():
         value = getattr(theme, token)
         for plane in _SURFACE_PLANES:
@@ -335,13 +358,6 @@ def validate_theme(theme: ThemeTokens) -> None:
                 f"{theme.name}.on_accent has {ratio:.2f}:1 contrast against "
                 f"{fill}, below the 4.5:1 minimum"
             )
-
-    selected_text = contrast_ratio(theme.text, theme.selection_bg)
-    if selected_text < 4.5:
-        raise ValueError(
-            f"{theme.name}.text has {selected_text:.2f}:1 contrast against "
-            f"selection_bg, below the 4.5:1 minimum"
-        )
 
 
 def _relative_luminance(hex_color: str) -> float:

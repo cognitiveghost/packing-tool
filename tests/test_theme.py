@@ -280,3 +280,31 @@ def test_current_tokens_returns_the_applied_theme(qapp):
     assert current_tokens().name == THEME_LIGHT
     apply_theme(qapp, THEME_DARK)
     assert current_tokens().name == THEME_DARK
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("token", [
+    "text", "text_secondary",
+    "status_info", "status_success", "status_warning", "status_danger",
+])
+def test_foregrounds_clear_aa_on_the_selection_plane(theme, token):
+    """A selected row is a background like any other plane.
+
+    Nothing measured it while selection was accent_fill, which is how the
+    status dot shipped at 1.05:1 on a selected row (spec 2026-08-28 section 1).
+    """
+    ratio = contrast_ratio(getattr(theme, token), theme.selection_bg)
+    assert ratio >= 4.5, f"{theme.name}.{token} on selection_bg = {ratio:.2f}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_the_ring_reads_against_the_fill_it_encloses(theme):
+    # 3.0 is WCAG's non-text minimum. Measured 4.75 light / 4.80 dark.
+    ratio = contrast_ratio(theme.selection_border, theme.selection_bg)
+    assert ratio >= 3.0, f"{theme.name} ring on selection_bg = {ratio:.2f}"
+
+
+def test_validate_theme_rejects_a_foreground_that_fails_on_selection_bg():
+    broken = dataclasses.replace(DARK_THEME, status_info=DARK_THEME.selection_bg)
+    with pytest.raises(ValueError, match="selection_bg"):
+        validate_theme(broken)
