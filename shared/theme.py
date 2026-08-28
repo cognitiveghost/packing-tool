@@ -695,7 +695,17 @@ def build_stylesheet(theme: ThemeTokens) -> str:
             border: 1px solid {theme.border};
             border-radius: {r + 4}px;
         }}
-        QTableView::item:selected {{ background-color: {theme.accent_fill}; color: {theme.on_accent}; }}
+        QTableView::item {{
+            border-top: 2px solid transparent;
+            border-bottom: 2px solid transparent;
+        }}
+        QTableView::item:selected {{
+            background-color: {theme.selection_bg};
+            color: {theme.text};
+            border-top: 2px solid {theme.selection_border};
+            border-bottom: 2px solid {theme.selection_border};
+        }}
+        QTableView::item:selected:hover {{ background-color: {theme.selection_bg}; }}
         QTableView::item:hover {{ background-color: {theme.hover}; }}
         QHeaderView::section {{
             background-color: {theme.surface_raised};
@@ -714,7 +724,14 @@ def build_stylesheet(theme: ThemeTokens) -> str:
             border: 1px solid {theme.border};
             border-radius: {r + 4}px;
         }}
-        QListWidget::item:selected {{ background-color: {theme.accent_fill}; color: {theme.on_accent}; }}
+        QListWidget::item {{ border: 2px solid transparent; }}
+        QListWidget::item:selected {{
+            background-color: {theme.selection_bg};
+            color: {theme.text};
+            border: 2px solid {theme.selection_border};
+            border-radius: {r}px;
+        }}
+        QListWidget::item:selected:hover {{ background-color: {theme.selection_bg}; }}
         QListWidget::item:hover {{ background-color: {theme.hover}; }}
 
         QScrollBar:vertical {{ background-color: {theme.surface}; width: 12px; border: none; }}

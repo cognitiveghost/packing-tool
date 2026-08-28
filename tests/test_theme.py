@@ -9,6 +9,7 @@ from shared.theme import (
     DARK_THEME,
     LIGHT_THEME,
     ThemeTokens,
+    build_stylesheet,
     clamp_geometry,
     contrast_ratio,
     get_theme,
@@ -308,3 +309,51 @@ def test_validate_theme_rejects_a_foreground_that_fails_on_selection_bg():
     broken = dataclasses.replace(DARK_THEME, status_info=DARK_THEME.selection_bg)
     with pytest.raises(ValueError, match="selection_bg"):
         validate_theme(broken)
+
+
+def _rule(qss: str, selector: str) -> str:
+    """The declaration block for one selector, so a test asserts about the
+    rule it means rather than about the whole sheet."""
+    start = qss.index(selector + " {")
+    return qss[start:qss.index("}", start)]
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("selector", [
+    "QTableView::item:selected", "QListWidget::item:selected",
+])
+def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
+    rule = _rule(build_stylesheet(theme), selector)
+    assert theme.selection_bg in rule
+    assert theme.selection_border in rule
+    assert theme.accent_fill not in rule
+    assert theme.on_accent not in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("selector", ["QTableView::item", "QListWidget::item"])
+def test_unselected_items_reserve_the_ring_so_selecting_does_not_shift_text(
+    theme, selector
+):
+    # Same trick as QListWidget#settingsNav::item in shopify's theme_manager.
+    rule = _rule(build_stylesheet(theme), selector)
+    assert "2px solid transparent" in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_a_table_row_ring_is_top_and_bottom_only(theme):
+    """QSS styles cells, not rows: a four-sided border on ::item would draw a
+    box around every cell in the row. Top and bottom join across cell edges
+    into one band. A list item is one full-width cell, so it rings fully."""
+    rule = _rule(build_stylesheet(theme), "QTableView::item:selected")
+    assert "border-top" in rule and "border-bottom" in rule
+    assert "border:" not in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_hovering_a_selected_row_does_not_erase_the_selection(theme):
+    # ::item:hover follows ::item:selected at equal specificity, so without
+    # this rule the later one wins and hover blanks the selection.
+    qss = build_stylesheet(theme)
+    assert "QTableView::item:selected:hover" in qss
+    assert "QListWidget::item:selected:hover" in qss
