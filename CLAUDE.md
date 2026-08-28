@@ -40,8 +40,6 @@ this repo and `../shopify-fulfillment-tool`. **This copy is the canonical source
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - **Always run `graphify update .` right after modifying code** — a stale graph gives wrong answers about `shared/` ownership silently, with no error. Since this repo is the canonical source for `shared/`, a stale graph here is also what feeds wrong assumptions on the shopify-fulfillment-tool side.
 
 ---
@@ -57,7 +55,5 @@ Rules:
 
 ## Tooling
 
-- **Ponytail is active by default** — climb the ladder before writing code; don't ask permission to apply it.
-- **Use `superpowers` skills** (brainstorming, systematic-debugging, writing-plans, test-driven-development, etc.) for their matching task shape — e.g. systematic-debugging before proposing a bug fix, brainstorming before new features.
 - **Use the `context7` MCP server** for PySide6/pytest/pandas API questions instead of answering from memory.
 - **Use the `github` MCP server** for PR/issue/branch operations on this repo instead of shelling out to `gh` when a tool covers it.
