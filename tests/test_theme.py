@@ -9,6 +9,7 @@ from shared.theme import (
     DARK_THEME,
     LIGHT_THEME,
     ThemeTokens,
+    StatusChip,
     build_stylesheet,
     clamp_geometry,
     contrast_ratio,
@@ -357,3 +358,22 @@ def test_hovering_a_selected_row_does_not_erase_the_selection(theme):
     qss = build_stylesheet(theme)
     assert "QTableView::item:selected:hover" in qss
     assert "QListWidget::item:selected:hover" in qss
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("role", [
+    "status_info", "status_success", "status_warning", "status_danger",
+    "text_secondary",
+])
+def test_a_chip_has_an_edge_so_its_tint_never_has_to_carry_the_shape(
+    qapp, theme, role
+):
+    """The tint cannot be trusted against an arbitrary background.
+
+    status_info_bg vs selection_bg measures 1.00 in dark -- identical. And
+    text_secondary has no _bg partner at all, so it falls back to
+    surface_sunken at 1.05 against surface. One outline in the role's own
+    foreground covers both, and the foreground is validated on every plane.
+    """
+    chip = StatusChip(role, "Active", theme)
+    assert f"border: 1px solid {getattr(theme, role)}" in chip.styleSheet()

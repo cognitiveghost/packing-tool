@@ -442,10 +442,14 @@ CHIP_VARIANTS = ("chip", "edge")
 class StatusChip(QLabel):
     """A read-only status badge: a role name, a label, and the live tokens.
 
-    Two variants. `chip` is a pill filled with the role's own tint --
-    validate_theme already proves every status_* against its status_*_bg at
-    4.5:1, so the chip's contrast is guaranteed by the existing gate. `edge`
-    is a row/lane marker: a coloured left border on a transparent ground.
+    Two variants. `chip` is a pill filled with the role's own tint and
+    outlined in the role's own foreground. The fill alone cannot be trusted
+    to carry the pill's shape: status_info_bg is identical to selection_bg in
+    dark, and a role with no `<role>_bg` partner (text_secondary, for the
+    "Not Started" row) falls back to surface_sunken at 1.05:1 on surface.
+    The outline is validated everywhere the fill is not -- validate_theme
+    proves every status_* on all four planes and on selection_bg. `edge` is a
+    row/lane marker: a coloured left border on a transparent ground.
 
     A role with no `<role>_bg` partner (text_secondary, for the "Not Started"
     row) falls back to surface_sunken. That is the one place a missing token
@@ -484,7 +488,8 @@ class StatusChip(QLabel):
         tint = getattr(theme, f"{role}_bg", theme.surface_sunken)
         self.setStyleSheet(
             f"background-color: {tint}; color: {fg}; "
-            f"border: none; border-radius: {theme.radius}px; padding: 2px 8px;"
+            f"border: 1px solid {fg}; border-radius: {theme.radius}px; "
+            f"padding: 2px 8px;"
         )
 
 
