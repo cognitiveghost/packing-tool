@@ -50,7 +50,6 @@ from PySide6.QtWidgets import (
 from gui.icons import icon
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
-from gui.session_selector import SessionSelectorDialog
 from gui.sku_mapping_dialog import SKUMappingDialog
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
@@ -386,11 +385,6 @@ class MainWindow(QMainWindow):
         # Session menu
         session_menu = menubar.addMenu("&Session")
 
-        shopify_session_action = QAction("Open Shopify Session...", self)
-        shopify_session_action.setShortcut(QKeySequence("Ctrl+O"))
-        shopify_session_action.triggered.connect(self.open_shopify_session)
-        session_menu.addAction(shopify_session_action)
-
         browse_action = QAction("Session Browser...", self)
         browse_action.setShortcut(QKeySequence("Ctrl+B"))
         browse_action.triggered.connect(self.open_session_browser)
@@ -433,12 +427,6 @@ class MainWindow(QMainWindow):
         toolbar.setIconSize(QSize(24, 24))
 
         # Session start actions (primary blue — main entry points)
-        shopify_btn = QPushButton("Shopify Session")
-        shopify_btn.clicked.connect(self.open_shopify_session)
-        shopify_btn.setToolTip("Open a Shopify packing session")
-        shopify_btn.setProperty("primary", "true")
-        toolbar.addWidget(shopify_btn)
-
         browser_btn = QPushButton("Session Browser")
         browser_btn.clicked.connect(self.open_session_browser)
         browser_btn.setToolTip("Browse active, completed, and available sessions")
@@ -1032,7 +1020,7 @@ class MainWindow(QMainWindow):
 
         Args:
             file_path: Path to the Shopify session directory (contains analysis_data.json).
-                      Must be provided - no file dialog shown. Use SessionSelectorDialog
+                      Must be provided - no file dialog shown. Use the Session Browser
                       to let users choose a session.
             restore_dir: Optional directory of the session to restore (for crash recovery)
         """
@@ -2173,232 +2161,6 @@ class MainWindow(QMainWindow):
     # REMOVED: open_restore_session_dialog() method (dead code)
     # This method was never called. Functionality replaced by Session Browser's
     # Active/Completed tabs which provide a better UX for session restoration
-
-    def open_shopify_session(self):
-        """
-        Open Shopify session and select packing list to work on.
-
-        Phase 1.8 Enhanced workflow:
-        1. Use SessionSelectorDialog to browse Shopify sessions
-        2. Automatically scan packing_lists/ folder
-        3. User can select specific packing list or load entire session
-        4. Create work directory: packing/{list_name}/ for selected lists
-
-        If a client is already selected in the main menu, it will be
-        pre-selected in the dialog (no need to select twice).
-        """
-        logger.info("Opening Shopify session selector")
-
-        # Check if client is selected
-        if not self.current_client_id:
-            logger.warning("Attempted to open Shopify session without selecting client")
-            self.client_combo.setStyleSheet(f"border: 2px solid {current_tokens().status_danger};")
-            QMessageBox.warning(
-                self,
-                "No Client Selected",
-                "Please select a client before opening a Shopify session!"
-            )
-            QTimer.singleShot(2000, lambda: self.client_combo.setStyleSheet(""))
-            return
-
-        # Check if session already active
-        if self.session_manager and self.session_manager.is_active():
-            logger.warning("Attempted to open Shopify session while one is already active")
-            QMessageBox.warning(
-                self,
-                "Session Active",
-                "A session is already active. Please end it first."
-            )
-            return
-
-        # Step 1: Use SessionSelectorDialog to select session and packing list
-        # Pass pre-selected client from main menu to avoid double selection
-        selector_dialog = SessionSelectorDialog(
-            profile_manager=self.profile_manager,
-            pre_selected_client=self.current_client_id,
-            parent=self
-        )
-
-        if not selector_dialog.exec():
-            logger.info("Shopify session selection cancelled")
-            return
-
-        session_path = selector_dialog.get_selected_session()
-        packing_list_path = selector_dialog.get_selected_packing_list()
-
-        if not session_path:
-            logger.warning("No session selected")
-            return
-
-        logger.info(f"Selected Shopify session: {session_path}")
-
-        # Step 2: Determine loading mode
-        if packing_list_path:
-            # User selected a specific packing list
-            selected_name = packing_list_path.stem
-            logger.info(f"Selected packing list: {selected_name}")
-            load_mode = "packing_list"
-        else:
-            # User wants to load entire session (analysis_data.json)
-            logger.info("Loading entire session (analysis_data.json)")
-            selected_name = "full_session"
-            load_mode = "full_session"
-
-        # Step 3: Create work directory structure
-        try:
-            # Create SessionManager for this client (not initialized yet)
-            if not self.session_manager:
-                self.session_manager = SessionManager(
-                    client_id=self.current_client_id,
-                    profile_manager=self.profile_manager,
-                    lock_manager=self.lock_manager,
-                    worker_id=self.current_worker_id,
-                    worker_name=self.current_worker_name
-                )
-
-            # Determine packing list name and work directory
-            packing_list_name = selected_name if load_mode == "packing_list" else "full_session"
-            work_dir = self.session_manager.get_packing_work_dir(
-                session_path=str(session_path),
-                packing_list_name=packing_list_name
-            )
-
-            logger.info(f"Work directory created via SessionManager: {work_dir}")
-
-            # Handle based on mode
-            if load_mode == "packing_list":
-                # Use unified session start method for packing list mode
-                success = self.start_shopify_packing_session(
-                    packing_list_path=packing_list_path,
-                    work_dir=work_dir,
-                    session_path=session_path,
-                    client_id=self.current_client_id,
-                    packing_list_name=packing_list_name
-                )
-
-                if not success:
-                    # Error already shown by unified method
-                    return
-
-                # Get order count for success message
-                order_count = self.packing_data.get('total_orders', 0)
-
-                QMessageBox.information(
-                    self,
-                    "Session Loaded",
-                    f"Session: {session_path.name}\n"
-                    f"Packing List: {selected_name}\n"
-                    f"Orders: {order_count}\n\n"
-                    f"Work directory:\n{work_dir}"
-                )
-
-            else:
-                # Handle full_session mode (load entire session from analysis_data.json)
-                # This mode uses different loading logic and is kept separate
-                logger.info(f"Loading full session from: {session_path}")
-
-                # Store current session info
-                self.current_session_path = str(session_path)
-                self.current_packing_list = selected_name
-                self.current_work_dir = str(work_dir)
-
-                # Acquire lock (with stale lock handling)
-                success, error_msg = self._acquire_lock_with_stale_prompt(self.current_client_id, work_dir)
-                if not success:
-                    if error_msg:
-                        QMessageBox.warning(self, "Lock Failed", f"Failed to acquire lock: {error_msg}")
-                    return
-
-                logger.info(f"Lock acquired for work directory: {work_dir}")
-
-                # Create PackerLogic instance
-                self.logic = PackerLogic(
-                    client_id=self.current_client_id,
-                    profile_manager=self.profile_manager,
-                    work_dir=str(work_dir)
-                )
-
-                # Connect signals
-                self.logic.item_packed.connect(self._on_item_packed)
-                self.logic.all_orders_complete.connect(self._on_all_orders_complete)
-
-                # Start heartbeat timer
-                self._start_heartbeat_timer()
-
-                # Load entire session (analysis_data.json)
-                order_count, analyzed_at = self.logic.load_from_shopify_analysis(session_path)
-                logger.info(f"Loaded full session: {order_count} orders (analyzed at {analyzed_at})")
-
-                # Load analysis_data.json for UI display
-                try:
-                    analysis_file = session_path / "analysis" / "analysis_data.json"
-                    with open(analysis_file, 'r', encoding='utf-8') as f:
-                        self.packing_data = json.load(f)
-                except Exception as e:
-                    logger.warning(f"Could not load analysis data: {e}")
-                    self.packing_data = {
-                        'analyzed_at': analyzed_at,
-                        'total_orders': order_count,
-                        'orders': []
-                    }
-
-                # Update session metadata
-                if hasattr(self.session_manager, 'update_session_metadata'):
-                    try:
-                        self.session_manager.update_session_metadata(
-                            self.current_session_path,
-                            self.current_packing_list,
-                            'in_progress'
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not update session metadata: {e}")
-
-                # Setup order table
-                self.setup_order_table()
-
-                # Update UI with loaded data
-                self.status_label.setText(
-                    f"Loaded: {session_path.name} / {selected_name}\n"
-                    f"Orders: {order_count}\n"
-                    f"Ready to start packing"
-                )
-
-                # Enable packing UI
-                self.enable_packing_mode()
-
-                QMessageBox.information(
-                    self,
-                    "Session Loaded",
-                    f"Session: {session_path.name}\n"
-                    f"Mode: {selected_name}\n"
-                    f"Orders: {order_count}\n\n"
-                    f"Work directory:\n{work_dir}"
-                )
-
-        except Exception as e:
-            # Only handle exceptions from full_session mode
-            # (packing_list mode errors are handled by unified method)
-            logger.exception("Failed to load session")
-            self._cleanup_failed_session_start()
-
-            # Determine error message based on exception type
-            if isinstance(e, FileNotFoundError):
-                title = "File Not Found"
-                message = f"Session file not found:\n{e!s}"
-            elif isinstance(e, json.JSONDecodeError):
-                title = "Invalid JSON"
-                message = f"Session contains invalid JSON:\n{e!s}"
-            elif isinstance(e, (KeyError, ValueError)):
-                title = "Invalid Data"
-                message = f"Session data validation failed:\n{e!s}"
-            elif isinstance(e, RuntimeError):
-                title = "Session Load Failed"
-                message = f"Failed to load session:\n{e!s}"
-            else:
-                title = "Error"
-                message = f"Unexpected error loading session:\n{e!s}"
-
-            QMessageBox.critical(self, title, message)
 
     def enable_packing_mode(self):
         """
