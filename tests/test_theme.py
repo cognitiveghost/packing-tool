@@ -8,7 +8,9 @@ from shared.theme import (
     _SURFACE_PLANES,
     DARK_THEME,
     LIGHT_THEME,
+    StatusChip,
     ThemeTokens,
+    build_stylesheet,
     clamp_geometry,
     contrast_ratio,
     get_theme,
@@ -280,3 +282,111 @@ def test_current_tokens_returns_the_applied_theme(qapp):
     assert current_tokens().name == THEME_LIGHT
     apply_theme(qapp, THEME_DARK)
     assert current_tokens().name == THEME_DARK
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("token", [
+    "text", "text_secondary",
+    "status_info", "status_success", "status_warning", "status_danger",
+])
+def test_foregrounds_clear_aa_on_the_selection_plane(theme, token):
+    """A selected row is a background like any other plane.
+
+    Nothing measured it while selection was accent_fill, which is how the
+    status dot shipped at 1.05:1 on a selected row (spec 2026-08-28 section 1).
+    """
+    ratio = contrast_ratio(getattr(theme, token), theme.selection_bg)
+    assert ratio >= 4.5, f"{theme.name}.{token} on selection_bg = {ratio:.2f}"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("token", ["selection_border", "border"])
+def test_non_text_marks_read_against_the_fill_they_sit_on(theme, token):
+    """3.0 is WCAG's non-text minimum.
+
+    The ring measures 4.75 light / 4.80 dark. `border` is the progress track
+    PackingProgressDelegate draws on a row that can be selected, at 3.23 light
+    / 3.19 dark -- close enough to the floor that it needs a gate, not a
+    comment.
+    """
+    ratio = contrast_ratio(getattr(theme, token), theme.selection_bg)
+    assert ratio >= 3.0, f"{theme.name}.{token} on selection_bg = {ratio:.2f}"
+
+
+def test_validate_theme_rejects_a_foreground_that_fails_on_selection_bg():
+    broken = dataclasses.replace(DARK_THEME, status_info=DARK_THEME.selection_bg)
+    with pytest.raises(ValueError, match="selection_bg"):
+        validate_theme(broken)
+
+
+def test_validate_theme_rejects_a_track_that_vanishes_on_a_selected_row():
+    broken = dataclasses.replace(DARK_THEME, border=DARK_THEME.selection_bg)
+    with pytest.raises(ValueError, match="border.*selection_bg"):
+        validate_theme(broken)
+
+
+def _rule(qss: str, selector: str) -> str:
+    """The declaration block for one selector, so a test asserts about the
+    rule it means rather than about the whole sheet."""
+    start = qss.index(selector + " {")
+    return qss[start:qss.index("}", start)]
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("selector", [
+    "QTableView::item:selected", "QListWidget::item:selected",
+])
+def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
+    rule = _rule(build_stylesheet(theme), selector)
+    assert theme.selection_bg in rule
+    assert theme.selection_border in rule
+    assert theme.accent_fill not in rule
+    assert theme.on_accent not in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("selector", ["QTableView::item", "QListWidget::item"])
+def test_unselected_items_reserve_the_ring_so_selecting_does_not_shift_text(
+    theme, selector
+):
+    # Same trick as QListWidget#settingsNav::item in shopify's theme_manager.
+    rule = _rule(build_stylesheet(theme), selector)
+    assert "2px solid transparent" in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_a_table_row_ring_is_top_and_bottom_only(theme):
+    """QSS styles cells, not rows: a four-sided border on ::item would draw a
+    box around every cell in the row. Top and bottom join across cell edges
+    into one band. A list item is one full-width cell, so it rings fully."""
+    rule = _rule(build_stylesheet(theme), "QTableView::item:selected")
+    assert "border-top" in rule and "border-bottom" in rule
+    assert "border:" not in rule
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_hovering_a_selected_row_does_not_erase_the_selection(theme):
+    # ::item:hover follows ::item:selected at equal specificity, so without
+    # this rule the later one wins and hover blanks the selection.
+    qss = build_stylesheet(theme)
+    assert "QTableView::item:selected:hover" in qss
+    assert "QListWidget::item:selected:hover" in qss
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+@pytest.mark.parametrize("role", [
+    "status_info", "status_success", "status_warning", "status_danger",
+    "text_secondary",
+])
+def test_a_chip_has_an_edge_so_its_tint_never_has_to_carry_the_shape(
+    qapp, theme, role
+):
+    """The tint cannot be trusted against an arbitrary background.
+
+    status_info_bg vs selection_bg measures 1.00 in dark -- identical. And
+    text_secondary has no _bg partner at all, so it falls back to
+    surface_sunken at 1.05 against surface. One outline in the role's own
+    foreground covers both, and the foreground is validated on every plane.
+    """
+    chip = StatusChip(role, "Active", theme)
+    assert f"border: 1px solid {getattr(theme, role)}" in chip.styleSheet()
