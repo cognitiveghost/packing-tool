@@ -51,3 +51,18 @@ def test_save_and_close_is_the_sku_mapping_dialogs_one_primary(profile_manager, 
         assert _primaries(dialog) == ["Save & Close"]
     finally:
         dialog.deleteLater()
+
+
+def test_server_connection_save_is_the_dialogs_one_primary(qapp, tmp_path):
+    """shared/ was outside the 2026-08-29 audit's gui/-only sweep.
+
+    This dialog is how a warehouse PC gets pointed at the file server; after the
+    default flip it had no primary at all until the review caught it.
+    """
+    from shared.server_connection import ConnectionSettingsDialog
+
+    dialog = ConnectionSettingsDialog(None, "TestOrg", "NO_SUCH_ENV", str(tmp_path))
+    try:
+        assert _primaries(dialog) == ["Save"]
+    finally:
+        dialog.deleteLater()
