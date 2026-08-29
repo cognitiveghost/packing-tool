@@ -65,6 +65,7 @@ from packing_tool.worker_manager import WorkerManager
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
+from shared.theme import set_button_role
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +387,7 @@ class MainWindow(QMainWindow):
         self.packer_mode_button.setEnabled(False)
         self.packer_mode_button.clicked.connect(self.switch_to_packer_mode)
         self.packer_mode_button.setToolTip("Switch to barcode scanning / packer mode")
-        self.packer_mode_button.setProperty("primary", "true")
+        set_button_role(self.packer_mode_button, "primary")
         toolbar.addWidget(self.packer_mode_button)
 
         # SKU mapping button

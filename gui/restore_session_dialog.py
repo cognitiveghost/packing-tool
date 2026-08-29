@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from shared.theme import set_button_role
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,6 +74,7 @@ class RestoreSessionDialog(QDialog):
         self.restore_button = QPushButton("Restore Selected")
         self.restore_button.setEnabled(False)
         self.restore_button.clicked.connect(self._on_restore)
+        set_button_role(self.restore_button, "primary")
         button_layout.addWidget(self.restore_button)
 
         cancel_button = QPushButton("Cancel")

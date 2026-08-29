@@ -38,6 +38,7 @@ from gui.theme import current_tokens
 from packing_tool.json_cache import get_cached_json
 from packing_tool.session_registry_manager import SessionRegistryManager
 from shared.metadata_utils import parse_timestamp
+from shared.theme import set_button_role
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,7 @@ class SessionSelectorDialog(QDialog):
         self.load_button = QPushButton("Load Session")
         self.load_button.setEnabled(False)
         self.load_button.clicked.connect(self._on_load_clicked)
+        set_button_role(self.load_button, "primary")
         button_layout.addWidget(self.load_button)
 
         self.cancel_button = QPushButton("Cancel")
