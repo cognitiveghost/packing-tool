@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.theme import current_tokens
+from shared.theme import set_button_role
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,7 @@ class SKUMappingDialog(QDialog):
         save_button = QPushButton("Save & Close")
         save_button.setDefault(True)
         save_button.clicked.connect(self._save_and_close)
+        set_button_role(save_button, "primary")
 
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
