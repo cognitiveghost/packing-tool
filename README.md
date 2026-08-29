@@ -126,7 +126,6 @@ in QThread workers.
 | `packing_tool/async_state_writer.py` | Write-behind queue for packing_state.json |
 | `packing_tool/profile_manager.py` | Client profiles, SKU mappings, file server I/O |
 | `gui/session_browser/` | Session Browser widget and tab implementations |
-| `gui/session_selector.py` | Dialog for selecting an available Shopify session |
 | `gui/sku_mapping_dialog.py` | Barcode-to-SKU mapping editor |
 | `gui/worker_selection_dialog.py` | Worker selection at startup |
 | `packing_tool/json_cache.py` | JSON file caching layer |

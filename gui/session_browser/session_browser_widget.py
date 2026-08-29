@@ -155,10 +155,17 @@ class SessionBrowserWidget(QWidget):
             self._refresh_timer.start(remaining_ms or _AUTO_REFRESH_MS)
 
     def _on_auto_refresh(self):
-        if self._auto_refresh_enabled:
+        if not self._auto_refresh_enabled:
+            return
+        # As a dialog this widget died on close and took its timer with it. As
+        # a permanent page it outlives every visit, so refreshing while the
+        # user is on the Packing page would put a registry rescan on the
+        # warehouse UNC share in the middle of a scan. Keep the timer armed --
+        # the next tick after the page is looked at again does the work.
+        if self.isVisible():
             self.sessions_list.refresh()
             self.settings.setValue("last_refresh_time", time.time())
-            self._refresh_timer.start(_AUTO_REFRESH_MS)
+        self._refresh_timer.start(_AUTO_REFRESH_MS)
 
     def _on_auto_refresh_toggled(self, state):
         self._auto_refresh_enabled = bool(state)

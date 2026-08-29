@@ -1310,7 +1310,7 @@ class MainWindow(QMainWindow):
 
         This method handles BOTH:
         - Resuming interrupted sessions (from Session Browser)
-        - Starting new sessions (from open_shopify_session)
+        - Starting new sessions (from the Session Browser page)
 
         Args:
             packing_list_path: Path to packing list JSON file

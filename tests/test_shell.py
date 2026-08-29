@@ -58,8 +58,12 @@ def test_the_pages_drive_the_rail_back(window):
 def test_the_two_way_binding_does_not_loop(window):
     seen = []
     window.nav_rail.currentChanged.connect(seen.append)
-    window.nav_rail.set_current(PAGE_BROWSER)
-    assert seen == [PAGE_BROWSER]
+    try:
+        window.nav_rail.set_current(PAGE_BROWSER)
+        assert seen == [PAGE_BROWSER]
+    finally:
+        # the window is module-scoped; a live receiver would follow it around
+        window.nav_rail.currentChanged.disconnect(seen.append)
 
 
 def test_session_browser_is_a_page_not_a_dialog(window):
@@ -121,7 +125,7 @@ def test_the_search_field_lives_on_the_packing_page(window):
 def test_session_browser_is_not_also_a_button_and_a_menu_item(window):
     """It is a destination now. Leaving it in the toolbar and the Session menu
     as well would mean three controls for one page."""
-    from PySide6.QtWidgets import QPushButton, QToolBar
+    from PySide6.QtWidgets import QMenu, QPushButton, QToolBar
 
     labels = {
         b.text() for bar in window.findChildren(QToolBar)
@@ -130,8 +134,10 @@ def test_session_browser_is_not_also_a_button_and_a_menu_item(window):
     assert "Session Browser" not in labels
     assert "Shopify Session" not in labels
 
+    # QMenu, not type(menuBar()): a QMenuBar has no QMenuBar children, so
+    # findChildren(QMenuBar) returns [] and the assertion below never ran.
     menu_actions = {
-        a.text() for menu in window.menuBar().findChildren(type(window.menuBar()))
+        a.text() for menu in window.menuBar().findChildren(QMenu)
         for a in menu.actions()
     }
     assert "Session Browser..." not in menu_actions
@@ -146,3 +152,18 @@ def test_the_toolbar_still_carries_the_session_actions(window):
         for b in bar.findChildren(QPushButton)
     }
     assert {"Start Packing", "SKU Mapping", "End Session"} <= labels
+
+
+def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monkeypatch):
+    """As a dialog the timer died on close. As a permanent page it must not put
+    a registry rescan on the warehouse share while the packer is scanning."""
+    browser = window.session_tabs.widget(PAGE_BROWSER)
+    browser._auto_refresh_enabled = True
+
+    refreshes = []
+    monkeypatch.setattr(browser.sessions_list, "refresh", lambda: refreshes.append(1))
+
+    window.session_tabs.setCurrentIndex(PAGE_PACKING)
+    browser._on_auto_refresh()
+    assert refreshes == []
+    assert browser._refresh_timer.isActive()   # still armed for the next visit
