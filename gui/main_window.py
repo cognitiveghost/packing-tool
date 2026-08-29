@@ -382,15 +382,8 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Session menu
+        # Session menu. The rail is the way to Session Browser now.
         session_menu = menubar.addMenu("&Session")
-
-        browse_action = QAction("Session Browser...", self)
-        browse_action.setShortcut(QKeySequence("Ctrl+B"))
-        browse_action.triggered.connect(self.open_session_browser)
-        session_menu.addAction(browse_action)
-
-        session_menu.addSeparator()
 
         end_action = QAction("End Current Session", self)
         end_action.setShortcut(QKeySequence("Ctrl+E"))
@@ -425,15 +418,6 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
-
-        # Session start actions (primary blue — main entry points)
-        browser_btn = QPushButton("Session Browser")
-        browser_btn.clicked.connect(self.open_session_browser)
-        browser_btn.setToolTip("Browse active, completed, and available sessions")
-        browser_btn.setProperty("primary", "true")
-        toolbar.addWidget(browser_btn)
-
-        toolbar.addSeparator()
 
         # Current session info label
         self.session_info_label = QLabel("No active session")
@@ -2200,8 +2184,8 @@ class MainWindow(QMainWindow):
     def open_session_browser(self):
         """Show the Session Browser page.
 
-        Kept as a method rather than inlined: Ctrl+B and the Session menu both
-        call it, and it is what the old dialog-opening entry point became.
+        What the old dialog-opening entry point became; the rail is the way
+        there now, but this stays as the one place that navigation happens.
         """
         logger.info("Showing Session Browser page")
         self.session_tabs.setCurrentIndex(PAGE_BROWSER)

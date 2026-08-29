@@ -116,3 +116,33 @@ def test_the_search_field_lives_on_the_packing_page(window):
     would claim to filter pages it does not touch."""
     packing_page = window.session_tabs.widget(PAGE_PACKING)
     assert window.search_input.parent() is packing_page
+
+
+def test_session_browser_is_not_also_a_button_and_a_menu_item(window):
+    """It is a destination now. Leaving it in the toolbar and the Session menu
+    as well would mean three controls for one page."""
+    from PySide6.QtWidgets import QPushButton, QToolBar
+
+    labels = {
+        b.text() for bar in window.findChildren(QToolBar)
+        for b in bar.findChildren(QPushButton)
+    }
+    assert "Session Browser" not in labels
+    assert "Shopify Session" not in labels
+
+    menu_actions = {
+        a.text() for menu in window.menuBar().findChildren(type(window.menuBar()))
+        for a in menu.actions()
+    }
+    assert "Session Browser..." not in menu_actions
+
+
+def test_the_toolbar_still_carries_the_session_actions(window):
+    """What is left is the session's own state and actions."""
+    from PySide6.QtWidgets import QPushButton, QToolBar
+
+    labels = {
+        b.text() for bar in window.findChildren(QToolBar)
+        for b in bar.findChildren(QPushButton)
+    }
+    assert {"Start Packing", "SKU Mapping", "End Session"} <= labels
