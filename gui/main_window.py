@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.icons import icon
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.session_selector import SessionSelectorDialog
@@ -62,12 +63,32 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from shared.theme import set_button_role
+from shared.theme import set_button_role, theme_notifier
 
 logger = logging.getLogger(__name__)
+
+# Wider than Depot's 56px because packing-tool's labels do not fit it:
+# "Statistics" measures 59px at floor density against a 45.6px budget, and
+# guardrail 2 forbids abbreviating an existing label in the release that moves
+# it. Spec 2026-08-29 §4 has the full measurement table.
+RAIL_WIDTH = 76
+
+# (icon name, rail label, tooltip) per destination, in rail order.
+# "Packing" and "Statistics" are the existing tab titles, verbatim.
+# "Browse" is not a rename -- Session Browser was a dialog title and has never
+# had a rail label to change -- so the full name lives in its tooltip.
+RAIL_ITEMS = (
+    ("clipboard-list", "Packing", "Packing — the current session's orders"),
+    ("table", "Statistics", "Statistics — session totals"),
+    ("folder-open", "Browse",
+     "Session Browser — active, completed and available sessions"),
+)
+
+PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
 
 DEFAULT_CONFIG_PATH = "config.ini"
 
@@ -203,7 +224,19 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         """Initialize all user interface components and layouts."""
         self.session_widget = QWidget()
-        main_layout = QVBoxLayout(self.session_widget)
+
+        # The rail is full-height beside the pages, so it sits outside the
+        # column that holds the client bar, the pages and the status line.
+        shell = QHBoxLayout(self.session_widget)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        self.nav_rail = NavRail(width=RAIL_WIDTH)
+        shell.addWidget(self.nav_rail)
+
+        pages_side = QWidget()
+        main_layout = QVBoxLayout(pages_side)
+        shell.addWidget(pages_side, 1)
 
         # (no inline stylesheet — global QSS + QPalette handle all colors and fonts)
 
@@ -239,15 +272,22 @@ class MainWindow(QMainWindow):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by Order Number, SKU, or Status...")
         self.search_input.textChanged.connect(self._filter_orders)
-        main_layout.addWidget(self.search_input)
 
-        # Create tab widget for session views (Packing and Statistics)
+        # Create tab widget for session views. A hidden tab bar makes this
+        # exactly a QStackedWidget with the API the existing call sites already
+        # speak; swapping the class would rewrite all of them to produce a
+        # screen no user can tell apart.
         self.session_tabs = QTabWidget()
+        self.session_tabs.tabBar().hide()
 
         # Tab 1: Packing View with expandable tree
         packing_tab = QWidget()
         packing_layout = QVBoxLayout(packing_tab)
         packing_layout.setContentsMargins(0, 0, 0, 0)
+
+        # The search field filters the order tree. With three destinations a
+        # window-level field would claim to filter pages it does not touch.
+        packing_layout.addWidget(self.search_input)
 
         self._setup_order_tree()
         packing_layout.addWidget(self.order_tree)
@@ -260,6 +300,37 @@ class MainWindow(QMainWindow):
         stats_layout.setContentsMargins(0, 0, 0, 0)
         self._setup_statistics_tab(stats_layout)
         self.session_tabs.addTab(stats_tab, "Statistics")
+
+        # Tab 3: Session Browser — a destination now, not a dialog.
+        self.session_browser = SessionBrowserWidget(
+            profile_manager=self.profile_manager,
+            session_lock_manager=self.lock_manager,
+            session_history_manager=self.session_history_manager,
+            worker_manager=self.worker_manager,
+            registry_manager=self.registry_manager,
+        )
+        self.session_browser.resume_session_requested.connect(
+            self._handle_resume_session_from_browser
+        )
+        self.session_browser.start_packing_requested.connect(
+            self._handle_start_packing_from_browser
+        )
+        self.session_tabs.addTab(self.session_browser, "Session Browser")
+
+        for icon_name, label, tip in RAIL_ITEMS:
+            index = self.nav_rail.add_item(icon(icon_name), label)
+            self.nav_rail.button(index).setToolTip(tip)
+
+        # Two-way, and the back edge is load-bearing: code that jumps pages
+        # directly must not leave the rail lit on the page the user left. It
+        # cannot loop -- both set_current and NavRail.set_current return
+        # before emitting when the index is unchanged.
+        self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
+        self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
+
+        # The rail's stylesheet follows the theme on its own, but its icons are
+        # rasterised at the colour in force when they were built.
+        theme_notifier.changed.connect(self._refresh_rail_icons)
 
         main_layout.addWidget(self.session_tabs)
 
@@ -295,6 +366,11 @@ class MainWindow(QMainWindow):
         self._init_menu_bar()
         self._init_toolbar()
         self._init_status_bar()
+
+    def _refresh_rail_icons(self, _theme_name=None):
+        """Re-render the rail's glyphs at the new theme's text colour."""
+        for index, (icon_name, _label, _tip) in enumerate(RAIL_ITEMS):
+            self.nav_rail.button(index).setIcon(icon(icon_name))
 
     def _init_menu_bar(self):
         """Initialize the menu bar with organized actions."""
@@ -2360,43 +2436,16 @@ class MainWindow(QMainWindow):
         logger.info("Packing mode UI enabled successfully")
 
     def open_session_browser(self):
-        """Open Session Browser dialog."""
-        logger.info("Opening Session Browser")
+        """Show the Session Browser page.
 
-        # Create dialog
-        browser_dialog = QDialog(self)
-        browser_dialog.setWindowTitle("Session Browser")
-        browser_dialog.setMinimumSize(1000, 700)
-        browser_dialog.setModal(False)  # Non-modal - can keep open while working
-
-        layout = QVBoxLayout(browser_dialog)
-
-        # Create Session Browser widget
-        browser = SessionBrowserWidget(
-            profile_manager=self.profile_manager,
-            session_manager=self.session_manager,
-            session_lock_manager=self.lock_manager,
-            session_history_manager=self.session_history_manager,
-            worker_manager=self.worker_manager,
-            registry_manager=self.registry_manager,
-            parent=browser_dialog
-        )
-
-        # Connect signals
-        browser.resume_session_requested.connect(
-            lambda info: self._handle_resume_session_from_browser(browser_dialog, info)
-        )
-        browser.start_packing_requested.connect(
-            lambda info: self._handle_start_packing_from_browser(browser_dialog, info)
-        )
-
-        layout.addWidget(browser)
-
-        # Show dialog
-        browser_dialog.exec()
+        Kept as a method rather than inlined: Ctrl+B and the Session menu both
+        call it, and it is what the old dialog-opening entry point became.
+        """
+        logger.info("Showing Session Browser page")
+        self.session_tabs.setCurrentIndex(PAGE_BROWSER)
 
     def _start_or_resume_from_browser(
-        self, dialog, client_id, packing_list_name, session_path,
+        self, client_id, packing_list_name, session_path,
         packing_list_path, work_dir=None, resumed=False
     ):
         """
@@ -2405,7 +2454,9 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
-        dialog.accept()
+        # The browser is a page now, so there is no dialog to accept -- the
+        # equivalent is going back to the page the work happens on.
+        self.session_tabs.setCurrentIndex(PAGE_PACKING)
 
         # Set current client if different
         if self.current_client_id != client_id:
@@ -2476,12 +2527,11 @@ class MainWindow(QMainWindow):
             )
             logger.info("Packing session started successfully from Session Browser")
 
-    def _handle_resume_session_from_browser(self, dialog, session_info: dict):
+    def _handle_resume_session_from_browser(self, session_info: dict):
         """
         Handle resume request from Session Browser.
 
         Args:
-            dialog: Session Browser dialog to close
             session_info: Dict with session_path, client_id, packing_list_name, work_dir
         """
         logger.info(f"Resuming session from browser: {session_info.get('session_id', 'Unknown')}")
@@ -2493,16 +2543,15 @@ class MainWindow(QMainWindow):
         packing_list_path = session_path / "packing_lists" / f"{packing_list_name}.json"
 
         self._start_or_resume_from_browser(
-            dialog, client_id, packing_list_name, session_path,
+            client_id, packing_list_name, session_path,
             packing_list_path, work_dir=work_dir, resumed=True
         )
 
-    def _handle_start_packing_from_browser(self, dialog, packing_info: dict):
+    def _handle_start_packing_from_browser(self, packing_info: dict):
         """
         Handle start packing request from Session Browser Available tab.
 
         Args:
-            dialog: Session Browser dialog to close
             packing_info: Dict with session_path, client_id, packing_list_name, list_file
         """
         logger.info(f"Starting packing session from browser: {packing_info.get('packing_list_name', 'Unknown')}")
@@ -2513,7 +2562,7 @@ class MainWindow(QMainWindow):
         packing_list_path = Path(packing_info['list_file'])
 
         self._start_or_resume_from_browser(
-            dialog, client_id, packing_list_name, session_path,
+            client_id, packing_list_name, session_path,
             packing_list_path, work_dir=None, resumed=False
         )
 

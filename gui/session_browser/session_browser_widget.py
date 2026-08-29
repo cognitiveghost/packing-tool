@@ -58,7 +58,6 @@ class SessionBrowserWidget(QWidget):
     def __init__(
         self,
         profile_manager,
-        session_manager,
         session_lock_manager,
         session_history_manager,
         worker_manager,
@@ -68,7 +67,6 @@ class SessionBrowserWidget(QWidget):
         super().__init__(parent)
 
         self.profile_manager       = profile_manager
-        self.session_manager       = session_manager
         self.session_lock_manager  = session_lock_manager
         self.session_history_manager = session_history_manager
         self.worker_manager        = worker_manager
@@ -83,10 +81,23 @@ class SessionBrowserWidget(QWidget):
         self._connect_signals()
         self._setup_auto_refresh()
 
-        # Populate client list immediately (fast — just lists directory names)
-        self.client_selector.load_clients()
+        self._clients_loaded = False
 
         logger.info("SessionBrowserWidget (v2) initialized")
+
+    def showEvent(self, event):
+        """Load clients the first time the page is actually looked at.
+
+        As a dialog this ran in __init__, immediately before exec(). As a page
+        constructed at startup it would run on every app launch -- and it does
+        not just list directories, it selects a client, which reads that
+        client's registry off the file server. On a warehouse UNC path that is
+        startup latency for a page most shifts never open.
+        """
+        super().showEvent(event)
+        if not self._clients_loaded:
+            self._clients_loaded = True
+            self.client_selector.load_clients()
 
     # ------------------------------------------------------------------ #
     #  UI                                                                  #
