@@ -9,7 +9,7 @@ shopify-fulfillment-tool/scripts/sync_shared.py after changing this file.
 import re
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QLabel, QWidget
 
@@ -206,6 +206,58 @@ THEMES: dict = {"light": LIGHT_THEME, "dark": DARK_THEME}
 def get_theme(name: str) -> ThemeTokens:
     """Look up a theme by name, falling back to light for an unknown name."""
     return THEMES.get(name, LIGHT_THEME)
+
+
+# --- The live theme, and the one place a change is announced ---------------
+
+
+class _ThemeNotifier(QObject):
+    """Signal source for theme changes.
+
+    An instance, not a class each app subclasses: two subclasses would be two
+    independent signals, and a shared widget connected to one would never hear
+    the other app's toggle.
+    """
+
+    changed = Signal(str)
+
+
+theme_notifier = _ThemeNotifier()
+
+# None until an app applies a theme. Each app's apply_theme() is the only
+# writer; nothing here reads QSettings, because the organisation name differs
+# per app ("PackingTool" vs the shopify one) and shared/ must not know it.
+_current: str | None = None
+
+
+def current_theme_name() -> str | None:
+    """The applied theme's name, or None if no app has applied one yet."""
+    return _current
+
+
+def set_current(name: str) -> None:
+    """Record the applied theme and announce the change.
+
+    Call this *last* in an app's apply path, after the stylesheet and palette
+    are on the QApplication: a listener that restyles itself must not run
+    while the app sheet is still the old one.
+    """
+    global _current
+    if name == _current:
+        return                      # re-applying the same theme is not a change
+    _current = name
+    theme_notifier.changed.emit(name)
+
+
+def current_tokens() -> ThemeTokens:
+    """Tokens for the live theme, without any app's bundled font family.
+
+    Shared widgets read colours from here and never font_family: the family
+    arrives through the QApplication stylesheet each app builds from its own
+    font-layered tokens. A widget sheet restating it would pin the fallback
+    family on the one widget that did.
+    """
+    return get_theme(_current or THEME_DARK)
 
 
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")

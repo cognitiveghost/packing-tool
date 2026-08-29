@@ -17,19 +17,15 @@ from shared.theme import (
     ThemeTokens,
     build_palette,
     build_stylesheet,
+    current_theme_name,
     get_theme,
+    set_current,
 )
 
 __all__ = [
     "THEME_DARK", "THEME_LIGHT", "apply_theme", "current_tokens",
     "load_saved_theme", "toggle_theme",
 ]
-
-
-# The live theme name. apply_theme is the only write path -- toggle_theme and
-# load_saved_theme both route through it -- so this cannot go stale, and it
-# spares current_tokens() a QSettings read per table row on the scan path.
-_current: str | None = None
 
 
 def _tokens(theme_name: str) -> ThemeTokens:
@@ -55,12 +51,13 @@ def _tokens_with_font(theme_name: str, family: str) -> ThemeTokens:
 
 
 def apply_theme(app: QApplication, theme: str = THEME_DARK) -> None:
-    global _current
     tokens = _tokens(theme)
     app.setStyleSheet(build_stylesheet(tokens))
     app.setPalette(build_palette(tokens))
     QSettings("PackingTool", "Theme").setValue("current_theme", theme)
-    _current = theme
+    # Last, and after the app sheet: shared.theme is now the single record of
+    # which theme is live, and this emits theme_notifier.changed.
+    set_current(theme)
 
 
 def load_saved_theme(app: QApplication) -> str:
@@ -81,15 +78,13 @@ def toggle_theme(app: QApplication) -> str:
 def current_tokens() -> ThemeTokens:
     """The tokens for the theme currently applied.
 
-    ponytail: returns the live tokens, but a widget already styled at
-    construction keeps its old colours until the window is rebuilt. That is
-    the same staleness the hardcoded literals had, minus being wrong in one
-    theme outright. Upgrade path when it bites: a themeChanged signal plus a
-    restyle pass, which is 8.9's problem, not this task's.
+    Not shared.theme.current_tokens(): that one deliberately omits the
+    bundled family, and callers here read font_family off the tokens they
+    get back.
     """
-    if _current is None:
+    name = current_theme_name()
+    if name is None:
         # Nothing applied yet (a dialog constructed before load_saved_theme,
         # or a test importing the module standalone).
-        return _tokens(QSettings("PackingTool", "Theme")
-                       .value("current_theme", THEME_DARK))
-    return _tokens(_current)
+        name = QSettings("PackingTool", "Theme").value("current_theme", THEME_DARK)
+    return _tokens(name)
