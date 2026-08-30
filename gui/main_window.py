@@ -47,9 +47,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.icons import icon
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
-from gui.session_selector import SessionSelectorDialog
 from gui.sku_mapping_dialog import SKUMappingDialog
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
@@ -62,12 +62,32 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from shared.theme import set_button_role
+from shared.theme import set_button_role, theme_notifier
 
 logger = logging.getLogger(__name__)
+
+# Wider than Depot's 56px because packing-tool's labels do not fit it:
+# "Statistics" measures 59px at floor density against a 45.6px budget, and
+# guardrail 2 forbids abbreviating an existing label in the release that moves
+# it. Spec 2026-08-29 §4 has the full measurement table.
+RAIL_WIDTH = 76
+
+# (icon name, rail label, tooltip) per destination, in rail order.
+# "Packing" and "Statistics" are the existing tab titles, verbatim.
+# "Browse" is not a rename -- Session Browser was a dialog title and has never
+# had a rail label to change -- so the full name lives in its tooltip.
+RAIL_ITEMS = (
+    ("clipboard-list", "Packing", "Packing — the current session's orders"),
+    ("table", "Statistics", "Statistics — session totals"),
+    ("folder-open", "Browse",
+     "Session Browser — active, completed and available sessions"),
+)
+
+PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
 
 DEFAULT_CONFIG_PATH = "config.ini"
 
@@ -203,7 +223,19 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         """Initialize all user interface components and layouts."""
         self.session_widget = QWidget()
-        main_layout = QVBoxLayout(self.session_widget)
+
+        # The rail is full-height beside the pages, so it sits outside the
+        # column that holds the client bar, the pages and the status line.
+        shell = QHBoxLayout(self.session_widget)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        self.nav_rail = NavRail(width=RAIL_WIDTH)
+        shell.addWidget(self.nav_rail)
+
+        pages_side = QWidget()
+        main_layout = QVBoxLayout(pages_side)
+        shell.addWidget(pages_side, 1)
 
         # (no inline stylesheet — global QSS + QPalette handle all colors and fonts)
 
@@ -239,15 +271,22 @@ class MainWindow(QMainWindow):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by Order Number, SKU, or Status...")
         self.search_input.textChanged.connect(self._filter_orders)
-        main_layout.addWidget(self.search_input)
 
-        # Create tab widget for session views (Packing and Statistics)
+        # Create tab widget for session views. A hidden tab bar makes this
+        # exactly a QStackedWidget with the API the existing call sites already
+        # speak; swapping the class would rewrite all of them to produce a
+        # screen no user can tell apart.
         self.session_tabs = QTabWidget()
+        self.session_tabs.tabBar().hide()
 
         # Tab 1: Packing View with expandable tree
         packing_tab = QWidget()
         packing_layout = QVBoxLayout(packing_tab)
         packing_layout.setContentsMargins(0, 0, 0, 0)
+
+        # The search field filters the order tree. With three destinations a
+        # window-level field would claim to filter pages it does not touch.
+        packing_layout.addWidget(self.search_input)
 
         self._setup_order_tree()
         packing_layout.addWidget(self.order_tree)
@@ -260,6 +299,37 @@ class MainWindow(QMainWindow):
         stats_layout.setContentsMargins(0, 0, 0, 0)
         self._setup_statistics_tab(stats_layout)
         self.session_tabs.addTab(stats_tab, "Statistics")
+
+        # Tab 3: Session Browser — a destination now, not a dialog.
+        self.session_browser = SessionBrowserWidget(
+            profile_manager=self.profile_manager,
+            session_lock_manager=self.lock_manager,
+            session_history_manager=self.session_history_manager,
+            worker_manager=self.worker_manager,
+            registry_manager=self.registry_manager,
+        )
+        self.session_browser.resume_session_requested.connect(
+            self._handle_resume_session_from_browser
+        )
+        self.session_browser.start_packing_requested.connect(
+            self._handle_start_packing_from_browser
+        )
+        self.session_tabs.addTab(self.session_browser, "Session Browser")
+
+        for icon_name, label, tip in RAIL_ITEMS:
+            index = self.nav_rail.add_item(icon(icon_name), label)
+            self.nav_rail.button(index).setToolTip(tip)
+
+        # Two-way, and the back edge is load-bearing: code that jumps pages
+        # directly must not leave the rail lit on the page the user left. It
+        # cannot loop -- both set_current and NavRail.set_current return
+        # before emitting when the index is unchanged.
+        self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
+        self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
+
+        # The rail's stylesheet follows the theme on its own, but its icons are
+        # rasterised at the colour in force when they were built.
+        theme_notifier.changed.connect(self._refresh_rail_icons)
 
         main_layout.addWidget(self.session_tabs)
 
@@ -296,6 +366,11 @@ class MainWindow(QMainWindow):
         self._init_toolbar()
         self._init_status_bar()
 
+    def _refresh_rail_icons(self, _theme_name=None):
+        """Re-render the rail's glyphs at the new theme's text colour."""
+        for index, (icon_name, _label, _tip) in enumerate(RAIL_ITEMS):
+            self.nav_rail.button(index).setIcon(icon(icon_name))
+
     def _init_menu_bar(self):
         """Initialize the menu bar with organized actions."""
         menubar = self.menuBar()
@@ -307,20 +382,8 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Session menu
+        # Session menu. The rail is the way to Session Browser now.
         session_menu = menubar.addMenu("&Session")
-
-        shopify_session_action = QAction("Open Shopify Session...", self)
-        shopify_session_action.setShortcut(QKeySequence("Ctrl+O"))
-        shopify_session_action.triggered.connect(self.open_shopify_session)
-        session_menu.addAction(shopify_session_action)
-
-        browse_action = QAction("Session Browser...", self)
-        browse_action.setShortcut(QKeySequence("Ctrl+B"))
-        browse_action.triggered.connect(self.open_session_browser)
-        session_menu.addAction(browse_action)
-
-        session_menu.addSeparator()
 
         end_action = QAction("End Current Session", self)
         end_action.setShortcut(QKeySequence("Ctrl+E"))
@@ -355,21 +418,6 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setIconSize(QSize(24, 24))
-
-        # Session start actions (primary blue — main entry points)
-        shopify_btn = QPushButton("Shopify Session")
-        shopify_btn.clicked.connect(self.open_shopify_session)
-        shopify_btn.setToolTip("Open a Shopify packing session")
-        shopify_btn.setProperty("primary", "true")
-        toolbar.addWidget(shopify_btn)
-
-        browser_btn = QPushButton("Session Browser")
-        browser_btn.clicked.connect(self.open_session_browser)
-        browser_btn.setToolTip("Browse active, completed, and available sessions")
-        browser_btn.setProperty("primary", "true")
-        toolbar.addWidget(browser_btn)
-
-        toolbar.addSeparator()
 
         # Current session info label
         self.session_info_label = QLabel("No active session")
@@ -956,7 +1004,7 @@ class MainWindow(QMainWindow):
 
         Args:
             file_path: Path to the Shopify session directory (contains analysis_data.json).
-                      Must be provided - no file dialog shown. Use SessionSelectorDialog
+                      Must be provided - no file dialog shown. Use the Session Browser
                       to let users choose a session.
             restore_dir: Optional directory of the session to restore (for crash recovery)
         """
@@ -1262,7 +1310,7 @@ class MainWindow(QMainWindow):
 
         This method handles BOTH:
         - Resuming interrupted sessions (from Session Browser)
-        - Starting new sessions (from open_shopify_session)
+        - Starting new sessions (from the Session Browser page)
 
         Args:
             packing_list_path: Path to packing list JSON file
@@ -2098,232 +2146,6 @@ class MainWindow(QMainWindow):
     # This method was never called. Functionality replaced by Session Browser's
     # Active/Completed tabs which provide a better UX for session restoration
 
-    def open_shopify_session(self):
-        """
-        Open Shopify session and select packing list to work on.
-
-        Phase 1.8 Enhanced workflow:
-        1. Use SessionSelectorDialog to browse Shopify sessions
-        2. Automatically scan packing_lists/ folder
-        3. User can select specific packing list or load entire session
-        4. Create work directory: packing/{list_name}/ for selected lists
-
-        If a client is already selected in the main menu, it will be
-        pre-selected in the dialog (no need to select twice).
-        """
-        logger.info("Opening Shopify session selector")
-
-        # Check if client is selected
-        if not self.current_client_id:
-            logger.warning("Attempted to open Shopify session without selecting client")
-            self.client_combo.setStyleSheet(f"border: 2px solid {current_tokens().status_danger};")
-            QMessageBox.warning(
-                self,
-                "No Client Selected",
-                "Please select a client before opening a Shopify session!"
-            )
-            QTimer.singleShot(2000, lambda: self.client_combo.setStyleSheet(""))
-            return
-
-        # Check if session already active
-        if self.session_manager and self.session_manager.is_active():
-            logger.warning("Attempted to open Shopify session while one is already active")
-            QMessageBox.warning(
-                self,
-                "Session Active",
-                "A session is already active. Please end it first."
-            )
-            return
-
-        # Step 1: Use SessionSelectorDialog to select session and packing list
-        # Pass pre-selected client from main menu to avoid double selection
-        selector_dialog = SessionSelectorDialog(
-            profile_manager=self.profile_manager,
-            pre_selected_client=self.current_client_id,
-            parent=self
-        )
-
-        if not selector_dialog.exec():
-            logger.info("Shopify session selection cancelled")
-            return
-
-        session_path = selector_dialog.get_selected_session()
-        packing_list_path = selector_dialog.get_selected_packing_list()
-
-        if not session_path:
-            logger.warning("No session selected")
-            return
-
-        logger.info(f"Selected Shopify session: {session_path}")
-
-        # Step 2: Determine loading mode
-        if packing_list_path:
-            # User selected a specific packing list
-            selected_name = packing_list_path.stem
-            logger.info(f"Selected packing list: {selected_name}")
-            load_mode = "packing_list"
-        else:
-            # User wants to load entire session (analysis_data.json)
-            logger.info("Loading entire session (analysis_data.json)")
-            selected_name = "full_session"
-            load_mode = "full_session"
-
-        # Step 3: Create work directory structure
-        try:
-            # Create SessionManager for this client (not initialized yet)
-            if not self.session_manager:
-                self.session_manager = SessionManager(
-                    client_id=self.current_client_id,
-                    profile_manager=self.profile_manager,
-                    lock_manager=self.lock_manager,
-                    worker_id=self.current_worker_id,
-                    worker_name=self.current_worker_name
-                )
-
-            # Determine packing list name and work directory
-            packing_list_name = selected_name if load_mode == "packing_list" else "full_session"
-            work_dir = self.session_manager.get_packing_work_dir(
-                session_path=str(session_path),
-                packing_list_name=packing_list_name
-            )
-
-            logger.info(f"Work directory created via SessionManager: {work_dir}")
-
-            # Handle based on mode
-            if load_mode == "packing_list":
-                # Use unified session start method for packing list mode
-                success = self.start_shopify_packing_session(
-                    packing_list_path=packing_list_path,
-                    work_dir=work_dir,
-                    session_path=session_path,
-                    client_id=self.current_client_id,
-                    packing_list_name=packing_list_name
-                )
-
-                if not success:
-                    # Error already shown by unified method
-                    return
-
-                # Get order count for success message
-                order_count = self.packing_data.get('total_orders', 0)
-
-                QMessageBox.information(
-                    self,
-                    "Session Loaded",
-                    f"Session: {session_path.name}\n"
-                    f"Packing List: {selected_name}\n"
-                    f"Orders: {order_count}\n\n"
-                    f"Work directory:\n{work_dir}"
-                )
-
-            else:
-                # Handle full_session mode (load entire session from analysis_data.json)
-                # This mode uses different loading logic and is kept separate
-                logger.info(f"Loading full session from: {session_path}")
-
-                # Store current session info
-                self.current_session_path = str(session_path)
-                self.current_packing_list = selected_name
-                self.current_work_dir = str(work_dir)
-
-                # Acquire lock (with stale lock handling)
-                success, error_msg = self._acquire_lock_with_stale_prompt(self.current_client_id, work_dir)
-                if not success:
-                    if error_msg:
-                        QMessageBox.warning(self, "Lock Failed", f"Failed to acquire lock: {error_msg}")
-                    return
-
-                logger.info(f"Lock acquired for work directory: {work_dir}")
-
-                # Create PackerLogic instance
-                self.logic = PackerLogic(
-                    client_id=self.current_client_id,
-                    profile_manager=self.profile_manager,
-                    work_dir=str(work_dir)
-                )
-
-                # Connect signals
-                self.logic.item_packed.connect(self._on_item_packed)
-                self.logic.all_orders_complete.connect(self._on_all_orders_complete)
-
-                # Start heartbeat timer
-                self._start_heartbeat_timer()
-
-                # Load entire session (analysis_data.json)
-                order_count, analyzed_at = self.logic.load_from_shopify_analysis(session_path)
-                logger.info(f"Loaded full session: {order_count} orders (analyzed at {analyzed_at})")
-
-                # Load analysis_data.json for UI display
-                try:
-                    analysis_file = session_path / "analysis" / "analysis_data.json"
-                    with open(analysis_file, 'r', encoding='utf-8') as f:
-                        self.packing_data = json.load(f)
-                except Exception as e:
-                    logger.warning(f"Could not load analysis data: {e}")
-                    self.packing_data = {
-                        'analyzed_at': analyzed_at,
-                        'total_orders': order_count,
-                        'orders': []
-                    }
-
-                # Update session metadata
-                if hasattr(self.session_manager, 'update_session_metadata'):
-                    try:
-                        self.session_manager.update_session_metadata(
-                            self.current_session_path,
-                            self.current_packing_list,
-                            'in_progress'
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not update session metadata: {e}")
-
-                # Setup order table
-                self.setup_order_table()
-
-                # Update UI with loaded data
-                self.status_label.setText(
-                    f"Loaded: {session_path.name} / {selected_name}\n"
-                    f"Orders: {order_count}\n"
-                    f"Ready to start packing"
-                )
-
-                # Enable packing UI
-                self.enable_packing_mode()
-
-                QMessageBox.information(
-                    self,
-                    "Session Loaded",
-                    f"Session: {session_path.name}\n"
-                    f"Mode: {selected_name}\n"
-                    f"Orders: {order_count}\n\n"
-                    f"Work directory:\n{work_dir}"
-                )
-
-        except Exception as e:
-            # Only handle exceptions from full_session mode
-            # (packing_list mode errors are handled by unified method)
-            logger.exception("Failed to load session")
-            self._cleanup_failed_session_start()
-
-            # Determine error message based on exception type
-            if isinstance(e, FileNotFoundError):
-                title = "File Not Found"
-                message = f"Session file not found:\n{e!s}"
-            elif isinstance(e, json.JSONDecodeError):
-                title = "Invalid JSON"
-                message = f"Session contains invalid JSON:\n{e!s}"
-            elif isinstance(e, (KeyError, ValueError)):
-                title = "Invalid Data"
-                message = f"Session data validation failed:\n{e!s}"
-            elif isinstance(e, RuntimeError):
-                title = "Session Load Failed"
-                message = f"Failed to load session:\n{e!s}"
-            else:
-                title = "Error"
-                message = f"Unexpected error loading session:\n{e!s}"
-
-            QMessageBox.critical(self, title, message)
-
     def enable_packing_mode(self):
         """
         Enable packing UI after session data is loaded.
@@ -2360,43 +2182,16 @@ class MainWindow(QMainWindow):
         logger.info("Packing mode UI enabled successfully")
 
     def open_session_browser(self):
-        """Open Session Browser dialog."""
-        logger.info("Opening Session Browser")
+        """Show the Session Browser page.
 
-        # Create dialog
-        browser_dialog = QDialog(self)
-        browser_dialog.setWindowTitle("Session Browser")
-        browser_dialog.setMinimumSize(1000, 700)
-        browser_dialog.setModal(False)  # Non-modal - can keep open while working
-
-        layout = QVBoxLayout(browser_dialog)
-
-        # Create Session Browser widget
-        browser = SessionBrowserWidget(
-            profile_manager=self.profile_manager,
-            session_manager=self.session_manager,
-            session_lock_manager=self.lock_manager,
-            session_history_manager=self.session_history_manager,
-            worker_manager=self.worker_manager,
-            registry_manager=self.registry_manager,
-            parent=browser_dialog
-        )
-
-        # Connect signals
-        browser.resume_session_requested.connect(
-            lambda info: self._handle_resume_session_from_browser(browser_dialog, info)
-        )
-        browser.start_packing_requested.connect(
-            lambda info: self._handle_start_packing_from_browser(browser_dialog, info)
-        )
-
-        layout.addWidget(browser)
-
-        # Show dialog
-        browser_dialog.exec()
+        What the old dialog-opening entry point became; the rail is the way
+        there now, but this stays as the one place that navigation happens.
+        """
+        logger.info("Showing Session Browser page")
+        self.session_tabs.setCurrentIndex(PAGE_BROWSER)
 
     def _start_or_resume_from_browser(
-        self, dialog, client_id, packing_list_name, session_path,
+        self, client_id, packing_list_name, session_path,
         packing_list_path, work_dir=None, resumed=False
     ):
         """
@@ -2405,7 +2200,9 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
-        dialog.accept()
+        # The browser is a page now, so there is no dialog to accept -- the
+        # equivalent is going back to the page the work happens on.
+        self.session_tabs.setCurrentIndex(PAGE_PACKING)
 
         # Set current client if different
         if self.current_client_id != client_id:
@@ -2476,12 +2273,11 @@ class MainWindow(QMainWindow):
             )
             logger.info("Packing session started successfully from Session Browser")
 
-    def _handle_resume_session_from_browser(self, dialog, session_info: dict):
+    def _handle_resume_session_from_browser(self, session_info: dict):
         """
         Handle resume request from Session Browser.
 
         Args:
-            dialog: Session Browser dialog to close
             session_info: Dict with session_path, client_id, packing_list_name, work_dir
         """
         logger.info(f"Resuming session from browser: {session_info.get('session_id', 'Unknown')}")
@@ -2493,16 +2289,15 @@ class MainWindow(QMainWindow):
         packing_list_path = session_path / "packing_lists" / f"{packing_list_name}.json"
 
         self._start_or_resume_from_browser(
-            dialog, client_id, packing_list_name, session_path,
+            client_id, packing_list_name, session_path,
             packing_list_path, work_dir=work_dir, resumed=True
         )
 
-    def _handle_start_packing_from_browser(self, dialog, packing_info: dict):
+    def _handle_start_packing_from_browser(self, packing_info: dict):
         """
         Handle start packing request from Session Browser Available tab.
 
         Args:
-            dialog: Session Browser dialog to close
             packing_info: Dict with session_path, client_id, packing_list_name, list_file
         """
         logger.info(f"Starting packing session from browser: {packing_info.get('packing_list_name', 'Unknown')}")
@@ -2513,7 +2308,7 @@ class MainWindow(QMainWindow):
         packing_list_path = Path(packing_info['list_file'])
 
         self._start_or_resume_from_browser(
-            dialog, client_id, packing_list_name, session_path,
+            client_id, packing_list_name, session_path,
             packing_list_path, work_dir=None, resumed=False
         )
 

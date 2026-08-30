@@ -58,7 +58,6 @@ class SessionBrowserWidget(QWidget):
     def __init__(
         self,
         profile_manager,
-        session_manager,
         session_lock_manager,
         session_history_manager,
         worker_manager,
@@ -68,7 +67,6 @@ class SessionBrowserWidget(QWidget):
         super().__init__(parent)
 
         self.profile_manager       = profile_manager
-        self.session_manager       = session_manager
         self.session_lock_manager  = session_lock_manager
         self.session_history_manager = session_history_manager
         self.worker_manager        = worker_manager
@@ -83,10 +81,23 @@ class SessionBrowserWidget(QWidget):
         self._connect_signals()
         self._setup_auto_refresh()
 
-        # Populate client list immediately (fast — just lists directory names)
-        self.client_selector.load_clients()
+        self._clients_loaded = False
 
         logger.info("SessionBrowserWidget (v2) initialized")
+
+    def showEvent(self, event):
+        """Load clients the first time the page is actually looked at.
+
+        As a dialog this ran in __init__, immediately before exec(). As a page
+        constructed at startup it would run on every app launch -- and it does
+        not just list directories, it selects a client, which reads that
+        client's registry off the file server. On a warehouse UNC path that is
+        startup latency for a page most shifts never open.
+        """
+        super().showEvent(event)
+        if not self._clients_loaded:
+            self._clients_loaded = True
+            self.client_selector.load_clients()
 
     # ------------------------------------------------------------------ #
     #  UI                                                                  #
@@ -144,10 +155,17 @@ class SessionBrowserWidget(QWidget):
             self._refresh_timer.start(remaining_ms or _AUTO_REFRESH_MS)
 
     def _on_auto_refresh(self):
-        if self._auto_refresh_enabled:
+        if not self._auto_refresh_enabled:
+            return
+        # As a dialog this widget died on close and took its timer with it. As
+        # a permanent page it outlives every visit, so refreshing while the
+        # user is on the Packing page would put a registry rescan on the
+        # warehouse UNC share in the middle of a scan. Keep the timer armed --
+        # the next tick after the page is looked at again does the work.
+        if self.isVisible():
             self.sessions_list.refresh()
             self.settings.setValue("last_refresh_time", time.time())
-            self._refresh_timer.start(_AUTO_REFRESH_MS)
+        self._refresh_timer.start(_AUTO_REFRESH_MS)
 
     def _on_auto_refresh_toggled(self, state):
         self._auto_refresh_enabled = bool(state)

@@ -9,7 +9,6 @@ import inspect
 from PySide6.QtWidgets import QPushButton
 
 from gui.restore_session_dialog import RestoreSessionDialog
-from gui.session_selector import SessionSelectorDialog
 from gui.sku_mapping_dialog import SKUMappingDialog
 from packing_tool.session_lock_manager import SessionLockManager
 
@@ -25,14 +24,6 @@ def test_the_packer_mode_button_is_marked_primary():
     from gui import main_window
     source = inspect.getsource(main_window)
     assert 'set_button_role(self.packer_mode_button, "primary")' in source
-
-
-def test_load_session_is_the_session_selectors_one_primary(profile_manager, qapp):
-    dialog = SessionSelectorDialog(profile_manager)
-    try:
-        assert _primaries(dialog) == ["Load Session"]
-    finally:
-        dialog.deleteLater()
 
 
 def test_restore_selected_is_the_restore_dialogs_one_primary(profile_manager, qapp):

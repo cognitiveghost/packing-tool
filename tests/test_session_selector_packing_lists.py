@@ -1,18 +1,23 @@
-"""Regression test: Session Selector must see packing lists uploaded to the
-file server after registry_index.json was already built, same as Session
-Browser does via RegistryRefreshWorker. See session_selector.py's
-_scan_shopify_sessions() registry refresh call.
+"""Regression test: the Session Browser must see packing lists uploaded to the
+file server after registry_index.json was already built.
+
+This used to be asserted against SessionSelectorDialog, which 8.6 deleted --
+its docstring noted the Browser did the same thing via RegistryRefreshWorker
+but nothing asserted it. Now it is asserted where the behaviour actually lives.
 """
 import json
 
 from conftest import make_packing_list
 
-from gui.session_selector import SessionSelectorDialog
+from gui.session_browser.session_browser_widget import SessionBrowserWidget
+from packing_tool.session_history_manager import SessionHistoryManager
+from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_registry_manager import SessionRegistryManager
+from packing_tool.worker_manager import WorkerManager
 
 
-def test_session_selector_sees_packing_list_uploaded_after_registry_build(
-    server_root, profile_manager
+def test_the_browser_sees_a_packing_list_uploaded_after_the_registry_was_built(
+    qapp, tmp_path, server_root, profile_manager
 ):
     client_dir = server_root / "Sessions" / "CLIENT_TEST"
     client_dir.mkdir(parents=True)
@@ -36,17 +41,34 @@ def test_session_selector_sees_packing_list_uploaded_after_registry_build(
         json.dumps(packing_list), encoding="utf-8"
     )
 
-    dialog = SessionSelectorDialog(profile_manager, pre_selected_client="TEST")
+    browser = SessionBrowserWidget(
+        profile_manager=profile_manager,
+        session_lock_manager=SessionLockManager(profile_manager),
+        session_history_manager=SessionHistoryManager(profile_manager),
+        worker_manager=WorkerManager(str(tmp_path)),
+        registry_manager=registry,
+    )
     try:
-        assert dialog.sessions_list.count() == 1
-        dialog.sessions_list.setCurrentItem(dialog.sessions_list.item(0))
+        # Straight to the sessions table: load_clients() is deferred to first
+        # show now that the browser is a page, and the client selector is not
+        # what is under test here.
+        browser.sessions_list.load_client("TEST")
 
-        texts = [
-            dialog.packing_lists_widget.item(i).text()
-            for i in range(dialog.packing_lists_widget.count())
+        # load_client() dispatches RegistryRefreshWorker on its own thread and
+        # delivers the result as a queued signal. Block on the thread, then
+        # pump the event loop once so _on_refresh_complete actually runs --
+        # without the pump the entries are still in flight.
+        worker = browser.sessions_list._refresh_worker
+        assert worker is not None, "load_client did not dispatch a refresh"
+        assert worker.wait(10_000), "registry refresh did not finish within 10s"
+        qapp.processEvents()
+
+        names = [
+            entry.get("packing_list_name", "")
+            for entry in browser.sessions_list._all_entries
         ]
-        assert any("ALL_ORDERS" in t for t in texts), (
-            f"Expected the freshly-uploaded packing list to appear, got: {texts}"
+        assert "ALL_ORDERS" in names, (
+            f"Expected the freshly-uploaded packing list to appear, got: {names}"
         )
     finally:
-        dialog.deleteLater()
+        browser.deleteLater()
