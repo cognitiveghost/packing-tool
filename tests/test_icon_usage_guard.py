@@ -1,10 +1,10 @@
-"""Two guards, not unit tests.
+"""Guards, not unit tests.
 
 The first is the whole point of this track: without it, the next dialog
 someone adds reaches for a stock icon and the app drifts back to mixed
-iconography one widget at a time. The second catches the failure mode
-icon()'s KeyError cannot -- a typo in a rarely-opened dialog that no test
-ever constructs.
+iconography one widget at a time. The rest catch the failure mode icon()'s
+KeyError cannot -- a typo in a rarely-opened dialog that no test ever
+constructs.
 """
 import re
 from pathlib import Path
@@ -32,10 +32,11 @@ def test_no_stock_icons_remain_anywhere_in_the_gui():
 
 
 def test_every_referenced_icon_name_is_vendored():
+    """A forward guard: packing-tool currently has zero literal icon("name")
+    call sites (its nav glyphs are RAIL_ITEMS, covered below), so this finds
+    nothing today. It fires the day someone writes one."""
     missing = []
     for path in _PY_FILES:
-        if path.name == "icons.py":
-            continue
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for name in _ICON_CALL.findall(line):
                 if not (ICONS_DIR / f"{name}.svg").is_file():
