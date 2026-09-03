@@ -1032,6 +1032,12 @@ def build_stylesheet(theme: ThemeTokens) -> str:
         }}
 
         QDialog {{ background-color: {theme.surface}; color: {theme.text}; }}
+
+        Card {{
+            background-color: {theme.surface_raised};
+            border: none;
+            border-radius: {theme.radius_md}px;
+        }}
     """
 
 
