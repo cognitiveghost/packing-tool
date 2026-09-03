@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.icons import icon
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -62,6 +61,7 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.icons import icon
 from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
