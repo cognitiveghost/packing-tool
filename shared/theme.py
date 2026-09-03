@@ -266,6 +266,29 @@ def current_tokens() -> ThemeTokens:
     return get_theme(_current)
 
 
+def on_theme_changed(widget, apply) -> None:
+    """Run `apply(tokens)` now, and again whenever the rendering inputs change.
+
+    A widget that styles itself with an interpolated string --
+    `setStyleSheet(f"color: {tokens.text}")` -- bakes that hex in at build time
+    and keeps it forever. Qt re-polishes the tree on an application stylesheet
+    change, but re-polishing re-applies the same stale literal, so the fix is
+    to re-run the recipe rather than to re-polish. See ADR 0003, which records
+    the measurement.
+
+    The connection is dropped when `widget` is destroyed. Without that, a
+    closure holding a freed QWidget is called on the next toggle and Qt raises
+    "Internal C++ object already deleted".
+    """
+    apply(current_tokens())
+
+    def _reapply(_name: str) -> None:
+        apply(current_tokens())
+
+    theme_notifier.changed.connect(_reapply)
+    widget.destroyed.connect(lambda *_: theme_notifier.changed.disconnect(_reapply))
+
+
 @dataclass(frozen=True)
 class TypeStyle:
     """One rung of the type scale: a point size and a default weight."""

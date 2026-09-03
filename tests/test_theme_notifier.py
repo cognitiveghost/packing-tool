@@ -66,3 +66,38 @@ def test_gui_theme_apply_routes_through_shared(qapp, emissions):
     apply_theme(qapp, THEME_LIGHT)
     assert current_theme_name() == THEME_LIGHT
     assert emissions == [THEME_LIGHT]
+
+
+def test_on_theme_changed_reruns_the_closure(qapp):
+    from PySide6.QtWidgets import QLabel
+    from shared.theme import on_theme_changed, set_current
+
+    set_current("light")
+    label = QLabel()
+    on_theme_changed(label, lambda t: label.setStyleSheet(f"color: {t.text};"))
+    first = label.styleSheet()
+    assert first  # applied immediately, not only on the next change
+
+    set_current("dark")
+    assert label.styleSheet() != first
+
+
+def test_on_theme_changed_stops_when_the_widget_dies(qapp):
+    from PySide6.QtCore import SIGNAL, QCoreApplication, QEvent
+    from PySide6.QtWidgets import QLabel
+    from shared.theme import on_theme_changed, set_current, theme_notifier
+
+    set_current("light")
+    label = QLabel()
+    on_theme_changed(label, lambda t: label.setStyleSheet(f"color: {t.text};"))
+    # PySide6's QObject.receivers() takes the old-style SIGNAL() signature
+    # string, not the Signal/SignalInstance object itself.
+    signature = SIGNAL("changed(QString)")
+    before = theme_notifier.receivers(signature)
+
+    label.deleteLater()
+    # deleteLater() posts a DeferredDelete event; plain processEvents() does
+    # not drain that queue on the offscreen platform, so deliver it directly.
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    qapp.processEvents()
+    assert theme_notifier.receivers(signature) < before
