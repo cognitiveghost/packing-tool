@@ -14,6 +14,7 @@ import configparser
 import json
 import logging
 import os
+import re
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -29,6 +30,26 @@ def qapp():
     """A QApplication is required for QObject subclasses with Signals (PackerLogic)."""
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+def _rule_block(sheet: str, selector: str) -> str:
+    """The text of one QSS rule, from `selector` at the start of a
+    (possibly indented) line to the next `}`. Used by theme tests to assert
+    on one rule without matching substrings that happen to appear elsewhere
+    in the sheet.
+
+    `selector` need only be the first entry of a comma-separated compound
+    selector (e.g. "QLineEdit" matches "QLineEdit, QTextEdit {"), and a
+    trailing `:` or other pseudo-state suffix on the line excludes it, so a
+    plain-selector lookup does not accidentally match its own `:focus` rule.
+    """
+    pattern = re.compile(rf"^[ \t]*{re.escape(selector)}(?=[,\s])", re.MULTILINE)
+    match = pattern.search(sheet)
+    if not match:
+        raise AssertionError(f"no rule block found for selector {selector!r}")
+    start = match.start()
+    end = sheet.index("}", start) + 1
+    return sheet[start:end]
 
 
 @pytest.fixture(autouse=True)

@@ -5,6 +5,7 @@ import pytest
 from shared.theme import (
     _ACCENT_FILLS,
     _COLOR_FIELDS,
+    _MIN_CONTRAST_ON_PLANES,
     _SURFACE_PLANES,
     DARK_THEME,
     LIGHT_THEME,
@@ -14,6 +15,7 @@ from shared.theme import (
     clamp_geometry,
     contrast_ratio,
     get_theme,
+    themed_tokens,
     validate_theme,
 )
 
@@ -29,8 +31,8 @@ def test_dark_base_is_not_pure_black():
 def test_border_is_the_missing_middle_and_the_old_value_survives():
     # border was pure text contrast (17.4:1) used for every box outline,
     # which is what made both apps look harsh (spec 3.3).
-    assert LIGHT_THEME.border == "#858585"
-    assert DARK_THEME.border == "#6D6D6D"
+    assert LIGHT_THEME.border == "#70707A"
+    assert DARK_THEME.border == "#787878"
     assert LIGHT_THEME.border_strong == "#1A1A1A"
     assert DARK_THEME.border_strong == "#F2F2F2"
 
@@ -145,7 +147,7 @@ def test_the_frame_plane_exists_and_is_part_of_the_matrix():
     1 px border on every widget. Adding the token without adding it to
     _SURFACE_PLANES would leave it unvalidated, which is the whole failure
     mode 8.2 existed to end."""
-    assert LIGHT_THEME.surface_sunken == "#E8E8EB"
+    assert LIGHT_THEME.surface_sunken == "#DADADF"
     assert DARK_THEME.surface_sunken == "#08080B"
     assert _SURFACE_PLANES == (
         "surface_sunken", "surface", "surface_raised", "surface_overlay"
@@ -166,8 +168,8 @@ def test_the_three_accent_fills_are_theme_independent():
     needs no per-theme value."""
     for theme in (LIGHT_THEME, DARK_THEME):
         assert theme.accent_fill == "#006FBA"
-        assert theme.accent_fill_hover == "#0A78C4"
-        assert theme.accent_fill_active == "#005A9E"
+        assert theme.accent_fill_hover == "#005F9F"
+        assert theme.accent_fill_active == "#004B80"
     # Same tripwire the plane tuple gets above: both are derived from
     # _COLOR_FIELDS by prefix, so this fails if a fill is renamed out of the
     # matrix or a non-fill token wanders into it.
@@ -390,3 +392,59 @@ def test_a_chip_has_an_edge_so_its_tint_never_has_to_carry_the_shape(
     """
     chip = StatusChip(role, "Active", theme)
     assert f"border: 1px solid {getattr(theme, role)}" in chip.styleSheet()
+
+
+def test_themed_tokens_layers_the_family_and_memoises():
+    plain = themed_tokens("light", None)
+    assert plain is get_theme("light")
+
+    themed = themed_tokens("light", "Inter")
+    assert themed.font_family.startswith("'Inter', ")
+    assert themed_tokens("light", "Inter") is themed  # memoised
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_every_foreground_clears_its_floor_with_room(theme):
+    """9.1's whole point: no token within 0.1 of its floor. Before the retune
+    light's border sat at 3.02/3.0 and status_warning at 4.52/4.5."""
+    for token, floor in _MIN_CONTRAST_ON_PLANES.items():
+        for plane in _SURFACE_PLANES:
+            ratio = contrast_ratio(getattr(theme, token), getattr(theme, plane))
+            assert ratio >= floor + 0.1, (
+                f"{theme.name}.{token} on {plane}: {ratio:.2f} < {floor} + 0.1"
+            )
+
+
+def test_light_planes_are_an_even_ramp():
+    """218 / 230 / 242 / 255. Before the retune sunken->overlay was 2 units."""
+    assert LIGHT_THEME.surface_sunken == "#DADADF"
+    assert LIGHT_THEME.surface_overlay == "#E6E6EA"
+    assert LIGHT_THEME.surface_raised == "#F2F2F4"
+    assert LIGHT_THEME.surface == "#FFFFFF"
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_hover_is_the_overlay_plane(theme):
+    """A row you point at should be a plane you can see."""
+    assert theme.hover == theme.surface_overlay
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_selection_border_folds_onto_status_info(theme):
+    assert theme.selection_border == theme.status_info
+
+
+def test_focus_ring_folds_onto_status_info_in_light_only():
+    """Dark's focus_ring is untouched by the retune (spec 3.2): it measures
+    healthy already, and a symmetrical edit for light's sake gains nothing."""
+    assert LIGHT_THEME.focus_ring == LIGHT_THEME.status_info
+    assert DARK_THEME.focus_ring == "#4DA9E8"
+    assert DARK_THEME.focus_ring != DARK_THEME.status_info
+
+
+@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
+def test_the_accent_hover_darkens(theme):
+    """Lightening a fill is the one direction that costs contrast on the
+    label sitting on it."""
+    assert contrast_ratio(theme.on_accent, theme.accent_fill_hover) > \
+           contrast_ratio(theme.on_accent, theme.accent_fill)

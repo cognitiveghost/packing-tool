@@ -1,7 +1,14 @@
 """StatusDot / StatusChip resolve tokens by name, never by hex string."""
 import pytest
+from conftest import _rule_block
 
-from shared.theme import DARK_THEME, LIGHT_THEME, StatusChip, StatusDot
+from shared.theme import (
+    DARK_THEME,
+    LIGHT_THEME,
+    StatusChip,
+    StatusDot,
+    build_stylesheet,
+)
 
 
 def test_status_dot_resolves_role_from_tokens(qapp):
@@ -68,3 +75,29 @@ def test_status_chip_set_status_reresolves(qapp):
     chip.set_status("status_danger", "Incomplete", LIGHT_THEME)
     assert chip.text() == "Incomplete"
     assert LIGHT_THEME.status_danger in chip.styleSheet()
+
+
+def test_regions_group_by_plane_not_by_outline():
+    """F1: eleven outlines in one composition meant nothing was grouped,
+    because everything was."""
+    sheet = build_stylesheet(LIGHT_THEME)
+
+    for rule in ("QTableView", "QListWidget", "QGroupBox", "QToolBar",
+                 "QHeaderView::section"):
+        block = _rule_block(sheet, rule)
+        assert f"border: 1px solid {LIGHT_THEME.border}" not in block, (
+            f"{rule} still outlines itself"
+        )
+
+
+def test_borders_stay_where_they_carry_meaning():
+    """An input's edge and a hit target's edge are information."""
+    sheet = build_stylesheet(LIGHT_THEME)
+    for rule in ("QLineEdit", "QComboBox", "QPushButton"):
+        assert "border: 1px solid" in _rule_block(sheet, rule)
+
+
+def test_groupbox_and_card_share_one_radius():
+    """radius_lg is dialogs only."""
+    sheet = build_stylesheet(LIGHT_THEME)
+    assert f"border-radius: {LIGHT_THEME.radius_md}px" in _rule_block(sheet, "QGroupBox")

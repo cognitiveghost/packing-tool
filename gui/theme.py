@@ -4,9 +4,6 @@ Kept as its own module (rather than importing shared.theme directly at
 every call site) so packing-tool/main.py's existing
 `from gui.theme import load_saved_theme, toggle_theme` keeps working unchanged.
 """
-from dataclasses import replace
-from functools import lru_cache
-
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
@@ -18,8 +15,8 @@ from shared.theme import (
     build_palette,
     build_stylesheet,
     current_theme_name,
-    get_theme,
     set_current,
+    themed_tokens,
 )
 
 __all__ = [
@@ -28,30 +25,8 @@ __all__ = [
 ]
 
 
-def _tokens(theme_name: str) -> ThemeTokens:
-    """shared.theme's tokens with the bundled family layered on, when available.
-
-    Memoized because current_tokens() runs twice per table row on the scan
-    path and replace() re-runs __init__ over all 50 fields every call.
-
-    Only the success path is memoized: load_bundled_fonts() returns None
-    before a QApplication exists, and caching that would leave the app on the
-    fallback font for the rest of the process over one early call.
-    """
-    family = load_bundled_fonts()
-    if family is None:          # no QApplication yet, or the TTF is missing
-        return get_theme(theme_name)
-    return _tokens_with_font(theme_name, family)
-
-
-@lru_cache(maxsize=2)
-def _tokens_with_font(theme_name: str, family: str) -> ThemeTokens:
-    theme = get_theme(theme_name)
-    return replace(theme, font_family=f"'{family}', {theme.font_family}")
-
-
 def apply_theme(app: QApplication, theme: str = THEME_DARK) -> None:
-    tokens = _tokens(theme)
+    tokens = themed_tokens(theme, load_bundled_fonts())
     app.setStyleSheet(build_stylesheet(tokens))
     app.setPalette(build_palette(tokens))
     QSettings("PackingTool", "Theme").setValue("current_theme", theme)
@@ -87,4 +62,4 @@ def current_tokens() -> ThemeTokens:
         # Nothing applied yet (a dialog constructed before load_saved_theme,
         # or a test importing the module standalone).
         name = QSettings("PackingTool", "Theme").value("current_theme", THEME_DARK)
-    return _tokens(name)
+    return themed_tokens(name, load_bundled_fonts())

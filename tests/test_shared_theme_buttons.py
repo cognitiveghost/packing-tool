@@ -1,6 +1,8 @@
 """The four-role button hierarchy lives in shared/, so both apps get one copy."""
 import pytest
-from PySide6.QtWidgets import QPushButton
+from conftest import _rule_block
+from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QCheckBox, QPushButton, QRadioButton
 
 from shared.theme import (
     BUTTON_ROLES,
@@ -76,3 +78,78 @@ def test_marking_a_button_primary_still_fills_it_with_the_accent():
         sheet = build_stylesheet(theme)
         primary = sheet.split('QPushButton[role="primary"] {', 1)[1].split("}", 1)[0]
         assert theme.accent_fill in primary
+
+
+def test_a_button_grows_with_its_density_rung():
+    """build_stylesheet hardcoded font-size: 10pt, so a floor-density button
+    stayed at the desk size."""
+    from shared.theme import set_density
+
+    try:
+        set_density("floor")
+        assert "font-size: 12pt" in _rule_block(build_stylesheet(LIGHT_THEME), "QPushButton")
+    finally:
+        set_density("desk")
+
+
+def test_primary_focuses_against_its_own_fill():
+    """A focus_ring border on an accent fill is invisible. One exception,
+    written down once."""
+    sheet = build_stylesheet(LIGHT_THEME)
+    primary_focus = _rule_block(sheet, 'QPushButton[role="primary"]:focus')
+    assert f"2px solid {LIGHT_THEME.border_strong}" in primary_focus
+    assert LIGHT_THEME.focus_ring not in primary_focus
+
+
+def test_the_spin_box_is_specified_as_it_renders():
+    """Qt adds room for the up/down buttons after min-height applies, so a
+    'desk' spin box comes out 35px, not 32."""
+    from shared.theme import get_density_profile
+
+    profile = get_density_profile()
+    assert profile.control_height + 3 == 35
+
+
+def _render(widget) -> QImage:
+    """One control, styled by the real sheet, drawn offscreen."""
+    widget.setStyleSheet(build_stylesheet(LIGHT_THEME))
+    widget.resize(widget.sizeHint())
+    widget.show()
+    image = widget.grab().toImage()
+    widget.hide()
+    return image
+
+
+def test_the_toggle_indicator_is_the_drawn_size(qapp):
+    """Rendered, not asserted against the QSS text. QSS resolves equal
+    specificity by source order but only per property, so without an explicit
+    border the toggle keeps QCheckBox::indicator's 2px frame and comes out
+    24px tall -- which a substring test on its own rule cannot see."""
+    toggle = QCheckBox()
+    toggle.setProperty("role", "toggle")
+    assert _render(toggle).height() == 20
+
+
+def test_a_checked_box_draws_a_tick(qapp):
+    """spec 5.2: the tick is the vendored `check` glyph. Without the image
+    declaration the indicator is a solid accent_fill square with no mark, and
+    only pixels show that."""
+    box = QCheckBox()
+    box.setChecked(True)
+    image = _render(box)
+    tick = sum(
+        1
+        for y in range(image.height())
+        for x in range(image.width())
+        if image.pixelColor(x, y).lightness() > 160
+    )
+    assert tick > 10, f"only {tick} light pixels on the accent fill"
+
+
+def test_checking_a_radio_does_not_resize_it(qapp):
+    """width/height are the *content* box in QSS, so a thicker border on
+    :checked grows the control and shifts the row it sits in."""
+    radio = QRadioButton()
+    unchecked = _render(radio).size()
+    radio.setChecked(True)
+    assert _render(radio).size() == unchecked
