@@ -57,3 +57,15 @@ Rules:
 
 - **Use the `context7` MCP server** for PySide6/pytest/pandas API questions instead of answering from memory.
 - **Use the `github` MCP server** for PR/issue/branch operations on this repo instead of shelling out to `gh` when a tool covers it.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `cognitiveghost/packing-tool` (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
