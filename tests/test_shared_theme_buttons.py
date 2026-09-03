@@ -1,7 +1,8 @@
 """The four-role button hierarchy lives in shared/, so both apps get one copy."""
 import pytest
 from conftest import _rule_block
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QCheckBox, QPushButton, QRadioButton
 
 from shared.theme import (
     BUTTON_ROLES,
@@ -109,6 +110,46 @@ def test_the_spin_box_is_specified_as_it_renders():
     assert profile.control_height + 3 == 35
 
 
-def test_the_toggle_indicator_is_the_drawn_size():
-    block = _rule_block(build_stylesheet(LIGHT_THEME), 'QCheckBox[role="toggle"]::indicator')
-    assert "width: 36px" in block and "height: 20px" in block
+def _render(widget) -> QImage:
+    """One control, styled by the real sheet, drawn offscreen."""
+    widget.setStyleSheet(build_stylesheet(LIGHT_THEME))
+    widget.resize(widget.sizeHint())
+    widget.show()
+    image = widget.grab().toImage()
+    widget.hide()
+    return image
+
+
+def test_the_toggle_indicator_is_the_drawn_size(qapp):
+    """Rendered, not asserted against the QSS text. QSS resolves equal
+    specificity by source order but only per property, so without an explicit
+    border the toggle keeps QCheckBox::indicator's 2px frame and comes out
+    24px tall -- which a substring test on its own rule cannot see."""
+    toggle = QCheckBox()
+    toggle.setProperty("role", "toggle")
+    assert _render(toggle).height() == 20
+
+
+def test_a_checked_box_draws_a_tick(qapp):
+    """spec 5.2: the tick is the vendored `check` glyph. Without the image
+    declaration the indicator is a solid accent_fill square with no mark, and
+    only pixels show that."""
+    box = QCheckBox()
+    box.setChecked(True)
+    image = _render(box)
+    tick = sum(
+        1
+        for y in range(image.height())
+        for x in range(image.width())
+        if image.pixelColor(x, y).lightness() > 160
+    )
+    assert tick > 10, f"only {tick} light pixels on the accent fill"
+
+
+def test_checking_a_radio_does_not_resize_it(qapp):
+    """width/height are the *content* box in QSS, so a thicker border on
+    :checked grows the control and shifts the row it sits in."""
+    radio = QRadioButton()
+    unchecked = _render(radio).size()
+    radio.setChecked(True)
+    assert _render(radio).size() == unchecked
