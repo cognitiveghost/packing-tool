@@ -10,7 +10,7 @@ from functools import lru_cache
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from gui.fonts import load_bundled_fonts
+from shared.fonts import load_bundled_fonts
 from shared.theme import (
     THEME_DARK,
     THEME_LIGHT,
