@@ -13,6 +13,7 @@ EXPECTED_ICONS = [
     "folder-plus", "funnel-x", "info", "menu", "message-square", "package",
     "refresh-cw", "settings", "table", "tag", "tags", "trash-2", "wrench",
     "plus", "ellipsis-vertical", "check", "chevron-up", "chevron-down",
+    "toggle-off", "toggle-on",
 ]
 
 
