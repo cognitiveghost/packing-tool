@@ -9,6 +9,7 @@ shopify-fulfillment-tool/scripts/sync_shared.py after changing this file.
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from types import MappingProxyType
 
 from PySide6.QtCore import QObject, Qt, Signal
@@ -287,6 +288,30 @@ def on_theme_changed(widget, apply) -> None:
 
     theme_notifier.changed.connect(_reapply)
     widget.destroyed.connect(lambda *_: theme_notifier.changed.disconnect(_reapply))
+
+
+@lru_cache(maxsize=2)
+def _tokens_with_font(theme_name: str, family: str) -> "ThemeTokens":
+    theme = get_theme(theme_name)
+    return replace(theme, font_family=f"'{family}', {theme.font_family}")
+
+
+def themed_tokens(theme_name: str, family: str | None) -> "ThemeTokens":
+    """Tokens with an app's bundled family layered on, when there is one.
+
+    Memoised because current_tokens() runs twice per table row on the scan
+    path and replace() re-runs __init__ over all 50 fields every call.
+
+    Only the success path is memoised: an app's font loader returns None
+    before a QApplication exists, and caching that would leave the app on the
+    fallback font for the rest of the process over one early call.
+    """
+    if family is None:
+        return get_theme(theme_name)
+    return _tokens_with_font(theme_name, family)
+
+
+themed_tokens.cache_clear = _tokens_with_font.cache_clear
 
 
 @dataclass(frozen=True)

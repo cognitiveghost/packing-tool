@@ -14,6 +14,7 @@ from shared.theme import (
     clamp_geometry,
     contrast_ratio,
     get_theme,
+    themed_tokens,
     validate_theme,
 )
 
@@ -390,3 +391,12 @@ def test_a_chip_has_an_edge_so_its_tint_never_has_to_carry_the_shape(
     """
     chip = StatusChip(role, "Active", theme)
     assert f"border: 1px solid {getattr(theme, role)}" in chip.styleSheet()
+
+
+def test_themed_tokens_layers_the_family_and_memoises():
+    plain = themed_tokens("light", None)
+    assert plain is get_theme("light")
+
+    themed = themed_tokens("light", "Inter")
+    assert themed.font_family.startswith("'Inter', ")
+    assert themed_tokens("light", "Inter") is themed  # memoised
