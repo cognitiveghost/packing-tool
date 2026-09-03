@@ -1,8 +1,14 @@
 """StatusDot / StatusChip resolve tokens by name, never by hex string."""
 import pytest
-
-from shared.theme import DARK_THEME, LIGHT_THEME, StatusChip, StatusDot, build_stylesheet
 from conftest import _rule_block
+
+from shared.theme import (
+    DARK_THEME,
+    LIGHT_THEME,
+    StatusChip,
+    StatusDot,
+    build_stylesheet,
+)
 
 
 def test_status_dot_resolves_role_from_tokens(qapp):
@@ -88,7 +94,7 @@ def test_borders_stay_where_they_carry_meaning():
     """An input's edge and a hit target's edge are information."""
     sheet = build_stylesheet(LIGHT_THEME)
     for rule in ("QLineEdit", "QComboBox", "QPushButton"):
-        assert f"border: 1px solid" in _rule_block(sheet, rule)
+        assert "border: 1px solid" in _rule_block(sheet, rule)
 
 
 def test_groupbox_and_card_share_one_radius():

@@ -70,6 +70,7 @@ def test_gui_theme_apply_routes_through_shared(qapp, emissions):
 
 def test_on_theme_changed_reruns_the_closure(qapp):
     from PySide6.QtWidgets import QLabel
+
     from shared.theme import on_theme_changed, set_current
 
     set_current("light")
@@ -85,6 +86,7 @@ def test_on_theme_changed_reruns_the_closure(qapp):
 def test_on_theme_changed_stops_when_the_widget_dies(qapp):
     from PySide6.QtCore import SIGNAL, QCoreApplication, QEvent
     from PySide6.QtWidgets import QLabel
+
     from shared.theme import on_theme_changed, set_current, theme_notifier
 
     set_current("light")
