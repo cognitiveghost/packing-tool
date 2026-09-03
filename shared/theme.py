@@ -928,8 +928,7 @@ def build_stylesheet(theme: ThemeTokens) -> str:
 
         QGroupBox {{
             color: {theme.text};
-            border: 1px solid {theme.border};
-            border-radius: {r + 4}px;
+            border-radius: {theme.radius_md}px;
             padding-top: 24px; padding-bottom: 8px;
             padding-left: 8px; padding-right: 8px;
             font-weight: bold;
@@ -946,7 +945,6 @@ def build_stylesheet(theme: ThemeTokens) -> str:
             background-color: {theme.surface};
             color: {theme.text};
             gridline-color: {theme.border_subtle};
-            border: 1px solid {theme.border};
             border-radius: {r + 4}px;
         }}
         QTableView::item {{
@@ -964,7 +962,6 @@ def build_stylesheet(theme: ThemeTokens) -> str:
         QHeaderView::section {{
             background-color: {theme.surface_raised};
             color: {theme.text};
-            border: 1px solid {theme.border};
             padding: 4px; font-weight: bold;
         }}
         QTableCornerButton::section {{
@@ -975,7 +972,6 @@ def build_stylesheet(theme: ThemeTokens) -> str:
         QListWidget {{
             background-color: {theme.surface};
             color: {theme.text};
-            border: 1px solid {theme.border};
             border-radius: {r + 4}px;
         }}
         QListWidget::item {{ border: 2px solid transparent; }}
@@ -1032,7 +1028,6 @@ def build_stylesheet(theme: ThemeTokens) -> str:
 
         QToolBar {{
             background-color: {theme.surface_raised};
-            border: 1px solid {theme.border};
             spacing: {theme.spacing_xs}px;
         }}
 
