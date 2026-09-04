@@ -11,9 +11,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from types import MappingProxyType
+from typing import NamedTuple
 
-from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QObject, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QLabel, QWidget
 
 THEME_DARK = "dark"
@@ -655,6 +656,73 @@ def clamp_geometry(
     x = max(avail_x, min(x, avail_x + avail_w - w))
     y = max(avail_y, min(y, avail_y + avail_h - h))
     return (x, y, w, h)
+
+
+class StatusStyle(NamedTuple):
+    """How one status renders, resolved once for both renderers.
+
+    Three independent channels. `fg` is the role's colour -- the outline, the
+    mark and the label all take it. `fill` is the tint when the status is
+    live (someone has to act) and None when it is resting or terminal. Mark
+    is authorship: solid when a person set the status, hollow when the system
+    derived it.
+
+    Supersedes the older "tint carries authorship" rule, which left nothing to
+    carry urgency. One silhouette, three channels.
+    """
+
+    fg: str
+    fill: str | None
+    mark_filled: bool
+
+
+def status_style(
+    role: str, theme: ThemeTokens, *, live: bool = True, manual: bool = False
+) -> StatusStyle:
+    """Resolve a role plus the two flags into the three channels.
+
+    The one place the rule is written. StatusChip renders it as QSS and
+    SessionStatusDelegate paints it, and they must not drift -- a copied
+    two-line rule was tolerable, a three-channel rule with geometry is not.
+
+    `role` is any ThemeTokens colour field, not only the four status roles:
+    packing-tool's STATUS_CONFIG maps "not_started" to text_secondary. It is
+    resolved with getattr, so a typo raises here rather than rendering the
+    wrong colour in production.
+
+    A role with no `<role>_bg` partner falls back to surface_sunken -- the one
+    place a missing token is tolerated, and unchanged from StatusChip's
+    original rule.
+    """
+    fg = getattr(theme, role)
+    fill = getattr(theme, f"{role}_bg", theme.surface_sunken) if live else None
+    return StatusStyle(fg, fill, manual)
+
+
+# The chip's mark: an 8px disc or ring in the role colour. Painted, never a
+# character -- nothing may depend on a font shipping a filled and a hollow
+# circle that read as the same silhouette.
+MARK_PX = 8
+MARK_RING_WIDTH = 1.5
+
+
+def paint_status_mark(painter: QPainter, rect: QRectF, style: StatusStyle) -> None:
+    """Paint one mark into `rect`, an MARK_PX-square QRectF."""
+    color = QColor(style.fg)
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    if style.mark_filled:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(rect)
+    else:
+        pen = QPen(color)
+        pen.setWidthF(MARK_RING_WIDTH)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        inset = MARK_RING_WIDTH / 2
+        painter.drawEllipse(rect.adjusted(inset, inset, -inset, -inset))
+    painter.restore()
 
 
 class StatusDot(QWidget):
