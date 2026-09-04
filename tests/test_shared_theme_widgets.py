@@ -77,6 +77,61 @@ def test_status_chip_set_status_reresolves(qapp):
     assert LIGHT_THEME.status_danger in chip.styleSheet()
 
 
+def test_a_live_chip_is_tinted_and_a_resting_one_is_not(qapp):
+    from shared.theme import StatusChip
+
+    live = StatusChip("status_warning", "Paused", DARK_THEME, live=True)
+    resting = StatusChip("status_success", "Completed", DARK_THEME, live=False)
+    assert DARK_THEME.status_warning_bg in live.styleSheet()
+    assert "background-color: transparent" in resting.styleSheet()
+
+
+def test_both_fill_states_keep_the_same_outline(qapp):
+    from shared.theme import StatusChip
+
+    live = StatusChip("status_info", "Active", DARK_THEME, live=True)
+    resting = StatusChip("status_info", "Active", DARK_THEME, live=False)
+    outline = f"border: 1px solid {DARK_THEME.status_info}"
+    assert outline in live.styleSheet()
+    assert outline in resting.styleSheet()
+
+
+def test_the_chip_reserves_room_for_its_mark(qapp):
+    from shared.theme import MARK_LEFT_PX, MARK_PX, StatusChip
+
+    chip = StatusChip("status_info", "Active", DARK_THEME)
+    assert f"padding: 2px 8px 2px {MARK_LEFT_PX + MARK_PX + 4}px" in chip.styleSheet()
+
+
+def test_the_edge_variant_is_untouched_by_the_flags(qapp):
+    from shared.theme import StatusChip
+
+    edge = StatusChip("status_warning", "Paused", DARK_THEME, variant="edge",
+                      live=False, manual=True)
+    assert "border-left: 3px solid" in edge.styleSheet()
+    assert "padding: 2px 8px;" in edge.styleSheet()
+
+
+def test_a_hollow_dot_differs_from_a_solid_one(qapp):
+    from shared.theme import StatusDot
+
+    solid = StatusDot("status_success", DARK_THEME, filled=True)
+    hollow = StatusDot("status_success", DARK_THEME, filled=False)
+    assert solid._filled and not hollow._filled
+    hollow.set_filled(True)
+    assert hollow._filled
+
+
+def test_todays_call_sites_are_unchanged_by_the_defaults(qapp):
+    from shared.theme import StatusChip, StatusDot
+
+    # live=True, manual=False reproduce the shipped tinted pill and solid dot,
+    # so packing-tool's own screens do not move.
+    chip = StatusChip("status_info", "Active", DARK_THEME)
+    assert DARK_THEME.status_info_bg in chip.styleSheet()
+    assert StatusDot("status_info", DARK_THEME)._filled
+
+
 def test_regions_group_by_plane_not_by_outline():
     """F1: eleven outlines in one composition meant nothing was grouped,
     because everything was."""
