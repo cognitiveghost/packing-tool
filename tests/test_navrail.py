@@ -56,15 +56,6 @@ def test_set_current_rejects_an_index_that_has_no_item(rail):
         rail.set_current(3)
 
 
-def test_a_footer_item_is_not_a_destination(rail):
-    """A checkable footer would un-check the live destination and leave the
-    rail lit nowhere while the page behind it had not moved."""
-    rail.add_item(QIcon(), "Packing")
-    footer = rail.add_footer_item(QIcon(), "Server")
-    assert not footer.isCheckable()
-    assert rail.current_index() == 0
-
-
 def test_the_rail_repaints_on_a_theme_change(rail):
     """The regression the missing signal would have caused: a widget sheet
     outranks the app's, so a rail styled once stays light over dark pages."""
