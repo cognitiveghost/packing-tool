@@ -9,12 +9,16 @@ from shared.theme import (
     _SURFACE_PLANES,
     DARK_THEME,
     LIGHT_THEME,
+    SHAPE_PX,
+    SHAPES,
     StatusChip,
     ThemeTokens,
     build_stylesheet,
     clamp_geometry,
     contrast_ratio,
     get_theme,
+    paint_status_shape,
+    status_style,
     themed_tokens,
     validate_theme,
 )
@@ -329,14 +333,32 @@ def test_validate_theme_rejects_a_track_that_vanishes_on_a_selected_row():
 
 def _rule(qss: str, selector: str) -> str:
     """The declaration block for one selector, so a test asserts about the
-    rule it means rather than about the whole sheet."""
-    start = qss.index(selector + " {")
-    return qss[start:qss.index("}", start)]
+    rule it means rather than about the whole sheet.
+
+    A selector may share its block with sibling selectors, comma-joined
+    (`QTableView::item:selected, QTreeView::item:selected {`), so the brace
+    is found after the selector rather than assumed to follow it directly.
+
+    The match must still end where the selector ends, or `QTableView::item`
+    would silently return the block belonging to `QTableView::item:selected`
+    whenever that one happens to be emitted first.
+    """
+    start = -1
+    while True:
+        start = qss.index(selector, start + 1)
+        if qss[start + len(selector)] in ",{ \t\r\n":
+            break
+    brace = qss.index("{", start)
+    return qss[start:qss.index("}", brace)]
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
 @pytest.mark.parametrize("selector", [
-    "QTableView::item:selected", "QListWidget::item:selected",
+    # QTreeView is here because the shopify Session Browser became a tree and
+    # a QTreeView matches none of the QTableView rules -- the ring's
+    # horizontal sides vanished with no error until these rules covered it.
+    "QTableView::item:selected", "QTreeView::item:selected",
+    "QListWidget::item:selected",
 ])
 def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
     rule = _rule(build_stylesheet(theme), selector)
@@ -347,7 +369,9 @@ def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
-@pytest.mark.parametrize("selector", ["QTableView::item", "QListWidget::item"])
+@pytest.mark.parametrize("selector", [
+    "QTableView::item", "QTreeView::item", "QListWidget::item",
+])
 def test_unselected_items_reserve_the_ring_so_selecting_does_not_shift_text(
     theme, selector
 ):
@@ -448,3 +472,49 @@ def test_the_accent_hover_darkens(theme):
     label sitting on it."""
     assert contrast_ratio(theme.on_accent, theme.accent_fill_hover) > \
            contrast_ratio(theme.on_accent, theme.accent_fill)
+
+
+def _render(shape):
+    """Paint one shape on white and return the count of non-white pixels."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+
+    image = QImage(SHAPE_PX * 2, SHAPE_PX * 2, QImage.Format_RGB32)
+    image.fill(0xFFFFFF)
+    painter = QPainter(image)
+    paint_status_shape(
+        painter,
+        QRectF(SHAPE_PX / 2, SHAPE_PX / 2, SHAPE_PX, SHAPE_PX),
+        status_style("status_info", LIGHT_THEME),
+        shape,
+    )
+    painter.end()
+    return sum(
+        image.pixel(x, y) & 0xFFFFFF != 0xFFFFFF
+        for x in range(image.width())
+        for y in range(image.height())
+    )
+
+
+def test_the_eight_shapes_are_named():
+    assert SHAPES == (
+        "ring", "half", "pause", "clock",
+        "check", "bang", "slash", "tray",
+    )
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_every_shape_paints_something(shape):
+    assert _render(shape) > 0
+
+
+def test_the_shapes_are_distinguishable():
+    # Not a rendering assertion -- an ink-coverage one. Two shapes that paint
+    # the identical number of pixels are the pair a supervisor cannot tell
+    # apart at a glance either.
+    inked = [_render(shape) for shape in SHAPES]
+    assert len(set(inked)) == len(SHAPES)
+
+
+def test_an_unknown_shape_falls_back_to_the_ring():
+    assert _render("banana") == _render("ring")
