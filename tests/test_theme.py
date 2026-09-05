@@ -338,15 +338,27 @@ def _rule(qss: str, selector: str) -> str:
     A selector may share its block with sibling selectors, comma-joined
     (`QTableView::item:selected, QTreeView::item:selected {`), so the brace
     is found after the selector rather than assumed to follow it directly.
+
+    The match must still end where the selector ends, or `QTableView::item`
+    would silently return the block belonging to `QTableView::item:selected`
+    whenever that one happens to be emitted first.
     """
-    start = qss.index(selector)
+    start = -1
+    while True:
+        start = qss.index(selector, start + 1)
+        if qss[start + len(selector)] in ",{ \t\r\n":
+            break
     brace = qss.index("{", start)
     return qss[start:qss.index("}", brace)]
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
 @pytest.mark.parametrize("selector", [
-    "QTableView::item:selected", "QListWidget::item:selected",
+    # QTreeView is here because the shopify Session Browser became a tree and
+    # a QTreeView matches none of the QTableView rules -- the ring's
+    # horizontal sides vanished with no error until these rules covered it.
+    "QTableView::item:selected", "QTreeView::item:selected",
+    "QListWidget::item:selected",
 ])
 def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
     rule = _rule(build_stylesheet(theme), selector)
@@ -357,7 +369,9 @@ def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
-@pytest.mark.parametrize("selector", ["QTableView::item", "QListWidget::item"])
+@pytest.mark.parametrize("selector", [
+    "QTableView::item", "QTreeView::item", "QListWidget::item",
+])
 def test_unselected_items_reserve_the_ring_so_selecting_does_not_shift_text(
     theme, selector
 ):
