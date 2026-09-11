@@ -296,3 +296,41 @@ def test_a_directory_walk_picks_up_web_assets_and_nothing_else(tmp_path):
     (tmp_path / "notes.txt").write_text("color: #fff;\n", encoding="utf-8")
     out = find_style_literals([tmp_path])
     assert len(out) == 1 and out[0].startswith(str(tmp_path / "web" / "page.css"))
+
+
+@pytest.mark.parametrize(
+    "declaration, banned",
+    [
+        ("-webkit-box-shadow: none;", "-webkit-box-shadow"),
+        ("-webkit-transition: color 1s;", "-webkit-transition"),
+        ("-moz-transform: none;", "-moz-transform"),
+        (
+            "background-image: -webkit-linear-gradient(var(--a), var(--b));",
+            "-webkit-linear-gradient",
+        ),
+        ("scale: 2;", "scale"),
+        ("rotate: 45deg;", "rotate"),
+        ("translate: 1em;", "translate"),
+    ],
+)
+def test_a_vendor_prefix_or_an_individual_transform_is_still_banned(
+    tmp_path, declaration, banned
+):
+    out = _scan_asset(tmp_path, "page.css", f".x {{ {declaration} }}\n")
+    assert out == [f"1: banned: {banned}"]
+
+
+@pytest.mark.parametrize(
+    "statement, banned",
+    [
+        ("el.style.setProperty('box-shadow', 'none');", "box-shadow"),
+        ('el.style.setProperty("-webkit-transform", "none");', "-webkit-transform"),
+        ("el.style.webkitTransform = 'none';", "webkitTransform"),
+        ("el.style.scale = '2';", "scale"),
+    ],
+)
+def test_every_script_spelling_of_a_banned_property_is_flagged(
+    tmp_path, statement, banned
+):
+    out = _scan_asset(tmp_path, "page.js", statement + "\n")
+    assert out == [f"1: banned: {banned}"]
