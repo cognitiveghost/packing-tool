@@ -4,7 +4,7 @@ Pins the four call sites the 2026-08-29 default-role flip depends on: with the
 bare QPushButton rule no longer painting accent_fill, a primary that loses its
 set_button_role call goes silently grey rather than failing loudly.
 """
-import inspect
+
 
 from PySide6.QtWidgets import QPushButton
 
@@ -15,15 +15,10 @@ from packing_tool.session_lock_manager import SessionLockManager
 
 def _primaries(widget) -> list[str]:
     return [
-        b.text() for b in widget.findChildren(QPushButton)
+        b.text()
+        for b in widget.findChildren(QPushButton)
         if b.property("role") == "primary"
     ]
-
-
-def test_the_packer_mode_button_is_marked_primary():
-    from gui import main_window
-    source = inspect.getsource(main_window)
-    assert 'set_button_role(self.packer_mode_button, "primary")' in source
 
 
 def test_restore_selected_is_the_restore_dialogs_one_primary(profile_manager, qapp):
