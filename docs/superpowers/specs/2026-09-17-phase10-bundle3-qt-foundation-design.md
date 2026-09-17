@@ -103,9 +103,11 @@ Left to right, per artboard T1:
 - **Open session** navigates to the Browse page (`open_session_browser`).
 
 **Overflow ⋯ (Q2).** The artboards draw none, so this is a departure. Items:
-"Select worker…", "Server connection…", "Toggle dark/light theme", a separator,
-then "Exit". SKU mappings is not listed, because the bar already has that
-button. The menu bar and the toolbar are deleted. Ctrl+E stays as a window
+"SKU mapping…", "Select worker…", "Server connection…", "Toggle dark/light
+theme", a separator, then "Exit". SKU mapping is listed although the bar has
+that button: the bar shows it only in a session, and mappings are per client,
+so without the menu item they could not be edited before a session opens
+(Stage C review). The menu bar and the toolbar are deleted. Ctrl+E stays as a window
 `QShortcut` that calls `end_session_button.click()`. `click()` does nothing on
 a disabled button, so the shortcut still respects "no session".
 
@@ -124,9 +126,10 @@ The message line (`status_label`, above the status bar) is deleted. The
 name on the left, order summary on the right ("5 orders · 2 packed ·
 1 in progress").
 
-- Its colours come from the existing `QStatusBar` rule in
-  `build_stylesheet`. Only the mono label restyles itself, through
-  `on_theme_changed`.
+- Its labels restyle themselves through `on_theme_changed` to caption size in
+  `text_secondary`, matching `artboard.css` `.statusbar`; the session id is
+  also mono. (Amended at Stage C review: the `QStatusBar` rule alone rendered
+  body size in primary text, off the mockup.)
 - The summary is computed in `_populate_order_tree` from
   `logic.session_packing_state` and cleared on session end.
 - The worker label shows the name only. The artboard shows a placeholder id

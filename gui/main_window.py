@@ -48,7 +48,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.command_bar import CommandBar
+from gui.command_bar import PAGES, CommandBar
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -94,7 +94,6 @@ RAIL_ITEMS = (
 )
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
-PAGE_NAMES = ("packing", "statistics", "browser")
 
 DEFAULT_CONFIG_PATH = "config.ini"
 
@@ -343,7 +342,7 @@ class MainWindow(QMainWindow):
         self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
         self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
         self.session_tabs.currentChanged.connect(
-            lambda index: self.command_bar.set_page(PAGE_NAMES[index])
+            lambda index: self.command_bar.set_page(PAGES[index])
         )
 
         # The rail's stylesheet follows the theme on its own, but its icons are
@@ -379,6 +378,8 @@ class MainWindow(QMainWindow):
     def _init_overflow(self):
         """App-level actions behind the bar's ⋯ (spec E4, owner answer Q2)."""
         menu = self.command_bar.overflow
+        # Also reachable without a session: mappings are per client, not per session.
+        menu.add_item("SKU mapping…", self.open_sku_mapping_dialog)
         menu.add_item("Select worker…", self._select_worker)
         menu.add_item("Server connection…", self._open_connection_settings)
         menu.add_item("Toggle dark/light theme", self._toggle_theme)
@@ -392,24 +393,27 @@ class MainWindow(QMainWindow):
     def _init_status_bar(self):
         """Artboard T1's 40px strip: session id and worker left, order summary right.
 
-        Colours come from build_stylesheet's QStatusBar rule; only the mono
-        session id styles itself.
+        Labels use caption size in text_secondary, per artboard.css .statusbar;
+        the session id is also mono.
         """
         status_bar = self.statusBar()
         status_bar.setFixedHeight(40)
         status_bar.setSizeGripEnabled(False)
 
         self.sb_session_label = QLabel("—")
-        on_theme_changed(
-            self.sb_session_label,
-            lambda tokens: self.sb_session_label.setStyleSheet(
-                f"{font_css('caption')} font-family: {tokens.font_family_mono};"
-                f" color: {tokens.text_secondary};"
-            ),
-        )
         self.sb_worker_label = QLabel(self.current_worker_name or "")
         self.sb_worker_label.setObjectName("worker_label")
         self.sb_summary_label = QLabel("")
+
+        def style_labels(tokens):
+            caption = f"{font_css('caption')} color: {tokens.text_secondary};"
+            self.sb_worker_label.setStyleSheet(caption)
+            self.sb_summary_label.setStyleSheet(caption)
+            self.sb_session_label.setStyleSheet(
+                f"{caption} font-family: {tokens.font_family_mono};"
+            )
+
+        on_theme_changed(status_bar, style_labels)
         status_bar.addWidget(self.sb_session_label)
         status_bar.addWidget(self.sb_worker_label)
         status_bar.addPermanentWidget(self.sb_summary_label)
@@ -458,8 +462,7 @@ class MainWindow(QMainWindow):
             or not hasattr(self.logic, "processed_df")
             or self.logic.processed_df is None
         ):
-            if hasattr(self, "sb_summary_label"):
-                self.sb_summary_label.setText("")
+            self.sb_summary_label.setText("")
             return
 
         # Group by order number
@@ -584,11 +587,11 @@ class MainWindow(QMainWindow):
             else:
                 order_item.setExpanded(True)  # Show current work
 
-        if hasattr(self, "sb_summary_label"):
-            in_progress = len(in_progress_orders)
-            self.sb_summary_label.setText(
-                order_summary(grouped.ngroups, len(completed_orders), in_progress)
+        self.sb_summary_label.setText(
+            order_summary(
+                grouped.ngroups, len(completed_orders), len(in_progress_orders)
             )
+        )
 
     def _filter_orders(self, text: str):
         """Filter tree items by search text."""
@@ -1868,8 +1871,11 @@ class MainWindow(QMainWindow):
                     )
 
         except Exception as e:
+            # Neutral title: this can fire after the report was already saved.
             QMessageBox.critical(
-                self, "Report not saved", f"Could not save the report:\n\n{e}"
+                self,
+                "Session end failed",
+                f"Could not finish ending the session:\n\n{e}",
             )
             logger.exception("Error during end_session")
 
@@ -1906,14 +1912,11 @@ class MainWindow(QMainWindow):
 
         self.packer_mode_button.setEnabled(False)
 
-        # Disable toolbar end button and reset session info
-        if hasattr(self, "toolbar_end_btn"):
-            self.toolbar_end_btn.setEnabled(False)
-        self.command_bar.set_session(None)
+        self.toolbar_end_btn.setEnabled(False)
+        self._show_session(None)
 
         if hasattr(self, "order_tree"):
             self.order_tree.clear()
-        self.sb_session_label.setText("—")
         self.sb_summary_label.setText("")
 
         # Return user to session view (avoids leaving a blank packer mode screen)
@@ -2282,7 +2285,7 @@ class MainWindow(QMainWindow):
         This method:
         - Disables session start buttons
         - Enables packing operation buttons
-        - Updates status message and toolbar
+        - Shows the session in the command bar and status bar
         - Prepares UI for packing operations
         """
         logger.info("Enabling packing mode UI")
@@ -2290,21 +2293,22 @@ class MainWindow(QMainWindow):
         # Enable packing operation buttons
         self.packer_mode_button.setEnabled(True)
 
-        # Enable toolbar end button
-        if hasattr(self, "toolbar_end_btn"):
-            self.toolbar_end_btn.setEnabled(True)
+        self.toolbar_end_btn.setEnabled(True)
 
-        # Update the command bar's session id
         session_id = (
             Path(self.current_session_path).name
             if self.current_session_path
             else (self.current_packing_list or "")
         )
-        self.command_bar.set_session(session_id or None)
-        self.command_bar.session_label.setToolTip(self.current_packing_list or "")
-        self.sb_session_label.setText(session_id or "—")
+        self._show_session(session_id or None, self.current_packing_list or "")
 
         logger.info("Packing mode UI enabled successfully")
+
+    def _show_session(self, session_id, packing_list=""):
+        """The session's id in the bar and status bar, and its tooltip, set together."""
+        self.command_bar.set_session(session_id)
+        self.command_bar.session_label.setToolTip(packing_list if session_id else "")
+        self.sb_session_label.setText(session_id or "—")
 
     def open_session_browser(self):
         """Show the Session Browser page.

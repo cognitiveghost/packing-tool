@@ -144,6 +144,7 @@ def test_the_bar_carries_the_session_actions(window):
 def test_the_old_menu_actions_live_in_the_overflow(window):
     labels = [a.text() for a in window.command_bar.overflow.actions() if a.text()]
     assert labels == [
+        "SKU mapping…",
         "Select worker…",
         "Server connection…",
         "Toggle dark/light theme",
@@ -209,4 +210,23 @@ def test_the_status_bar_is_the_artboards_strip(window):
     bar = window.statusBar()
     assert bar.minimumHeight() == bar.maximumHeight() == 40
     assert window.sb_worker_label.text() == window.current_worker_name
+    assert window.sb_session_label.text() == "—"
+
+
+def test_sku_mapping_is_reachable_without_a_session(window):
+    """The bar hides its SKU mapping button until a session opens, but mappings
+    are per client -- the old toolbar button was always there."""
+    assert window.logic is None
+    action = next(
+        a for a in window.command_bar.overflow.actions() if a.text() == "SKU mapping…"
+    )
+    assert action.isEnabled()
+
+
+def test_ending_a_session_clears_the_session_tooltip(window):
+    window._show_session("2026-09-01_1042", "packing_list_A")
+    assert window.command_bar.session_label.toolTip() == "packing_list_A"
+    window._show_session(None)
+    assert window.command_bar.session_label.text() == "No session"
+    assert window.command_bar.session_label.toolTip() == ""
     assert window.sb_session_label.text() == "—"
