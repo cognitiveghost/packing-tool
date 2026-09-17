@@ -26,9 +26,15 @@ Replaces every widget listed in `packer_mode_widget.py`'s docstring
 | `.side .side-block` (progress) | `session_progress_bar`, `packed_stat_label`, `items_stat_label` | 4 | Web | new — `packer.css` side column |
 | `.side .history` | `history_table` | 4 | Web | new — `packer.css` side column |
 | `.side` (summary) | `summary_table` | 4 | Web | new — `packer.css` side column |
-| `.state-panel` (P1, P8) | new — no state-panel exists in `packer_mode_widget.py` today | 5 | Qt | `StatePanel` |
+| `.state-panel` (P1, P8) | new — no state-panel exists in `packer_mode_widget.py` today | 4 | Web | new — `packer.css` state panel inside the document; P8's "Exit packing" is a web→Qt bridge call to the same exit logic as the command-bar button |
 | `.statusbar` | existing status bar (session ID, worker, client) | 3 | Qt | shell `QStatusBar` |
 | `.rail` (hidden, A1) | `NavRail` — not shown while packing | 3 | Qt | `NavRail` |
+
+**Lifting the web tier (A3).** `packer-document.css` holds the order
+document's layout; the generic `.btn`, `.chip` and `.state-panel` rules it
+uses inside `.doc` still live in `artboard.css`. Bundle 4 must carry those
+three rule sets into `packer.css` along with `packer-document.css` — they
+were not copied here, so the artboards keep one definition of each.
 
 ## Packing table view (`packing-table.html`, T1–T2)
 
@@ -108,6 +114,16 @@ same `.card-grid` pattern.
   (`.sku-row--just-changed`, `--status-success-bg`) per spec ("tint only,
   no animation") — Qt has no transitions in QSS and the web tier is banned
   from using them (ADR 0001), so there was never a second option here.
+
+- **SKU row actions are 44px, so rows holding them outgrow the 40px rung.**
+  The spec asks for both "SKU list rows (40px)" and "All action targets
+  44px"; the two can't hold at once. The target size wins (`.sku-row` uses
+  `min-height`), so a row with actions is 45px. Rows with no actions stay 40px.
+- **Rail label "Browse"** stands in for "Session Browser" for the same reason
+  as "Stats": the full name doesn't fit the 56px rail.
+- **B1 drops today's Packing List and Duration columns.** They are not in
+  D1/D2's column set either; AGE and LAST TOUCHED carry the time story.
+  Restore them in Bundle 6 if supervisors miss them.
 
 ## Rendering note (not a design decision)
 

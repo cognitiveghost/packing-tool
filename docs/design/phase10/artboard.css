@@ -14,13 +14,6 @@ html, body {
 
 /* --- canvas -------------------------------------------------------------- */
 
-.canvas {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2xl);
-  padding: var(--spacing-2xl);
-}
-
 .frame-group {
   display: flex;
   flex-direction: column;
@@ -492,15 +485,3 @@ html, body {
   outline-offset: -2px;
 }
 
-.otable-group-title {
-  height: 28px;
-  display: flex;
-  align-items: center;
-  padding: 0 var(--spacing-md);
-  background: var(--surface-sunken);
-  font-size: var(--type-caption-size);
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}

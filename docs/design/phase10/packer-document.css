@@ -136,7 +136,8 @@
   grid-template-columns: minmax(0, 1fr) 110px 70px 130px 190px;
   align-items: center;
   gap: var(--spacing-sm);
-  height: var(--row-height);
+  /* 40px rung; a row holding 44px action targets grows to fit them. */
+  min-height: var(--row-height);
   padding: 0 var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -159,12 +160,13 @@
 .row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
 
 .row-actions .btn {
-  height: 32px;
   padding: 0 var(--spacing-sm);
   font-size: var(--type-caption-size);
 }
 
 /* --- side column: progress, history, summary -------------------------------- */
+
+.frame--1920 .doc { --side-width: 380px; }
 
 .side {
   flex: 0 0 var(--side-width, 300px);
