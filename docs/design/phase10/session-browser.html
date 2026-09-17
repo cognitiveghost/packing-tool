@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session Browser -- B1-B3</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="artboard.css">
+<style>
+  body { padding: var(--spacing-2xl); }
+  .frame-group { margin-bottom: var(--spacing-2xl); }
+  .frame-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; }
+  .tier-col { position: relative; }
+  .client-selector { width: 240px; justify-content: space-between; }
+  .b-cols { --otable-cols: 140px 200px 90px 160px 70px minmax(0, 1fr); }
+</style>
+</head>
+<body data-theme="light">
+
+<!-- ============================== B1 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">B1 -- session browser, list -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="B1">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item rail-item--current">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="filterbar">
+              <span class="filterbar-label">Status:</span>
+              <div class="field" style="width: 150px;">All statuses</div>
+              <span class="filterbar-label">From:</span>
+              <div class="field" style="width: 130px;">2026-08-01</div>
+              <span class="filterbar-label">To:</span>
+              <div class="field" style="width: 130px;">2026-09-02</div>
+              <div class="field field--placeholder" style="width: 200px;">Search sessions</div>
+              <div class="cmdbar-spacer"></div>
+              <button class="btn">Refresh</button>
+            </div>
+
+            <div class="card" style="height: calc(100% - 60px); overflow: hidden; padding: 0;">
+              <div class="otable b-cols" style="border: none; border-radius: 0; height: 100%; overflow: auto;">
+                <div class="otable-head">
+                  <span>Status</span><span>Session</span><span>Age</span><span>Packing</span><span class="otable-row__num">Items</span><span>Last touched</span>
+                </div>
+                <div class="otable-row otable-row--selected">
+                  <span class="chip chip--info chip--tint chip--hollow">Active</span>
+                  <span class="otable-row__order">2026-09-02_0810</span>
+                  <span>3h</span><span>9 / 14 orders</span><span class="otable-row__num">62</span>
+                  <span>W-004 &middot; WH-PC-02 &middot; 11:20</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--warning chip--tint">Paused</span>
+                  <span class="otable-row__order">2026-09-01_1550</span>
+                  <span>1d</span><span>4 / 10 orders</span><span class="otable-row__num">31</span>
+                  <span>W-002 &middot; WH-PC-01 &middot; Mon</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--warning chip--tint chip--hollow">Stale</span>
+                  <span class="otable-row__order">2026-08-30_0905</span>
+                  <span>3d</span><span>2 / 8 orders</span><span class="otable-row__num">19</span>
+                  <span>W-005 &middot; WH-PC-03 &middot; 2d ago</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--success chip--hollow">Completed</span>
+                  <span class="otable-row__order">2026-08-29_1004</span>
+                  <span>4d</span><span>13 / 13 orders</span><span class="otable-row__num">70</span>
+                  <span>W-007 &middot; WH-PC-04 &middot; Sat</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--danger chip--tint">Incomplete</span>
+                  <span class="otable-row__order">2026-08-28_1620</span>
+                  <span>5d</span><span>9 / 11 orders</span><span class="otable-row__num">48</span>
+                  <span>W-003 &middot; WH-PC-02 &middot; Fri</span>
+                </div>
+                <div class="otable-row" style="color: var(--text-secondary);">
+                  <span class="chip chip--danger chip--hollow">Abandoned</span>
+                  <span class="otable-row__order">2026-08-20_0940</span>
+                  <span>13d</span><span>1 / 6 orders</span><span class="otable-row__num">5</span>
+                  <span>W-001 &middot; WH-PC-01 &middot; 13d ago</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--neutral chip--hollow">Not started</span>
+                  <span class="otable-row__order">2026-09-02_0930</span>
+                  <span>10m</span><span>0 / 14 orders</span><span class="otable-row__num">0</span>
+                  <span>&mdash;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span>7 of 7 sessions</span>
+            <span class="statusbar-spacer"></span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================ B1-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">B1-L -- session browser, list -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="B1-L">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item rail-item--current">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="filterbar">
+              <span class="filterbar-label">Status:</span>
+              <div class="field" style="width: 150px;">All statuses</div>
+              <span class="filterbar-label">From:</span>
+              <div class="field" style="width: 130px;">2026-08-01</div>
+              <span class="filterbar-label">To:</span>
+              <div class="field" style="width: 130px;">2026-09-02</div>
+              <div class="field field--placeholder" style="width: 200px;">Search sessions</div>
+              <div class="cmdbar-spacer"></div>
+              <button class="btn">Refresh</button>
+            </div>
+
+            <div class="card" style="height: calc(100% - 60px); overflow: hidden; padding: 0;">
+              <div class="otable b-cols" style="border: none; border-radius: 0; height: 100%; overflow: auto;">
+                <div class="otable-head">
+                  <span>Status</span><span>Session</span><span>Age</span><span>Packing</span><span class="otable-row__num">Items</span><span>Last touched</span>
+                </div>
+                <div class="otable-row otable-row--selected">
+                  <span class="chip chip--info chip--tint chip--hollow">Active</span>
+                  <span class="otable-row__order">2026-09-02_0810</span>
+                  <span>3h</span><span>9 / 14 orders</span><span class="otable-row__num">62</span>
+                  <span>W-004 &middot; WH-PC-02 &middot; 11:20</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--warning chip--tint">Paused</span>
+                  <span class="otable-row__order">2026-09-01_1550</span>
+                  <span>1d</span><span>4 / 10 orders</span><span class="otable-row__num">31</span>
+                  <span>W-002 &middot; WH-PC-01 &middot; Mon</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--warning chip--tint chip--hollow">Stale</span>
+                  <span class="otable-row__order">2026-08-30_0905</span>
+                  <span>3d</span><span>2 / 8 orders</span><span class="otable-row__num">19</span>
+                  <span>W-005 &middot; WH-PC-03 &middot; 2d ago</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--success chip--hollow">Completed</span>
+                  <span class="otable-row__order">2026-08-29_1004</span>
+                  <span>4d</span><span>13 / 13 orders</span><span class="otable-row__num">70</span>
+                  <span>W-007 &middot; WH-PC-04 &middot; Sat</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--danger chip--tint">Incomplete</span>
+                  <span class="otable-row__order">2026-08-28_1620</span>
+                  <span>5d</span><span>9 / 11 orders</span><span class="otable-row__num">48</span>
+                  <span>W-003 &middot; WH-PC-02 &middot; Fri</span>
+                </div>
+                <div class="otable-row" style="color: var(--text-secondary);">
+                  <span class="chip chip--danger chip--hollow">Abandoned</span>
+                  <span class="otable-row__order">2026-08-20_0940</span>
+                  <span>13d</span><span>1 / 6 orders</span><span class="otable-row__num">5</span>
+                  <span>W-001 &middot; WH-PC-01 &middot; 13d ago</span>
+                </div>
+                <div class="otable-row">
+                  <span class="chip chip--neutral chip--hollow">Not started</span>
+                  <span class="otable-row__order">2026-09-02_0930</span>
+                  <span>10m</span><span>0 / 14 orders</span><span class="otable-row__num">0</span>
+                  <span>&mdash;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span>7 of 7 sessions</span>
+            <span class="statusbar-spacer"></span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================== B2 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">B2 -- session browser, detail -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="B2">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item rail-item--current">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="detail-header">
+              <button class="btn btn--ghost">&larr; Sessions</button>
+              <span class="detail-header-order">2026-09-02_0810</span>
+              <span class="chip chip--info chip--tint chip--hollow">Active</span>
+            </div>
+
+            <div class="tabstrip">
+              <span class="tab tab--current">Overview</span>
+              <span class="tab">Orders</span>
+              <span class="tab">Metrics</span>
+            </div>
+
+            <div class="card-grid">
+              <div class="card">
+                <div class="side-block-title">Session</div>
+                <div class="dl-row"><span class="dl-label">Session ID</span><span class="dl-value dl-value--mono">2026-09-02_0810</span></div>
+                <div class="dl-row"><span class="dl-label">Client</span><span class="dl-value">Kaufland DE</span></div>
+                <div class="dl-row"><span class="dl-label">Packing list</span><span class="dl-value">packing_list_03_DPD.csv</span></div>
+                <div class="dl-row"><span class="dl-label">Worker</span><span class="dl-value">W-004</span></div>
+                <div class="dl-row"><span class="dl-label">PC</span><span class="dl-value dl-value--mono">WH-PC-02</span></div>
+              </div>
+              <div class="card">
+                <div class="side-block-title">Timing</div>
+                <div class="dl-row"><span class="dl-label">Started</span><span class="dl-value">2026-09-02 08:10</span></div>
+                <div class="dl-row"><span class="dl-label">Completed</span><span class="dl-value">&mdash;</span></div>
+                <div class="dl-row"><span class="dl-label">Duration</span><span class="dl-value">3h 12m so far</span></div>
+                <div class="dl-row"><span class="dl-label">Orders packed</span><span class="dl-value">9 / 14</span></div>
+                <div class="dl-row"><span class="dl-label">Items packed</span><span class="dl-value">62</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-02_0810</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================ B2-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">B2-L -- session browser, detail -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="B2-L">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item rail-item--current">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="detail-header">
+              <button class="btn btn--ghost">&larr; Sessions</button>
+              <span class="detail-header-order">2026-09-02_0810</span>
+              <span class="chip chip--info chip--tint chip--hollow">Active</span>
+            </div>
+
+            <div class="tabstrip">
+              <span class="tab tab--current">Overview</span>
+              <span class="tab">Orders</span>
+              <span class="tab">Metrics</span>
+            </div>
+
+            <div class="card-grid">
+              <div class="card">
+                <div class="side-block-title">Session</div>
+                <div class="dl-row"><span class="dl-label">Session ID</span><span class="dl-value dl-value--mono">2026-09-02_0810</span></div>
+                <div class="dl-row"><span class="dl-label">Client</span><span class="dl-value">Kaufland DE</span></div>
+                <div class="dl-row"><span class="dl-label">Packing list</span><span class="dl-value">packing_list_03_DPD.csv</span></div>
+                <div class="dl-row"><span class="dl-label">Worker</span><span class="dl-value">W-004</span></div>
+                <div class="dl-row"><span class="dl-label">PC</span><span class="dl-value dl-value--mono">WH-PC-02</span></div>
+              </div>
+              <div class="card">
+                <div class="side-block-title">Timing</div>
+                <div class="dl-row"><span class="dl-label">Started</span><span class="dl-value">2026-09-02 08:10</span></div>
+                <div class="dl-row"><span class="dl-label">Completed</span><span class="dl-value">&mdash;</span></div>
+                <div class="dl-row"><span class="dl-label">Duration</span><span class="dl-value">3h 12m so far</span></div>
+                <div class="dl-row"><span class="dl-label">Orders packed</span><span class="dl-value">9 / 14</span></div>
+                <div class="dl-row"><span class="dl-label">Items packed</span><span class="dl-value">62</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-02_0810</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================== B3 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">B3 -- session browser, no matches -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="B3">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item rail-item--current">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="filterbar">
+              <span class="filterbar-label">Status:</span>
+              <div class="field" style="width: 150px;">Completed</div>
+              <div class="field field--placeholder" style="width: 200px;">weigh</div>
+              <div class="cmdbar-spacer"></div>
+              <button class="btn">Refresh</button>
+            </div>
+
+            <div class="state-panel" style="height: calc(100% - 60px);">
+              <p class="state-panel-title">No sessions match these filters</p>
+              <p class="state-panel-body">No completed session for Kaufland DE has "weigh" in its name.</p>
+              <div class="state-panel-actions">
+                <button class="btn btn--primary">Clear filters</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span>0 of 7 sessions</span>
+            <span class="statusbar-spacer"></span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+</body>
+</html>

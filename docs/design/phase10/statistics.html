@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statistics -- S1-S2</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="artboard.css">
+<style>
+  body { padding: var(--spacing-2xl); }
+  .frame-group { margin-bottom: var(--spacing-2xl); }
+  .frame-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; }
+  .tier-col { position: relative; }
+  .client-selector { width: 240px; justify-content: space-between; }
+  .courier-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 160px)); gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); }
+  .sec-title { font-size: var(--type-label-size); font-weight: 700; margin-bottom: var(--spacing-xs); }
+  .sku-cols { --otable-cols: minmax(0, 1fr) minmax(0, 2fr) 90px 140px; }
+</style>
+</head>
+<body data-theme="light">
+
+<!-- ============================== S1 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">S1 -- statistics, stat cards -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="S1">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item rail-item--current">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">2026-09-01_1042</span>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="sec-title">Session totals</div>
+            <div class="stat-grid">
+              <div class="stat-card"><span class="stat-card-value">14</span><span class="stat-card-label">Orders</span></div>
+              <div class="stat-card"><span class="stat-card-value">9</span><span class="stat-card-label">Completed</span></div>
+              <div class="stat-card"><span class="stat-card-value">66</span><span class="stat-card-label">Items</span></div>
+              <div class="stat-card"><span class="stat-card-value">34</span><span class="stat-card-label">Unique SKUs</span></div>
+              <div class="stat-card"><span class="stat-card-value">64%</span><span class="stat-card-label">Progress</span></div>
+            </div>
+
+            <div class="sec-title">By courier</div>
+            <div class="courier-grid">
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">6</span><span class="stat-card-label">DPD &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">4</span><span class="stat-card-label">GLS &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">3</span><span class="stat-card-label">Packeta &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">1</span><span class="stat-card-label">Econt &middot; orders</span></div>
+            </div>
+
+            <div class="sec-title">SKU summary</div>
+            <div class="card" style="padding: 0; overflow: hidden;">
+              <div class="otable sku-cols" style="border: none; border-radius: 0;">
+                <div class="otable-head"><span>SKU</span><span>Product</span><span class="otable-row__num">Total qty</span><span>Status</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-4409-B</span><span>Wireless Mouse</span><span class="otable-row__num">3</span><span class="chip chip--success chip--hollow">Packed</span></div>
+                <div class="otable-row"><span class="otable-row__sku">BX-1I0O-07</span><span>USB-C Cable 2m</span><span class="otable-row__num">4</span><span class="chip chip--success chip--hollow">Packed</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-9002-C</span><span>Desk Lamp</span><span class="otable-row__num">2</span><span class="chip chip--warning chip--tint chip--hollow">Partial</span></div>
+                <div class="otable-row"><span class="otable-row__sku">BX-3311-A</span><span>Laptop Stand</span><span class="otable-row__num">1</span><span class="chip chip--neutral chip--hollow">Pending</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-5520-A</span><span>Keyboard Cover</span><span class="otable-row__num">2</span><span class="chip chip--neutral chip--hollow">Pending</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================ S1-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">S1-L -- statistics, stat cards -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="S1-L">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item rail-item--current">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">2026-09-01_1042</span>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="sec-title">Session totals</div>
+            <div class="stat-grid">
+              <div class="stat-card"><span class="stat-card-value">14</span><span class="stat-card-label">Orders</span></div>
+              <div class="stat-card"><span class="stat-card-value">9</span><span class="stat-card-label">Completed</span></div>
+              <div class="stat-card"><span class="stat-card-value">66</span><span class="stat-card-label">Items</span></div>
+              <div class="stat-card"><span class="stat-card-value">34</span><span class="stat-card-label">Unique SKUs</span></div>
+              <div class="stat-card"><span class="stat-card-value">64%</span><span class="stat-card-label">Progress</span></div>
+            </div>
+
+            <div class="sec-title">By courier</div>
+            <div class="courier-grid">
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">6</span><span class="stat-card-label">DPD &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">4</span><span class="stat-card-label">GLS &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">3</span><span class="stat-card-label">Packeta &middot; orders</span></div>
+              <div class="stat-card stat-card--sm"><span class="stat-card-value">1</span><span class="stat-card-label">Econt &middot; orders</span></div>
+            </div>
+
+            <div class="sec-title">SKU summary</div>
+            <div class="card" style="padding: 0; overflow: hidden;">
+              <div class="otable sku-cols" style="border: none; border-radius: 0;">
+                <div class="otable-head"><span>SKU</span><span>Product</span><span class="otable-row__num">Total qty</span><span>Status</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-4409-B</span><span>Wireless Mouse</span><span class="otable-row__num">3</span><span class="chip chip--success chip--hollow">Packed</span></div>
+                <div class="otable-row"><span class="otable-row__sku">BX-1I0O-07</span><span>USB-C Cable 2m</span><span class="otable-row__num">4</span><span class="chip chip--success chip--hollow">Packed</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-9002-C</span><span>Desk Lamp</span><span class="otable-row__num">2</span><span class="chip chip--warning chip--tint chip--hollow">Partial</span></div>
+                <div class="otable-row"><span class="otable-row__sku">BX-3311-A</span><span>Laptop Stand</span><span class="otable-row__num">1</span><span class="chip chip--neutral chip--hollow">Pending</span></div>
+                <div class="otable-row"><span class="otable-row__sku">TS-5520-A</span><span>Keyboard Cover</span><span class="otable-row__num">2</span><span class="chip chip--neutral chip--hollow">Pending</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================== S2 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">S2 -- statistics, no data yet -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="S2">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item">Packing</div>
+          <div class="rail-item rail-item--current">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">No session</span>
+            <div class="cmdbar-spacer"></div>
+          </div>
+
+          <div class="page">
+            <div class="state-panel" style="height: 100%;">
+              <p class="state-panel-title">No packing data yet</p>
+              <p class="state-panel-body">Start a session from the Packing tab to see numbers here.</p>
+              <div class="state-panel-actions">
+                <button class="btn btn--primary">Go to Packing</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">&mdash;</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+</body>
+</html>

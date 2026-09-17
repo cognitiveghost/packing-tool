@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Packing table view -- T1-T2</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="artboard.css">
+<style>
+  body { padding: var(--spacing-2xl); }
+  .frame-group { margin-bottom: var(--spacing-2xl); }
+  .frame-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; }
+  .tier-col { position: relative; }
+  .tier-col span { position: absolute; white-space: nowrap; }
+  .client-selector { width: 240px; justify-content: space-between; }
+</style>
+</head>
+<body data-theme="light">
+
+<!-- ============================== T1 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">T1 -- packing table view -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="T1">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item rail-item--current">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">2026-09-01_1042</span>
+            <div class="field field--placeholder" style="width: 220px;">Filter orders</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn btn--primary">Start packing</button>
+            <button class="btn">SKU mapping</button>
+            <button class="btn">End session</button>
+          </div>
+
+          <div class="page">
+            <div class="card" style="height: 100%; overflow: hidden; padding: 0;">
+              <div class="otable" style="border: none; border-radius: 0; height: 100%; overflow: auto;">
+                <div class="otable-head">
+                  <span>Order / Item</span><span>Product</span><span class="otable-row__num">Quantity</span><span>Status</span><span>Courier</span>
+                </div>
+
+                <div class="otable-row"><span class="otable-row__order">#10429</span><span>5 items</span><span class="otable-row__num">12</span><span class="chip chip--warning chip--tint chip--hollow">In progress</span><span>DPD</span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-4409-B</span><span>Wireless Mouse</span><span class="otable-row__num">3</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-1I0O-07</span><span>USB-C Cable 2m</span><span class="otable-row__num">4</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-9002-C</span><span>Desk Lamp</span><span class="otable-row__num">2</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-3311-A</span><span>Laptop Stand</span><span class="otable-row__num">1</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-5520-A</span><span>Keyboard Cover</span><span class="otable-row__num">2</span><span></span><span></span></div>
+
+                <div class="otable-row"><span class="otable-row__order">#10428</span><span>2 items</span><span class="otable-row__num">6</span><span class="chip chip--success chip--hollow">Packed</span><span>DPD</span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-7742-D</span><span>Mouse Pad</span><span class="otable-row__num">1</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-1200-A</span><span>Screen Protector</span><span class="otable-row__num">5</span><span></span><span></span></div>
+
+                <div class="otable-row"><span class="otable-row__order">#10430</span><span>1 item</span><span class="otable-row__num">108</span><span class="chip chip--neutral chip--hollow">Not started</span><span>GLS</span></div>
+                <div class="otable-row"><span class="otable-row__order">#10431</span><span>3 items</span><span class="otable-row__num">9</span><span class="chip chip--neutral chip--hollow">Not started</span><span>Packeta</span></div>
+                <div class="otable-row"><span class="otable-row__order">#10432</span><span>4 items</span><span class="otable-row__num">18</span><span class="chip chip--success chip--hollow">Packed</span><span>DPD</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span class="statusbar-spacer"></span>
+            <span>5 orders &middot; 2 packed &middot; 1 in progress</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================ T1-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">T1-L -- packing table view -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="T1-L">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item rail-item--current">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">2026-09-01_1042</span>
+            <div class="field field--placeholder" style="width: 220px;">Filter orders</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn btn--primary">Start packing</button>
+            <button class="btn">SKU mapping</button>
+            <button class="btn">End session</button>
+          </div>
+
+          <div class="page">
+            <div class="card" style="height: 100%; overflow: hidden; padding: 0;">
+              <div class="otable" style="border: none; border-radius: 0; height: 100%; overflow: auto;">
+                <div class="otable-head">
+                  <span>Order / Item</span><span>Product</span><span class="otable-row__num">Quantity</span><span>Status</span><span>Courier</span>
+                </div>
+
+                <div class="otable-row"><span class="otable-row__order">#10429</span><span>5 items</span><span class="otable-row__num">12</span><span class="chip chip--warning chip--tint chip--hollow">In progress</span><span>DPD</span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-4409-B</span><span>Wireless Mouse</span><span class="otable-row__num">3</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-1I0O-07</span><span>USB-C Cable 2m</span><span class="otable-row__num">4</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-9002-C</span><span>Desk Lamp</span><span class="otable-row__num">2</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-3311-A</span><span>Laptop Stand</span><span class="otable-row__num">1</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-5520-A</span><span>Keyboard Cover</span><span class="otable-row__num">2</span><span></span><span></span></div>
+
+                <div class="otable-row"><span class="otable-row__order">#10428</span><span>2 items</span><span class="otable-row__num">6</span><span class="chip chip--success chip--hollow">Packed</span><span>DPD</span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">BX-7742-D</span><span>Mouse Pad</span><span class="otable-row__num">1</span><span></span><span></span></div>
+                <div class="otable-row otable-row--child"><span class="otable-row__sku">TS-1200-A</span><span>Screen Protector</span><span class="otable-row__num">5</span><span></span><span></span></div>
+
+                <div class="otable-row"><span class="otable-row__order">#10430</span><span>1 item</span><span class="otable-row__num">108</span><span class="chip chip--neutral chip--hollow">Not started</span><span>GLS</span></div>
+                <div class="otable-row"><span class="otable-row__order">#10431</span><span>3 items</span><span class="otable-row__num">9</span><span class="chip chip--neutral chip--hollow">Not started</span><span>Packeta</span></div>
+                <div class="otable-row"><span class="otable-row__order">#10432</span><span>4 items</span><span class="otable-row__num">18</span><span class="chip chip--success chip--hollow">Packed</span><span>DPD</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span class="statusbar-spacer"></span>
+            <span>5 orders &middot; 2 packed &middot; 1 in progress</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+<!-- ============================== T2 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">T2 -- packing table view, no session -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="T2">
+      <div class="shell">
+        <div class="rail">
+          <div class="rail-item rail-item--current">Packing</div>
+          <div class="rail-item">Stats</div>
+          <div class="rail-item">Browse</div>
+        </div>
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <div class="field client-selector">Kaufland DE <span>&#9662;</span></div>
+            <span class="cmdbar-session">No session</span>
+            <div class="field field--disabled" style="width: 220px;">Filter orders</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn btn--primary">Open session</button>
+          </div>
+
+          <div class="page">
+            <div class="state-panel" style="height: 100%;">
+              <p class="state-panel-title">No session open</p>
+              <p class="state-panel-body">Open a session to see its orders here.</p>
+              <div class="state-panel-actions">
+                <button class="btn btn--primary">Open session</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">&mdash;</span>
+            <span>W-007</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;"></div>
+  </div>
+</div>
+
+</body>
+</html>
