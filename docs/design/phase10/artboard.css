@@ -332,6 +332,80 @@ html, body {
   color: var(--text-secondary);
 }
 
+/* --- filter bar (Session Browser, Statistics empty states) ------------------ */
+
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  height: 44px;
+  margin-bottom: var(--spacing-md);
+}
+
+.filterbar-label {
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+/* --- detail header + tab strip (Session Browser detail, F3) ---------------- */
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  height: 44px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.detail-header-order {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+}
+
+.tabstrip {
+  display: flex;
+  gap: var(--spacing-lg);
+  height: 36px;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--spacing-md);
+}
+
+.tab {
+  padding-bottom: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: var(--type-body-size);
+}
+
+.tab--current {
+  color: var(--text);
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent-fill);
+}
+
+/* --- definition list (session overview fields) ------------------------------ */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.dl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  height: 28px;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--type-body-size);
+}
+.dl-row:last-child { border-bottom: none; }
+.dl-label { color: var(--text-secondary); }
+.dl-value { font-weight: 700; }
+.dl-value--mono { font-family: var(--font-family-mono); font-weight: 400; }
+
 /* --- order tree (Packing table view, Session Browser lists): Qt-tier ------- */
 
 .otable {
@@ -373,6 +447,13 @@ html, body {
 .otable-row__order { font-family: var(--font-family-mono); }
 .otable-row__sku { font-family: var(--font-family-mono); }
 .otable-row__num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Ring, never a fill (F4) -- box-sizing keeps the row at --row-height. */
+.otable-row--selected {
+  background: var(--selection-bg);
+  outline: 2px solid var(--selection-border);
+  outline-offset: -2px;
+}
 
 .otable-group-title {
   height: 28px;
