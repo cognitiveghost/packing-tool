@@ -20,7 +20,7 @@ Everything else gets the general repaint through the shared shell and components
 
 ## Where Packing Tool stands
 
-Already merged from Phase 9: 9.0 asset library (#171), Bundle 1 foundations —
+Already merged from Phase 9: 9.0 asset library (#171), Phase 9 Bundle 1 foundations —
 tokens, borders, controls (#172), 9.3 status chip (#173), rail cleanup (#174).
 Not ported: command bar / shell, the component library (`Card`, `StatePanel`,
 `Toast`, `ConfirmDialog`, …, which live only in Shopify's `gui/components/`),
@@ -32,8 +32,10 @@ the session browser pattern, and the web tier.
 
 Shopify ADR 0001 says "Packing Tool stays entirely Qt" and caps the web tier at
 one screen, because every screen across the seam is a permanent tax. The repo
-owner accepts a second screen for Packer Mode. Bundle 1 writes packing-tool
-**ADR 0001** recording this and adds a pointer note to Shopify's ADR 0001. The
+owner accepts a second screen for Packer Mode, and the build-size cost up front
+(Chromium already ships and works in Shopify Tool on the same machines).
+Recorded in packing-tool **ADR 0001**; Bundle 3 adds a pointer note to
+Shopify's ADR 0001 when it next touches that repo. The
 guardrails from Shopify's ADR carry over unchanged: `shared/theme.py` is the only
 source of colour, `theme_css_vars()` feeds the page, no hex in web assets
 (`style_lint` covers `.css`/`.html`), no shadows/gradients/transitions/transforms/px
@@ -61,16 +63,16 @@ scans. Therefore:
   focus proxy; clicks on web actions return focus to the scanner through the
   bridge).
 - A test proves a keystroke sequence + Enter reaches `barcode_scanned` after a
-  click inside the web view. Bundle 1 proves this on a frozen Windows build;
-  Bundle 4 turns it into a regression test.
+  click inside the web view. Bundle 4 adds it as a regression test, and the
+  owner confirms it with a real scanner on a Windows build before Bundle 4
+  merges.
 
-### D4 — `shared/` drift is repaired first
+### D4 — `shared/` is already in sync
 
-Shopify Bundle 11 (#323) edited `shared/theme.py` (`theme_css_vars`) and
-`shared/style_lint.py` directly in the Shopify repo. packing-tool is canonical,
-so the next `sync_shared.py` run would delete them and break Analysis Results.
-Bundle 1 back-ports both files into packing-tool and adds a test that fails when
-the two copies differ (skipped when the sibling repo is absent).
+`theme_css_vars()` and the `.css`/`.html` lint already reached packing-tool via
+#175 and #176; both repos' `shared/` trees are byte-identical (44 files,
+checked 2026-09-17). No foundations bundle is needed. The original Bundle 1
+(drift repair + build gate) was dropped.
 
 ### D5 — Mockups are drafted by the runner, approved by the owner
 
@@ -82,8 +84,8 @@ brief (runner stage A, rule A4).
 ### D6 — Shared components move into `shared/`, not copied
 
 The components Packing Tool needs from Shopify's `gui/components/` move to
-`shared/` (as 9.0 did for icons) so both apps import one copy. Copies drift —
-D4 is the proof. Bundle 3's Stage A may leave a component in Shopify if it
+`shared/` (as 9.0 did for icons) so both apps import one copy rather than two
+that drift. Bundle 3's Stage A may leave a component in Shopify if it
 carries Shopify-only behaviour, and says why.
 
 ### D7 — Bug hunt is opportunistic, per bundle
@@ -107,10 +109,7 @@ from `Card`/stat-card components. It does not go on the web tier.
 
 ## Risks
 
-- **Build size.** Shopify's zip went 128 → 294 MiB. Bundle 1 measures Packing
-  Tool's; the owner accepts or rejects at that PR. Rejection stops Bundles 4–5
-  and Packer Mode falls back to a Qt redesign.
-- **RDP rendering.** Chromium over RDP at 1366×768 must be verified by the
-  owner on Windows before Bundle 4 starts.
+- **Scanner over RDP.** Chromium rendering is proven by Shopify Tool; scanner
+  focus next to a web view is not. The owner checks it on Windows in Bundle 4.
 - **Bundle 5 size.** If its plan exceeds ~15 tasks it splits into 5a (scan
   feedback + panels) and 5b (Qt chrome + retire old widgets).

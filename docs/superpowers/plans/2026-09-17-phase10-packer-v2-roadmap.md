@@ -14,34 +14,18 @@ Every bundle inherits the READ FIRST workflow (`6h8v49hR5844MWxV`) and D7:
 fix backend bugs found in touched code, with a regression test.
 
 ```
-1 Foundations → 2 Artboards → 3 Qt foundation → 4 Web seam + order document
-                                             ↘ 6 Session Browser + Statistics
-                              4 → 5 Packer Mode complete
+2 Artboards → 3 Qt foundation → 4 Web seam + order document → 5 Packer Mode complete
+                            ↘ 6 Session Browser + Statistics
 ```
 
-Worked order: 1, 2, 3, 4, 5, 6. Bundle 6 depends only on 3.
+Worked order: 2, 3, 4, 5, 6 (Bundle 1 was dropped, see below). Bundle 6 depends only on 3.
 
 ---
 
-### Bundle 1 — Foundations
-**Repos:** packing-tool, shopify-fulfillment-tool. **Artboard:** none.
-1. **Repair `shared/` drift (D4).** Back-port Shopify's `shared/theme.py`
-   (`theme_css_vars`) and `shared/style_lint.py` into packing-tool; add a test
-   that diffs the two `shared/` trees and fails on drift (skip when
-   `../shopify-fulfillment-tool` is absent); run `sync_shared.py` and confirm a
-   no-op diff in Shopify.
-2. **Build gate (spike, D3).** Add `PySide6-QtWebEngine`; a frozen
-   `--onedir --windowed` Windows build opens a throwaway `QWebEngineView` next
-   to the scanner `QLineEdit` and scans still land after clicking the view. Add
-   the CI guard for `QtWebEngineProcess.exe` (copy Shopify
-   `build_release.yml` step). Record size before/after.
-3. **ADR.** Write packing-tool `docs/adr/0001-packer-mode-on-the-web-tier.md`
-   (D1) with the gate outcome; add a pointer note to Shopify ADR 0001.
-
-**Done when:** the drift test passes in packing-tool, Shopify's `shared/` is
-byte-identical after sync, CI builds with the WebEngine guard, the owner has
-verified scanning over RDP at 1366×768, and the size delta is in the ADR.
-If the owner rejects the size, stop and re-plan Bundles 4–5 as Qt.
+### Bundle 1 — dropped
+`shared/` was already in sync and the owner accepted the build size up front
+(spec D1, D4). The ADR shipped with this roadmap; the WebEngine dependency, CI
+guard and scanner check moved into Bundle 4. **Work starts at Bundle 2.**
 
 ### Bundle 2 — Artboards
 **Repo:** packing-tool. **Output:** `docs/design/phase10/*.html` (no app code).
@@ -63,6 +47,9 @@ them exactly (runner rule A4).
    `shared/` (D6) — at least `Card`, `StatePanel`, `CommandBar`, `Toast`,
    `ConfirmDialog`; Shopify imports switch to `shared`.
 2. Packing shell: command bar + rail at floor density per Bundle 2 artboards.
+3. In Shopify's `docs/adr/0001-analysis-results-on-the-web-tier.md`, add a note
+   pointing at packing-tool ADR 0001 (its "Packing Tool stays entirely Qt"
+   line is superseded).
 
 **Done when:** both repos import those components from `shared/`, both test
 suites and `style_lint` pass, and the Packing main window renders the new shell
@@ -70,6 +57,9 @@ in both themes.
 
 ### Bundle 4 — Web seam + order document
 **Repo:** packing-tool. **Artboard:** Packer Mode (Bundle 2).
+0. Add `PySide6-QtWebEngine` to `requirements.txt` and the
+   `QtWebEngineProcess.exe` guard to `.github/workflows/build-release.yml`
+   (copy Shopify `build_release.yml`'s step).
 1. `QWebChannel` bridge + page skeleton (`gui/web/packer.*`) fed by
    `theme_css_vars`; theme switches repaint the page. Model it on Shopify
    `gui/results_bridge.py` and `gui/webengine_gate.py`; extract the generic part
@@ -80,7 +70,9 @@ in both themes.
    `PackerModeWidget` signals.
 
 **Done when:** a full order can be packed with the web document, all four
-per-item actions work through the bridge, and the D3 test passes.
+per-item actions work through the bridge, the D3 test passes, CI's frozen
+build contains `QtWebEngineProcess.exe`, and the owner has scanned with a real
+scanner on a Windows build after clicking inside the web view.
 
 ### Bundle 5 — Packer Mode complete
 **Repo:** packing-tool. **Artboard:** Packer Mode (Bundle 2).
