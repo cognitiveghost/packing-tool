@@ -331,3 +331,58 @@ html, body {
   font-size: var(--type-caption-size);
   color: var(--text-secondary);
 }
+
+/* --- order tree (Packing table view, Session Browser lists): Qt-tier ------- */
+
+.otable {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.otable-head,
+.otable-row {
+  display: grid;
+  grid-template-columns: var(--otable-cols, 200px minmax(0, 1fr) 90px 130px 130px);
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-md);
+}
+
+.otable-head {
+  height: 32px;
+  background: var(--surface-raised);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.otable-row {
+  height: var(--row-height);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.otable-row:last-child { border-bottom: none; }
+.otable-row:nth-child(even) { background: var(--surface-raised); }
+
+.otable-row--child {
+  padding-left: calc(var(--spacing-md) + 24px);
+  color: var(--text-secondary);
+}
+
+.otable-row__order { font-family: var(--font-family-mono); }
+.otable-row__sku { font-family: var(--font-family-mono); }
+.otable-row__num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.otable-group-title {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  background: var(--surface-sunken);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
