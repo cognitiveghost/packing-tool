@@ -153,6 +153,9 @@
 .sku-row--pending { border-left: 3px solid transparent; color: var(--text-secondary); }
 .sku-row--unknown { border-left: 3px solid var(--status-danger); background: var(--status-danger-bg); }
 
+/* The row a match just landed on (P4): tint only, no animation. */
+.sku-row--just-changed { background: var(--status-success-bg); }
+
 .row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
 
 .row-actions .btn {
