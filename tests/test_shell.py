@@ -12,6 +12,7 @@ from gui.main_window import (
     PAGE_STATISTICS,
     RAIL_ITEMS,
     MainWindow,
+    order_summary,
 )
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 
@@ -184,3 +185,28 @@ def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monke
     browser._on_auto_refresh()
     assert refreshes == []
     assert browser._refresh_timer.isActive()  # still armed for the next visit
+
+
+@pytest.mark.parametrize(
+    "args, text",
+    [
+        ((5, 2, 1), "5 orders · 2 packed · 1 in progress"),
+        ((1, 1, 0), "1 order · 1 packed · 0 in progress"),
+        ((0, 0, 0), ""),
+    ],
+)
+def test_order_summary(args, text):
+    assert order_summary(*args) == text
+
+
+def test_the_message_line_is_gone(window):
+    """Its texts became toasts (spec E5). It also hid a bug: session teardown
+    overwrote "Report saved to <path>" before anyone could read it."""
+    assert not hasattr(window, "status_label")
+
+
+def test_the_status_bar_is_the_artboards_strip(window):
+    bar = window.statusBar()
+    assert bar.minimumHeight() == bar.maximumHeight() == 40
+    assert window.sb_worker_label.text() == window.current_worker_name
+    assert window.sb_session_label.text() == "—"

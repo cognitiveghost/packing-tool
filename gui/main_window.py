@@ -63,12 +63,13 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.components.toast import toast
 from shared.icons import icon
 from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from shared.theme import theme_notifier
+from shared.theme import font_css, on_theme_changed, theme_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,14 @@ PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
 PAGE_NAMES = ("packing", "statistics", "browser")
 
 DEFAULT_CONFIG_PATH = "config.ini"
+
+
+def order_summary(total: int, packed: int, in_progress: int) -> str:
+    """The status bar's right-hand text (artboard T1). Empty with no orders."""
+    if not total:
+        return ""
+    noun = "order" if total == 1 else "orders"
+    return f"{total} {noun} · {packed} packed · {in_progress} in progress"
 
 
 class MainWindow(QMainWindow):
@@ -343,18 +352,6 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.session_tabs)
 
-        self.status_label = QLabel("Start a new session to load a packing list.")
-        self.status_label.setObjectName("status_msg_label")
-        self.status_label.setStyleSheet(
-            "QLabel#status_msg_label { "
-            "border-top: 1px solid palette(mid); "
-            "padding: 4px 6px; "
-            "font-size: 10pt; "
-            f"color: {current_tokens().text_secondary}; "
-            "}"
-        )
-        main_layout.addWidget(self.status_label)
-
         self.packer_mode_widget = PackerModeWidget(sim_mode=self._sim_mode)
         self.packer_mode_widget.barcode_scanned.connect(self.on_scanner_input)
         self.packer_mode_widget.exit_packing_mode.connect(self.switch_to_session_view)
@@ -393,11 +390,29 @@ class MainWindow(QMainWindow):
         end_shortcut.activated.connect(lambda: self.toolbar_end_btn.click())
 
     def _init_status_bar(self):
-        """Set up the bottom status bar with permanent worker label."""
+        """Artboard T1's 40px strip: session id and worker left, order summary right.
+
+        Colours come from build_stylesheet's QStatusBar rule; only the mono
+        session id styles itself.
+        """
         status_bar = self.statusBar()
-        self.sb_worker_label = QLabel(f"Worker: {self.current_worker_name or 'None'}")
+        status_bar.setFixedHeight(40)
+        status_bar.setSizeGripEnabled(False)
+
+        self.sb_session_label = QLabel("—")
+        on_theme_changed(
+            self.sb_session_label,
+            lambda tokens: self.sb_session_label.setStyleSheet(
+                f"{font_css('caption')} font-family: {tokens.font_family_mono};"
+                f" color: {tokens.text_secondary};"
+            ),
+        )
+        self.sb_worker_label = QLabel(self.current_worker_name or "")
         self.sb_worker_label.setObjectName("worker_label")
-        status_bar.addPermanentWidget(self.sb_worker_label)
+        self.sb_summary_label = QLabel("")
+        status_bar.addWidget(self.sb_session_label)
+        status_bar.addWidget(self.sb_worker_label)
+        status_bar.addPermanentWidget(self.sb_summary_label)
 
     def _setup_order_tree(self):
         """Setup expandable order tree view."""
@@ -443,6 +458,8 @@ class MainWindow(QMainWindow):
             or not hasattr(self.logic, "processed_df")
             or self.logic.processed_df is None
         ):
+            if hasattr(self, "sb_summary_label"):
+                self.sb_summary_label.setText("")
             return
 
         # Group by order number
@@ -566,6 +583,12 @@ class MainWindow(QMainWindow):
                 order_item.setExpanded(False)  # Keep compact
             else:
                 order_item.setExpanded(True)  # Show current work
+
+        if hasattr(self, "sb_summary_label"):
+            in_progress = len(in_progress_orders)
+            self.sb_summary_label.setText(
+                order_summary(grouped.ngroups, len(completed_orders), in_progress)
+            )
 
     def _filter_orders(self, text: str):
         """Filter tree items by search text."""
@@ -856,9 +879,7 @@ class MainWindow(QMainWindow):
                 if worker:
                     self.current_worker_name = worker.name
                     if hasattr(self, "sb_worker_label"):
-                        self.sb_worker_label.setText(
-                            f"Worker: {self.current_worker_name}"
-                        )
+                        self.sb_worker_label.setText(self.current_worker_name)
                     logger.info(
                         f"Logged in as: {self.current_worker_name} ({self.current_worker_id})"
                     )
@@ -896,9 +917,6 @@ class MainWindow(QMainWindow):
                 logger.warning("No clients found")
                 self.client_combo.addItem("(No clients available)", None)
                 self.client_combo.setEnabled(False)
-                self.status_label.setText(
-                    "No clients found. Click '+ New Client' to create one."
-                )
                 return
 
             self.client_combo.setEnabled(True)
@@ -948,7 +966,6 @@ class MainWindow(QMainWindow):
         if not client_id:
             logger.debug("No valid client selected")
             self.current_client_id = None
-            self.status_label.setText("Please select or create a client.")
             return
 
         logger.info(f"Client changed to: {client_id}")
@@ -957,12 +974,6 @@ class MainWindow(QMainWindow):
 
         # Save as last selected client
         self.settings.setValue("last_client", client_id)
-
-        # Update status
-        client_name = self.client_combo.currentText()
-        self.status_label.setText(
-            f"Selected client: {client_name}\nReady to start a session."
-        )
 
         logger.debug(f"Current client set to: {client_id}")
 
@@ -1030,9 +1041,7 @@ class MainWindow(QMainWindow):
         # Check if session already active
         if self.session_manager and self.session_manager.is_active():
             logger.warning("Attempted to start session while one is already active")
-            self.status_label.setText(
-                "A session is already active. Please end it first."
-            )
+            toast(self, "A session is already open. End it first.", role="info")
             return
 
         # Require file_path for Shopify sessions
@@ -1099,9 +1108,7 @@ class MainWindow(QMainWindow):
             self.setup_order_table()
 
             # Update UI
-            self.status_label.setText(
-                f"Successfully loaded {order_count} orders for session '{session_id}'."
-            )
+            toast(self, f"Loaded {order_count} orders.")
             self.packer_mode_button.setEnabled(True)
 
         except StaleLockError as e:
@@ -1171,9 +1178,7 @@ class MainWindow(QMainWindow):
                         self.current_client_id
                     )
                     self.logic.set_sku_map(new_map)
-                    self.status_label.setText(
-                        "SKU mapping updated and synchronized across all PCs."
-                    )
+                    toast(self, "SKU mapping saved and shared with every PC.")
                     logger.info("SKU mapping reloaded into active session")
                 except Exception as e:
                     logger.exception("Failed to reload SKU mapping into session")
@@ -1464,11 +1469,7 @@ class MainWindow(QMainWindow):
             self.setup_order_table()
 
             # 11. Update UI state
-            self.status_label.setText(
-                f"Session: {session_path.name} / {packing_list_name}\n"
-                f"Orders: {order_count}\n"
-                f"Ready for packing"
-            )
+            toast(self, f"Loaded {order_count} orders from {packing_list_name}.")
 
             # 12. Enable packing UI
             self.enable_packing_mode()
@@ -1600,7 +1601,7 @@ class MainWindow(QMainWindow):
                         for cell in row:
                             cell.fill = green_fill
 
-            self.status_label.setText(f"Session ended. Report saved to {output_path}")
+            toast(self, f"Session ended. Report saved to {output_path}")
 
             # Generate session summary + record stats in background thread so the
             # UI stays responsive while writing to the (potentially slow) file server.
@@ -1867,7 +1868,9 @@ class MainWindow(QMainWindow):
                     )
 
         except Exception as e:
-            self.status_label.setText(f"Could not save the report. Error: {e}")
+            QMessageBox.critical(
+                self, "Report not saved", f"Could not save the report:\n\n{e}"
+            )
             logger.exception("Error during end_session")
 
         # CRITICAL: Stop heartbeat timer and release lock
@@ -1910,7 +1913,8 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "order_tree"):
             self.order_tree.clear()
-        self.status_label.setText("Session ended. Start a new session to begin.")
+        self.sb_session_label.setText("—")
+        self.sb_summary_label.setText("")
 
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
@@ -2298,15 +2302,7 @@ class MainWindow(QMainWindow):
         )
         self.command_bar.set_session(session_id or None)
         self.command_bar.session_label.setToolTip(self.current_packing_list or "")
-
-        # Update status
-        if hasattr(self, "packing_data") and self.packing_data:
-            self.status_label.setText(
-                f"Ready to pack: {self.current_packing_list}\n"
-                f"Orders: {self.packing_data.get('total_orders', 0)}"
-            )
-        else:
-            self.status_label.setText("Ready to pack")
+        self.sb_session_label.setText(session_id or "—")
 
         logger.info("Packing mode UI enabled successfully")
 
@@ -2628,4 +2624,3 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to release lock:\n\n{e}")
         else:
             logger.info("User cancelled force-release of stale lock")
-            self.status_label.setText("Session opening cancelled.")
