@@ -36,6 +36,8 @@ Draw at floor density in both themes, with artbook F0 tokens and F5 status:
   session complete.
 - **Session Browser** — list, filters, detail (Shopify D1/D2 as reference).
 - **Statistics** — the Qt stat-card layout.
+- **Packing table view** — the Packing tab's order tree (owner addition,
+  2026-09-17; built in Bundle 6).
 - A handoff sheet mapping each artboard to the widgets it replaces.
 
 **Done when:** the owner approves the artboards on the PR. Bundles 3–6 follow
@@ -89,12 +91,14 @@ Split into 5a (items 1–2) and 5b (items 3–4) if the plan exceeds ~15 tasks.
 state drawn in Bundle 2 is reachable, and the owner has checked it on Windows.
 
 ### Bundle 6 — Session Browser + Statistics
-**Repo:** packing-tool. **Artboards:** Session Browser, Statistics (Bundle 2).
+**Repo:** packing-tool. **Artboards:** Session Browser, Statistics, Packing table view (Bundle 2).
 1. Session Browser (`gui/session_browser/`) rebuilt in the Shopify Bundle 6
    pattern with shared components, F5 status chips and state panels.
-2. Statistics tab (`MainWindow._setup_statistics_tab` / `_update_statistics`)
+2. Packing table view (`MainWindow._setup_order_tree`) rebuilt per its
+   artboard, still Qt (owner decision 2026-09-17, Bundle 2 spec Q1).
+3. Statistics tab (`MainWindow._setup_statistics_tab` / `_update_statistics`)
    rebuilt with cards; logic that belongs in `shared/stats_manager.py` moves
    there.
 
-**Done when:** both screens match their artboards in both themes, and
+**Done when:** all three screens match their artboards in both themes, and
 `main_window.py` no longer builds Statistics widgets inline.
