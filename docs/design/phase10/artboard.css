@@ -1,0 +1,314 @@
+/* Canvas + Qt-tier look for the Phase 10 Bundle 2 artboards (ADR 0001).
+   Values are tokens only -- see tokens.css. This file draws the shell
+   (rail, command bar, status bar) and every Qt-tier control; the Packer
+   Mode order document is styled by packer-document.css instead (A3). */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--surface-sunken);
+  font-family: var(--font-family);
+  color: var(--text);
+}
+
+/* --- canvas -------------------------------------------------------------- */
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xl);
+  padding: var(--spacing-2xl);
+}
+
+.frame-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Sits outside the frame edge (artbook S5b convention): TIER QT / TIER WEB
+   annotations and the frame's own id/state caption. */
+.tier-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+/* --- frame ---------------------------------------------------------------- */
+
+.frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.frame--1366 { width: 1366px; height: 768px; }
+.frame--1920 { width: 1920px; height: 1080px; }
+
+/* --- shell: rail | (cmdbar / page / statusbar) ---------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+}
+
+/* Packer Mode hides the rail (A1): the 60px bar takes its place. */
+.shell--bare { grid-template-columns: minmax(0, 1fr); }
+
+.shell-main {
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr) 40px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rail {
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-sm);
+  background: var(--surface-sunken);
+}
+
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 56px;
+  height: 64px;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+.rail-item--current {
+  position: relative;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+}
+.rail-item--current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent-fill);
+}
+
+/* --- command bar ----------------------------------------------------------- */
+
+.cmdbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  height: 60px;
+  padding: 0 var(--spacing-md);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cmdbar-spacer { flex: 1 1 auto; }
+
+.cmdbar-session {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-body-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cmdbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle);
+}
+
+/* --- status bar -------------------------------------------------------------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  height: 40px;
+  padding: 0 var(--spacing-md);
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+.statusbar-mono { font-family: var(--font-family-mono); }
+.statusbar-spacer { flex: 1 1 auto; }
+
+/* --- page area --------------------------------------------------------------- */
+
+.page {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  padding: var(--spacing-lg);
+}
+
+/* --- buttons ------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--type-body-size);
+  white-space: nowrap;
+}
+
+.btn--primary {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.btn--danger {
+  border-color: var(--status-danger);
+  color: var(--status-danger);
+  background: var(--surface);
+}
+
+.btn--ghost { border-color: transparent; background: transparent; }
+
+.btn:disabled {
+  color: var(--text-disabled);
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+/* --- fields ---------------------------------------------------------------- */
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--padding-h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--type-body-size);
+}
+
+.field--placeholder { color: var(--text-placeholder); }
+
+.field--focus {
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.field--disabled {
+  color: var(--text-disabled);
+  background: var(--surface-overlay);
+  border-color: var(--border-subtle);
+}
+
+/* --- chip: F5's three channels (colour / fill / mark) ----------------------- */
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-sm) 2px 20px;
+  border: 1px solid var(--chip-fg, var(--border));
+  border-radius: var(--radius);
+  color: var(--chip-fg, var(--text-secondary));
+  font-size: var(--type-caption-size);
+  white-space: nowrap;
+}
+
+/* The mark: solid = a person set it, hollow = the system derived it. */
+.chip::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border: 1.5px solid var(--chip-fg, var(--text-secondary));
+  border-radius: 50%;
+  background: var(--chip-fg, var(--text-secondary));
+}
+
+.chip--hollow::before { background: transparent; }
+
+.chip--info { --chip-fg: var(--status-info); }
+.chip--success { --chip-fg: var(--status-success); }
+.chip--warning { --chip-fg: var(--status-warning); }
+.chip--danger { --chip-fg: var(--status-danger); }
+.chip--neutral { --chip-fg: var(--text-secondary); }
+
+/* Tinted (live) forms -- untinted chips above are resting/terminal. */
+.chip--info.chip--tint { background: var(--status-info-bg); }
+.chip--success.chip--tint { background: var(--status-success-bg); }
+.chip--warning.chip--tint { background: var(--status-warning-bg); }
+.chip--danger.chip--tint { background: var(--status-danger-bg); }
+
+/* --- card -------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+}
+
+/* --- state panel (F7): heading, body, one primary action -------------------- */
+
+.state-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  text-align: center;
+  padding: var(--spacing-2xl);
+}
+
+.state-panel-title {
+  margin: 0;
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+}
+
+.state-panel-body {
+  margin: 0;
+  max-width: 420px;
+  color: var(--text-secondary);
+  font-size: var(--type-body-size);
+}
+
+.state-panel-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.state-panel-mono {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
