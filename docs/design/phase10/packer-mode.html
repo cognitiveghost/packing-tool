@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Packer Mode -- P1-P8</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="artboard.css">
+<link rel="stylesheet" href="packer-document.css">
+<style>
+  body { padding: var(--spacing-2xl); }
+  .frame-group { margin-bottom: var(--spacing-2xl); }
+  .frame-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; }
+  .tier-col { position: relative; }
+  .tier-col span { position: absolute; white-space: nowrap; }
+</style>
+</head>
+<body data-theme="light">
+
+<!-- ============================== P3 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">P3 -- scanning in progress -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="P3">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--info">
+                <span class="feedback__text">Scan the next item to continue</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ P3-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">P3-L -- scanning in progress -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="P3-L">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--info">
+                <span class="feedback__text">Scan the next item to continue</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- =========================== P3-1920 =========================== -->
+<div class="frame-group">
+  <div class="tier-label">P3-1920 -- scanning in progress -- dark -- 1920 (dev scan simulator shown)</div>
+  <div class="frame-row">
+    <div class="frame frame--1920" data-theme="dark" id="P3-1920" style="--side-width: 380px;">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="sim-group">
+              <span class="sim-group-label">DEV</span>
+              <div class="field" style="width: 160px;">4006381333931</div>
+              <button class="btn btn--ghost">Simulate scan</button>
+            </div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc" style="--side-width: 380px;">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--info">
+                <span class="feedback__text">Scan the next item to continue</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 1080px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 550px;">TIER WEB</span>
+      <span class="tier-label" style="top: 1056px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== P5 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">P5 -- wrong / unknown SKU -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="P5">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--danger">
+                <span class="feedback__text">Unknown SKU 4006381333931 &mdash; scan again or map it</span>
+                <span class="feedback__raw">4006381333931</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--unknown">
+                  <span class="sku-row__product">Unknown SKU</span>
+                  <span class="sku-row__sku">4006381333931</span>
+                  <span class="sku-row__qty">&mdash;</span>
+                  <span class="chip chip--danger chip--tint chip--hollow">No match</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Map SKU</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ P5-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">P5-L -- wrong / unknown SKU -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="P5-L">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--danger">
+                <span class="feedback__text">Unknown SKU 4006381333931 &mdash; scan again or map it</span>
+                <span class="feedback__raw">4006381333931</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--unknown">
+                  <span class="sku-row__product">Unknown SKU</span>
+                  <span class="sku-row__sku">4006381333931</span>
+                  <span class="sku-row__qty">&mdash;</span>
+                  <span class="chip chip--danger chip--tint chip--hollow">No match</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Map SKU</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- =========================== P5-1920 =========================== -->
+<div class="frame-group">
+  <div class="tier-label">P5-1920 -- wrong / unknown SKU -- dark -- 1920</div>
+  <div class="frame-row">
+    <div class="frame frame--1920" data-theme="dark" id="P5-1920" style="--side-width: 380px;">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc" style="--side-width: 380px;">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--danger">
+                <span class="feedback__text">Unknown SKU 4006381333931 &mdash; scan again or map it</span>
+                <span class="feedback__raw">4006381333931</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--partial">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">1 / 2</span>
+                  <span class="chip chip--warning chip--tint chip--hollow">Partial</span>
+                  <span class="row-actions">
+                    <button class="btn btn--ghost">Confirm</button>
+                    <button class="btn btn--ghost">Force confirm</button>
+                  </span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">0 / 2</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--pending">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">0 / 1</span>
+                  <span class="chip chip--neutral chip--hollow">Pending</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Confirm</button></span>
+                </div>
+                <div class="sku-row sku-row--unknown">
+                  <span class="sku-row__product">Unknown SKU</span>
+                  <span class="sku-row__sku">4006381333931</span>
+                  <span class="sku-row__qty">&mdash;</span>
+                  <span class="chip chip--danger chip--tint chip--hollow">No match</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Map SKU</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 62%"></div></div>
+                <div class="progress-numbers">8 / 13 orders &middot; 41 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10424</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>19 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 1080px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 550px;">TIER WEB</span>
+      <span class="tier-label" style="top: 1056px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== P7 ============================== -->
+<div class="frame-group">
+  <div class="tier-label">P7 -- order complete -- dark -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="dark" id="P7">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--success">
+                <span class="feedback__text">Order #10429 packed. Scan the next order.</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 69%"></div></div>
+                <div class="progress-numbers">9 / 13 orders &middot; 55 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10429</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>25 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ P7-L ============================ -->
+<div class="frame-group">
+  <div class="tier-label">P7-L -- order complete -- light -- 1366</div>
+  <div class="frame-row">
+    <div class="frame frame--1366" data-theme="light" id="P7-L">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--success">
+                <span class="feedback__text">Order #10429 packed. Scan the next order.</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 69%"></div></div>
+                <div class="progress-numbers">9 / 13 orders &middot; 55 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10429</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>25 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 768px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 390px;">TIER WEB</span>
+      <span class="tier-label" style="top: 744px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+<!-- =========================== P7-1920 =========================== -->
+<div class="frame-group">
+  <div class="tier-label">P7-1920 -- order complete -- dark -- 1920</div>
+  <div class="frame-row">
+    <div class="frame frame--1920" data-theme="dark" id="P7-1920" style="--side-width: 380px;">
+      <div class="shell shell--bare">
+        <div class="shell-main">
+
+          <div class="cmdbar">
+            <span class="cmdbar-session">#10429</span>
+            <div class="field field--placeholder">Ready to scan</div>
+            <div class="cmdbar-spacer"></div>
+            <button class="btn">Skip order</button>
+            <button class="btn">Exit packing</button>
+          </div>
+
+          <div class="doc" style="--side-width: 380px;">
+            <div class="doc-main">
+              <div class="doc-banner">
+                <span class="doc-banner-order">#10429</span>
+                <span class="doc-banner-tag">DPD</span>
+                <span class="doc-banner-tag">PL</span>
+                <span class="doc-banner-tag">Box M</span>
+                <span class="doc-banner-tag">repeat customer</span>
+                <span class="doc-banner-notes">Fragile -- handle with care</span>
+              </div>
+
+              <div class="feedback feedback--success">
+                <span class="feedback__text">Order #10429 packed. Scan the next order.</span>
+              </div>
+
+              <div class="sku-list">
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Wireless Mouse</span>
+                  <span class="sku-row__sku">TS-4409-B</span>
+                  <span class="sku-row__qty">3 / 3</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">USB-C Cable 2m</span>
+                  <span class="sku-row__sku">BX-1I0O-07</span>
+                  <span class="sku-row__qty">4 / 4</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Desk Lamp</span>
+                  <span class="sku-row__sku">TS-9002-C</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Laptop Stand</span>
+                  <span class="sku-row__sku">BX-3311-A</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Keyboard Cover</span>
+                  <span class="sku-row__sku">TS-5520-A</span>
+                  <span class="sku-row__qty">2 / 2</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+                <div class="sku-row sku-row--complete">
+                  <span class="sku-row__product">Mouse Pad</span>
+                  <span class="sku-row__sku">BX-7742-D</span>
+                  <span class="sku-row__qty">1 / 1</span>
+                  <span class="chip chip--success chip--hollow">Complete</span>
+                  <span class="row-actions"><button class="btn btn--ghost">Undo</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="side-block">
+                <div class="side-block-title">Session progress</div>
+                <div class="progress-track"><div class="progress-fill" style="width: 69%"></div></div>
+                <div class="progress-numbers">9 / 13 orders &middot; 55 / 66 items</div>
+              </div>
+              <div class="side-block history">
+                <div class="side-block-title">History</div>
+                <div class="history-row"><span class="history-row__order">#10429</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10428</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10427</span><span class="chip chip--success chip--hollow">Complete</span></div>
+                <div class="history-row"><span class="history-row__order">#10426</span><span class="chip chip--danger">Skipped</span></div>
+                <div class="history-row"><span class="history-row__order">#10425</span><span class="chip chip--success chip--hollow">Complete</span></div>
+              </div>
+              <div class="side-block">
+                <div class="side-block-title">Summary</div>
+                <div class="summary-line"><span>Unique SKUs packed</span><strong>25 / 34</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="statusbar">
+            <span class="statusbar-mono">2026-09-01_1042</span>
+            <span>W-007</span>
+            <span>Kaufland DE</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tier-col" style="height: 1080px;">
+      <span class="tier-label" style="top: 24px;">TIER QT</span>
+      <span class="tier-label" style="top: 550px;">TIER WEB</span>
+      <span class="tier-label" style="top: 1056px;">TIER QT</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

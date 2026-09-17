@@ -1,0 +1,229 @@
+/* Packer Mode's order document (TIER WEB, A3). Web-tier rules (ADR 0001):
+   var(--...) only, pt font sizes, one mono face, no shadow/gradient/
+   transition/transform. Written to be lifted into gui/web/packer.css in
+   Bundle 4/5 -- see docs/design/phase10/HANDOFF.md. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Flex, not grid: at 1920 the side column widens but the main column stays
+   at a readable measure (spec), so the pair is centred rather than leaving
+   a grid track's worth of dead space between them. */
+.doc {
+  height: 100%;
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-family);
+  font-size: var(--type-body-size);
+  overflow: hidden;
+}
+
+.doc-main {
+  flex: 0 1 900px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow: hidden;
+}
+
+/* --- metadata banner ------------------------------------------------------- */
+
+.doc-banner {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+}
+
+.doc-banner-order {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-label-size);
+  font-weight: 700;
+}
+
+.doc-banner-tag {
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.doc-banner-notes {
+  flex: 1 1 200px;
+  min-width: 120px;
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- scan feedback band: the most prominent element on the page ------------ */
+
+.feedback {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  border-left: 3px solid var(--role, var(--border));
+}
+
+.feedback--success { --role: var(--status-success); background: var(--status-success-bg); }
+.feedback--danger { --role: var(--status-danger); background: var(--status-danger-bg); }
+.feedback--info { --role: var(--status-info); background: var(--status-info-bg); }
+
+.feedback__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  color: var(--role, var(--text));
+}
+
+.feedback__raw {
+  flex-shrink: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--type-body-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* --- extras: appears above the SKU list only when present ------------------ */
+
+.extras {
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.extras-title {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--surface-raised);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* --- SKU list ---------------------------------------------------------------- */
+
+.sku-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.sku-row,
+.extras-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 70px 130px 190px;
+  align-items: center;
+  gap: var(--spacing-sm);
+  height: var(--row-height);
+  padding: 0 var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sku-row:last-child, .extras-row:last-child { border-bottom: none; }
+
+.sku-row__product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-row__sku { font-family: var(--font-family-mono); color: var(--text-secondary); }
+.sku-row__qty { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Row tint marks state (F5): complete/partial live, pending/unknown resting
+   until acted on. Never a filled row -- a left edge only. */
+.sku-row--complete { border-left: 3px solid var(--status-success); }
+.sku-row--partial { border-left: 3px solid var(--status-warning); }
+.sku-row--pending { border-left: 3px solid transparent; color: var(--text-secondary); }
+.sku-row--unknown { border-left: 3px solid var(--status-danger); background: var(--status-danger-bg); }
+
+.row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
+
+.row-actions .btn {
+  height: 32px;
+  padding: 0 var(--spacing-sm);
+  font-size: var(--type-caption-size);
+}
+
+/* --- side column: progress, history, summary -------------------------------- */
+
+.side {
+  flex: 0 0 var(--side-width, 300px);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow: hidden;
+}
+
+.side-block {
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.side-block-title {
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--spacing-xs);
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  overflow: hidden;
+  margin-bottom: var(--spacing-xs);
+}
+.progress-fill { height: 100%; background: var(--accent-fill); }
+.progress-numbers { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.history { display: flex; flex-direction: column; overflow: hidden; }
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  height: 28px;
+  font-size: var(--type-caption-size);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.history-row:last-child { border-bottom: none; }
+.history-row__order { font-family: var(--font-family-mono); }
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+.summary-line + .summary-line { margin-top: var(--spacing-xs); }
+.summary-line strong { color: var(--text); font-weight: 700; }
+
+/* --- state panel host (P1, P8): fills the main column, side stays visible --- */
+
+.doc-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+}
