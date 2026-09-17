@@ -4,6 +4,7 @@ Kept as its own module (rather than importing shared.theme directly at
 every call site) so packing-tool/main.py's existing
 `from gui.theme import load_saved_theme, toggle_theme` keeps working unchanged.
 """
+
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
@@ -16,13 +17,22 @@ from shared.theme import (
     build_stylesheet,
     current_theme_name,
     set_current,
+    set_density,
     themed_tokens,
 )
 
 __all__ = [
-    "THEME_DARK", "THEME_LIGHT", "apply_theme", "current_tokens",
-    "load_saved_theme", "toggle_theme",
+    "PACKING_DENSITY",
+    "THEME_DARK",
+    "THEME_LIGHT",
+    "apply_theme",
+    "current_tokens",
+    "load_saved_theme",
+    "toggle_theme",
 ]
+
+# A station that has not been told otherwise is a scan station (spec E2).
+PACKING_DENSITY = "floor"
 
 
 def apply_theme(app: QApplication, theme: str = THEME_DARK) -> None:
@@ -36,6 +46,8 @@ def apply_theme(app: QApplication, theme: str = THEME_DARK) -> None:
 
 
 def load_saved_theme(app: QApplication) -> str:
+    # Before apply_theme: build_stylesheet reads the density when it runs.
+    set_density(PACKING_DENSITY)
     settings = QSettings("PackingTool", "Theme")
     theme = settings.value("current_theme", THEME_DARK)
     apply_theme(app, theme)

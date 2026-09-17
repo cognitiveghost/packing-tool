@@ -2,6 +2,7 @@
 
 MainWindow is expensive to construct, so this module builds one and shares it.
 """
+
 import pytest
 from PySide6.QtWidgets import QTabWidget
 
@@ -11,6 +12,7 @@ from gui.main_window import (
     PAGE_STATISTICS,
     RAIL_ITEMS,
     MainWindow,
+    order_summary,
 )
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 
@@ -115,43 +117,60 @@ def test_the_browser_handlers_no_longer_take_a_dialog_to_close(window):
         )
 
 
-def test_the_search_field_lives_on_the_packing_page(window):
-    """It filters the order tree. With three destinations a window-level field
-    would claim to filter pages it does not touch."""
-    packing_page = window.session_tabs.widget(PAGE_PACKING)
-    assert window.search_input.parent() is packing_page
+def test_the_order_filter_is_the_bars_and_only_shows_on_the_packing_page(window):
+    """It filters the order tree, so it must not claim to filter other pages."""
+    assert window.search_input is window.command_bar.filter_input
+    window.session_tabs.setCurrentIndex(PAGE_BROWSER)
+    assert window.search_input.isHidden()
+    window.session_tabs.setCurrentIndex(PAGE_PACKING)
+    assert not window.search_input.isHidden()
 
 
-def test_session_browser_is_not_also_a_button_and_a_menu_item(window):
-    """It is a destination now. Leaving it in the toolbar and the Session menu
-    as well would mean three controls for one page."""
-    from PySide6.QtWidgets import QMenu, QPushButton, QToolBar
+def test_there_is_no_toolbar_and_no_menu_bar(window):
+    """Artboard T1: the command bar is the only chrome above the pages."""
+    from PySide6.QtWidgets import QMenuBar, QToolBar
 
-    labels = {
-        b.text() for bar in window.findChildren(QToolBar)
-        for b in bar.findChildren(QPushButton)
-    }
-    assert "Session Browser" not in labels
-    assert "Shopify Session" not in labels
-
-    # QMenu, not type(menuBar()): a QMenuBar has no QMenuBar children, so
-    # findChildren(QMenuBar) returns [] and the assertion below never ran.
-    menu_actions = {
-        a.text() for menu in window.menuBar().findChildren(QMenu)
-        for a in menu.actions()
-    }
-    assert "Session Browser..." not in menu_actions
+    assert window.findChildren(QToolBar) == []
+    assert all(not bar.actions() for bar in window.findChildren(QMenuBar))
 
 
-def test_the_toolbar_still_carries_the_session_actions(window):
-    """What is left is the session's own state and actions."""
-    from PySide6.QtWidgets import QPushButton, QToolBar
+def test_the_bar_carries_the_session_actions(window):
+    bar = window.command_bar
+    assert window.packer_mode_button is bar.start_packing_button
+    assert window.sku_mapping_button is bar.sku_mapping_button
+    assert window.toolbar_end_btn is bar.end_session_button
 
-    labels = {
-        b.text() for bar in window.findChildren(QToolBar)
-        for b in bar.findChildren(QPushButton)
-    }
-    assert {"Start Packing", "SKU Mapping", "End Session"} <= labels
+
+def test_the_old_menu_actions_live_in_the_overflow(window):
+    labels = [a.text() for a in window.command_bar.overflow.actions() if a.text()]
+    assert labels == [
+        "SKU mapping…",
+        "Select worker…",
+        "Server connection…",
+        "Toggle dark/light theme",
+        "Exit",
+    ]
+    assert "Session Browser" not in labels  # a destination, reached by the rail
+
+
+def test_ctrl_e_still_ends_the_session_through_the_bar_button(window, monkeypatch):
+    from PySide6.QtGui import QKeySequence, QShortcut  # QtGui in Qt 6
+
+    shortcuts = [
+        s for s in window.findChildren(QShortcut) if s.key() == QKeySequence("Ctrl+E")
+    ]
+    assert len(shortcuts) == 1
+    clicks = []
+    monkeypatch.setattr(window.toolbar_end_btn, "click", lambda: clicks.append(1))
+    shortcuts[0].activated.emit()
+    assert clicks == [1]
+
+
+def test_the_bar_follows_the_page(window):
+    window.session_tabs.setCurrentIndex(PAGE_BROWSER)
+    assert window.command_bar.session_label.isHidden()
+    window.session_tabs.setCurrentIndex(PAGE_PACKING)
+    assert not window.command_bar.session_label.isHidden()
 
 
 def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monkeypatch):
@@ -166,4 +185,48 @@ def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monke
     window.session_tabs.setCurrentIndex(PAGE_PACKING)
     browser._on_auto_refresh()
     assert refreshes == []
-    assert browser._refresh_timer.isActive()   # still armed for the next visit
+    assert browser._refresh_timer.isActive()  # still armed for the next visit
+
+
+@pytest.mark.parametrize(
+    "args, text",
+    [
+        ((5, 2, 1), "5 orders · 2 packed · 1 in progress"),
+        ((1, 1, 0), "1 order · 1 packed · 0 in progress"),
+        ((0, 0, 0), ""),
+    ],
+)
+def test_order_summary(args, text):
+    assert order_summary(*args) == text
+
+
+def test_the_message_line_is_gone(window):
+    """Its texts became toasts (spec E5). It also hid a bug: session teardown
+    overwrote "Report saved to <path>" before anyone could read it."""
+    assert not hasattr(window, "status_label")
+
+
+def test_the_status_bar_is_the_artboards_strip(window):
+    bar = window.statusBar()
+    assert bar.minimumHeight() == bar.maximumHeight() == 40
+    assert window.sb_worker_label.text() == window.current_worker_name
+    assert window.sb_session_label.text() == "—"
+
+
+def test_sku_mapping_is_reachable_without_a_session(window):
+    """The bar hides its SKU mapping button until a session opens, but mappings
+    are per client -- the old toolbar button was always there."""
+    assert window.logic is None
+    action = next(
+        a for a in window.command_bar.overflow.actions() if a.text() == "SKU mapping…"
+    )
+    assert action.isEnabled()
+
+
+def test_ending_a_session_clears_the_session_tooltip(window):
+    window._show_session("2026-09-01_1042", "packing_list_A")
+    assert window.command_bar.session_label.toolTip() == "packing_list_A"
+    window._show_session(None)
+    assert window.command_bar.session_label.text() == "No session"
+    assert window.command_bar.session_label.toolTip() == ""
+    assert window.sb_session_label.text() == "—"

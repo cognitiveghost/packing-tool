@@ -14,6 +14,10 @@
 
 **Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
 
+**Command bar** — the 60px row above Packing Tool's pages: client picker, session id, the page's actions, and the ⋯ overflow menu.
+
+**Toast** — a transient, non-blocking message at the window's bottom right for an outcome that needs no decision; failures use a dialog instead.
+
 **Floor density** — the density profile for warehouse use: 44px controls, 12pt body, 60px command bar.
 
 **Artboard** — a static HTML drawing of a screen under `docs/design/`; once the owner approves it, it is the brief the implementation follows.

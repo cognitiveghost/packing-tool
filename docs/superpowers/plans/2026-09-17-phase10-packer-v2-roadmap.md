@@ -48,6 +48,9 @@ them exactly (runner rule A4).
 1. Move the components Packing Tool needs from Shopify `gui/components/` into
    `shared/` (D6) — at least `Card`, `StatePanel`, `CommandBar`, `Toast`,
    `ConfirmDialog`; Shopify imports switch to `shared`.
+   *Stage A (2026-09-17), owner decision:* `CommandBar` stays in Shopify, and
+   Packing Tool builds its own bar. `FilterBar` and `OverflowMenu` move too. See
+   `docs/superpowers/specs/2026-09-17-phase10-bundle3-qt-foundation-design.md`.
 2. Packing shell: command bar + rail at floor density per Bundle 2 artboards.
 3. In Shopify's `docs/adr/0001-analysis-results-on-the-web-tier.md`, add a note
    pointing at packing-tool ADR 0001 (its "Packing Tool stays entirely Qt"
