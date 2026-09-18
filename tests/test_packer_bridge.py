@@ -81,3 +81,47 @@ def test_the_view_never_takes_keyboard_focus(page):
     assert view.focusProxy() is None or (
         view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus
     )
+
+
+def test_a_notification_reaches_the_band_with_its_role(page, qtbot):
+    view, bridge = page
+    bridge.set_feedback("ITEM OK", "success", "TS-4409-B")
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('feedback-text').textContent === 'ITEM OK'",
+    )
+    assert _eval(qtbot, view, "document.getElementById('feedback').className") == (
+        "feedback feedback--success"
+    )
+    assert (
+        _eval(qtbot, view, "document.getElementById('feedback-raw').textContent")
+        == "TS-4409-B"
+    )
+
+
+def test_a_cleared_notification_leaves_the_band_neutral(page, qtbot):
+    view, bridge = page
+    bridge.set_feedback("ITEM OK", "success", "X")
+    _until_js(
+        qtbot, view, "document.getElementById('feedback').className.includes('success')"
+    )
+    bridge.set_feedback("", "", "X")
+    _until_js(
+        qtbot, view, "document.getElementById('feedback').className === 'feedback'"
+    )
+
+
+def test_a_flash_marks_the_document_column_and_clears_itself(page, qtbot):
+    view, bridge = page
+    bridge.flash("danger")
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').dataset.flash === 'danger'",
+    )
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').dataset.flash === undefined",
+    )

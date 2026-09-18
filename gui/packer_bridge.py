@@ -122,6 +122,18 @@ def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+# main_window.flash_border() has always been called with a colour word. The
+# document speaks in status roles, so the translation lives here rather than in
+# a dict on MainWindow. An unknown word raises: a silently-passed-through value
+# would emit a role no CSS rule matches.
+_FLASH_ROLES = {"green": "success", "orange": "warning", "red": "danger"}
+
+
+def flash_role(color: str) -> str:
+    """The status role for one of flash_border()'s colour words."""
+    return _FLASH_ROLES[color]
+
+
 WEB_DIR = Path(__file__).resolve().parent / "web"
 PAGE = WEB_DIR / "packer.html"
 THEME_MARKER = "/* theme-vars */"

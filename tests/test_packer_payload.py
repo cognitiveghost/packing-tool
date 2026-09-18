@@ -148,3 +148,19 @@ def test_an_empty_order_summarises_to_zeroes():
         "skus_packed": 0,
         "skus_total": 0,
     }
+
+
+from gui.packer_bridge import flash_role
+
+
+def test_every_flash_colour_names_a_status_role():
+    assert flash_role("green") == "success"
+    assert flash_role("orange") == "warning"
+    assert flash_role("red") == "danger"
+
+
+def test_an_unknown_flash_colour_raises_rather_than_passing_through():
+    import pytest
+
+    with pytest.raises(KeyError):
+        flash_role("purple")

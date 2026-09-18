@@ -5,7 +5,7 @@ from functools import partial
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -54,10 +54,8 @@ class PackerModeWidget(QWidget):
         table_frame (QFrame): Frame around items table used for flashing visual feedback.
         table (QTableWidget): Table displaying the SKUs for the current order.
         session_progress_bar (QProgressBar): Shows completed/total orders for the session.
-        status_label (QLabel): Shows current order status.
-        notification_label (QLabel): Large label for prominent notifications.
+        document_view (QWebEngineView): The order document (bridge: PackerBridge).
         scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
-        raw_scan_label (QLabel): Shows raw text from the last scan.
         history_table (QTableWidget): History of scanned orders in this session.
         main_tabs (QTabWidget): Holds the order-items table and session-summary table as tabs.
         packed_stat_label (QLabel): Glance-only tile — completed/total orders for the session.
@@ -99,11 +97,16 @@ class PackerModeWidget(QWidget):
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(4)
 
+        self._feedback_text = "Scan an order barcode"
+        self._feedback_role = "info"
+        self._raw_scan = ""
+
         from gui.packer_bridge import mount_packer_page
 
         self.document_view = QWebEngineView(self)
         self.bridge = mount_packer_page(self.document_view)
         left_layout.addWidget(self.document_view, 1)
+        self._push_feedback()
 
         # [B] Session progress bar
         self.session_progress_bar = QProgressBar()
@@ -333,69 +336,6 @@ class PackerModeWidget(QWidget):
             sim_layout.addWidget(self.sim_input)
             sim_layout.addWidget(sim_btn)
             right_layout.addWidget(sim_group)
-
-        # Consolidated scan-info card: single rounded card with a divider between sections
-        self.scan_info_frame = QFrame()
-        self.scan_info_frame.setObjectName("ScanInfoFrame")
-        self.scan_info_frame.setStyleSheet(
-            f"QFrame#ScanInfoFrame {{ border: 1px solid {current_tokens().border}; border-radius: 8px; }}"
-        )
-        _sif = QVBoxLayout(self.scan_info_frame)
-        _sif.setContentsMargins(0, 4, 0, 4)
-        _sif.setSpacing(4)
-
-        # ── Order status section — no individual border (card provides it) ────
-        _order_section = QFrame()
-        _order_section.setObjectName("OrderStatusSection")
-        _order_section.setStyleSheet("QFrame#OrderStatusSection { border: none; }")
-        _osl = QVBoxLayout(_order_section)
-        _osl.setContentsMargins(10, 8, 10, 8)
-        self.status_label = QLabel("Scan an order barcode")
-        font = QFont()
-        font.setPointSize(13)
-        font.setBold(True)
-        self.status_label.setFont(font)
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setWordWrap(True)
-        _osl.addWidget(self.status_label)
-        _sif.addWidget(_order_section)
-
-        # ── Soft horizontal divider between the two sections ──────────────────
-        _divider = QFrame()
-        _divider.setFrameShape(QFrame.Shape.HLine)
-        _divider.setFrameShadow(QFrame.Shadow.Sunken)
-        _divider.setStyleSheet(f"color: {current_tokens().border};")
-        _sif.addWidget(_divider)
-
-        # ── Scan feedback section — no individual border ───────────────────────
-        _feed_section = QFrame()
-        _feed_section.setObjectName("ScanFeedbackSection")
-        _feed_section.setStyleSheet("QFrame#ScanFeedbackSection { border: none; }")
-        _fsl = QVBoxLayout(_feed_section)
-        _fsl.setContentsMargins(10, 6, 10, 8)
-        _fsl.setSpacing(3)
-        self.notification_label = QLabel("")
-        notif_font = QFont()
-        notif_font.setPointSize(22)
-        notif_font.setBold(True)
-        self.notification_label.setFont(notif_font)
-        self.notification_label.setAlignment(Qt.AlignCenter)
-        self.notification_label.setWordWrap(True)
-        raw_scan_title = QLabel("Last Scan:")
-        raw_scan_title.setAlignment(Qt.AlignCenter)
-        _rsf = raw_scan_title.font()
-        _rsf.setPointSize(9)
-        raw_scan_title.setFont(_rsf)
-        self.raw_scan_label = QLabel("-")
-        self.raw_scan_label.setAlignment(Qt.AlignCenter)
-        self.raw_scan_label.setObjectName("RawScanLabel")
-        self.raw_scan_label.setWordWrap(True)
-        _fsl.addWidget(self.notification_label)
-        _fsl.addWidget(raw_scan_title)
-        _fsl.addWidget(self.raw_scan_label)
-        _sif.addWidget(_feed_section)
-
-        right_layout.addWidget(self.scan_info_frame)
 
         # [E] Skip Order button — placed directly under the scan-info card
         self.skip_order_button = QPushButton("Skip Order →")
@@ -643,20 +583,21 @@ class PackerModeWidget(QWidget):
         self._refresh_summary_from_table()
 
     def show_notification(self, text: str, role: str):
-        """Displays a large notification message.
+        """Show the scan outcome in the document's feedback band.
 
         Args:
-            text: The message to display.
-            role: A shared.theme status role -- "status_success", "status_warning",
-                "status_danger" or "status_info" -- or the literal "transparent"
-                to clear the notification. A colour here is what let the
-                palette escape the theme; the role is the contract.
+            text: The message. Empty clears the band.
+            role: A shared.theme status role -- "status_success",
+                "status_warning", "status_danger", "status_info" -- or
+                "transparent" to clear. Both spellings are accepted because
+                main_window has called it both ways since before the band
+                existed.
         """
-        self.notification_label.setText(text)
-        color = (
-            "transparent" if role == "transparent" else getattr(current_tokens(), role)
+        self._feedback_text = text
+        self._feedback_role = (
+            "" if role == "transparent" or not text else role.removeprefix("status_")
         )
-        self.notification_label.setStyleSheet(f"color: {color};")
+        self._push_feedback()
 
     def clear_screen(self):
         """
@@ -691,13 +632,14 @@ class PackerModeWidget(QWidget):
         self.scanner_input.setFocus()
 
     def update_raw_scan_display(self, text: str):
-        """
-        Updates the label that shows the raw text from the last scan.
+        """Show the raw text of the last scan beside the outcome."""
+        self._raw_scan = text
+        self._push_feedback()
 
-        Args:
-            text: The text captured from the scanner.
-        """
-        self.raw_scan_label.setText(text)
+    def _push_feedback(self):
+        self.bridge.set_feedback(
+            self._feedback_text, self._feedback_role, self._raw_scan
+        )
 
     def add_order_to_history(self, order_number: str, status: str = ""):
         """
