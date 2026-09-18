@@ -1,4 +1,7 @@
-PySide6
+PySide6                # Keep the METAPACKAGE, not PySide6-Essentials: QtWebEngine
+                       # (Packer Mode's order document, ADR 0001) ships in
+                       # PySide6-Addons, which only the metapackage pulls in.
+                       # tests/test_webengine_available.py guards this.
 pandas
 openpyxl
 pyinstaller
