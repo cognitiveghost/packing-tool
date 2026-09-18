@@ -6,6 +6,16 @@
 
 **Qt chrome** — the Qt part of Packer Mode around the order document: scanner capture, Skip order, Exit packing, dev scan simulator.
 
+**Packer bridge** — the one `QWebChannel` object the order document talks to. State Python owns crosses as a notify property; what the page reports crosses as a slot.
+
+**Feedback band** — the order document's outcome row: what the last scan did, in its status colour, with the raw scanned text beside it.
+
+**Scan flash** — the brief colour pulse on the feedback band that makes a scan's outcome visible from across the floor.
+
+**Item state** — an order item's packing state: *pending* (nothing packed), *partial* (some of the required quantity packed), *complete* (all of it).
+
+**Unmatched scan** — a scan that matches no item in the order and no known barcode; it is not an item, so it has no item state.
+
 **Scanner capture** — the Qt input that receives barcode-scanner keystrokes; it must hold keyboard focus whenever Packer Mode is open.
 
 **Extras** — items scanned into an order that the order does not contain; the packer keeps or removes each one.
