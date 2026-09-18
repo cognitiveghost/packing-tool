@@ -1,0 +1,371 @@
+/* Packer Mode's order document (Bundle 4). Lifted verbatim from
+   docs/design/phase10/packer-document.css (the artboard's own stylesheet),
+   plus the .btn/.chip/.card/.state-panel rule sets from artboard.css that
+   the artboard uses inside .doc but never copied here -- see
+   docs/design/phase10/HANDOFF.md's A3 note. Web-tier rules (ADR 0001):
+   var(--...) only, pt font sizes, one mono face, no shadow/gradient/
+   transition/transform/opacity. animation and @keyframes are allowed
+   (spec S4) as long as the properties they animate are not on that list.
+   Spec: docs/superpowers/specs/2026-09-18-phase10-bundle4-web-seam-design.md */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+/* Flex, not grid: at 1920 the side column widens but the main column stays
+   at a readable measure (spec), so the pair is centred rather than leaving
+   a grid track's worth of dead space between them. */
+.doc {
+  height: 100%;
+  padding: var(--spacing-lg);
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-family);
+  font-size: var(--type-body-size);
+  overflow: hidden;
+}
+
+.doc-main {
+  flex: 0 1 900px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow: hidden;
+  border: 2px solid transparent;
+}
+
+/* The scan cue (spec S4). Only border-color animates: transition, transform
+   and opacity are banned in a web asset by shared/style_lint.py, animation
+   is not. */
+@keyframes scan-flash {
+  0%, 100% { border-color: transparent; }
+  50% { border-color: var(--flash, var(--border)); }
+}
+.doc-main[data-flash] { animation: scan-flash 300ms ease-out 2; }
+.doc-main[data-flash="success"] { --flash: var(--status-success); }
+.doc-main[data-flash="warning"] { --flash: var(--status-warning); }
+.doc-main[data-flash="danger"] { --flash: var(--status-danger); }
+
+/* --- metadata banner ------------------------------------------------------- */
+
+.doc-banner {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+}
+
+.doc-banner-order {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-label-size);
+  font-weight: 700;
+}
+
+.doc-banner-tag {
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.doc-banner-notes {
+  flex: 1 1 200px;
+  min-width: 120px;
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- scan feedback band: the most prominent element on the page ------------ */
+
+.feedback {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  border-left: 3px solid var(--role, var(--border));
+}
+
+.feedback--success { --role: var(--status-success); background: var(--status-success-bg); }
+.feedback--warning { --role: var(--status-warning); background: var(--status-warning-bg); }
+.feedback--danger { --role: var(--status-danger); background: var(--status-danger-bg); }
+.feedback--info { --role: var(--status-info); background: var(--status-info-bg); }
+
+.feedback__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  color: var(--role, var(--text));
+}
+
+.feedback__raw {
+  flex-shrink: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--type-body-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* --- extras: appears above the SKU list only when present ------------------ */
+
+.extras {
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.extras-title {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--surface-raised);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* --- SKU list ---------------------------------------------------------------- */
+
+.sku-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.sku-row,
+.extras-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 70px 130px 190px;
+  align-items: center;
+  gap: var(--spacing-sm);
+  /* 40px rung; a row holding 44px action targets grows to fit them. */
+  min-height: var(--row-height);
+  padding: 0 var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sku-row:last-child, .extras-row:last-child { border-bottom: none; }
+
+/* No product name exists for an extra, so its SKU takes the product track too
+   rather than leaving the widest cell blank. */
+.extras-row .sku-row__sku { grid-column: 1 / 3; }
+
+.sku-row__product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-row__sku { font-family: var(--font-family-mono); color: var(--text-secondary); }
+.sku-row__qty { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Row tint marks state (F5): complete/partial live, pending/unknown resting
+   until acted on. Never a filled row -- a left edge only. */
+.sku-row--complete { border-left: 3px solid var(--status-success); }
+.sku-row--partial { border-left: 3px solid var(--status-warning); }
+.sku-row--pending { border-left: 3px solid transparent; color: var(--text-secondary); }
+.sku-row--unknown { border-left: 3px solid var(--status-danger); background: var(--status-danger-bg); }
+
+/* The row a match just landed on (P4): tint only, no animation. */
+.sku-row--just-changed { background: var(--status-success-bg); }
+
+.row-actions { display: flex; gap: var(--spacing-xs); justify-content: flex-end; }
+
+.row-actions .btn {
+  padding: 0 var(--spacing-sm);
+  font-size: var(--type-caption-size);
+}
+
+/* --- side column: progress, history, summary -------------------------------- */
+
+@media (min-width: 1600px) {
+  .doc { --side-width: 380px; }
+}
+
+.side {
+  flex: 0 0 var(--side-width, 300px);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow: hidden;
+}
+
+.side-block {
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.side-block-title {
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--spacing-xs);
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  overflow: hidden;
+  margin-bottom: var(--spacing-xs);
+}
+.progress-fill { height: 100%; background: var(--accent-fill); }
+.progress-numbers { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.history { display: flex; flex-direction: column; overflow-y: auto; }
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  height: 28px;
+  font-size: var(--type-caption-size);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.history-row:last-child { border-bottom: none; }
+.history-row__order { font-family: var(--font-family-mono); }
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+.summary-line + .summary-line { margin-top: var(--spacing-xs); }
+.summary-line strong { color: var(--text); font-weight: 700; }
+
+/* --- buttons (lifted from artboard.css) -------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--type-body-size);
+  white-space: nowrap;
+}
+
+.btn--primary {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.btn--danger {
+  border-color: var(--status-danger);
+  color: var(--status-danger);
+  background: var(--surface);
+}
+
+.btn--ghost { border-color: transparent; background: transparent; }
+
+.btn:disabled {
+  color: var(--text-disabled);
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+/* --- chip: F5's three channels (colour / fill / mark) ----------------------- */
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-sm) 2px 20px;
+  border: 1px solid var(--chip-fg, var(--border));
+  border-radius: var(--radius);
+  color: var(--chip-fg, var(--text-secondary));
+  font-size: var(--type-caption-size);
+  white-space: nowrap;
+}
+
+/* The mark: solid = a person set it, hollow = the system derived it. */
+.chip::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border: 1.5px solid var(--chip-fg, var(--text-secondary));
+  border-radius: 50%;
+  background: var(--chip-fg, var(--text-secondary));
+}
+
+.chip--hollow::before { background: transparent; }
+
+.chip--info { --chip-fg: var(--status-info); }
+.chip--success { --chip-fg: var(--status-success); }
+.chip--warning { --chip-fg: var(--status-warning); }
+.chip--danger { --chip-fg: var(--status-danger); }
+.chip--neutral { --chip-fg: var(--text-secondary); }
+
+/* Tinted (live) forms -- untinted chips above are resting/terminal. */
+.chip--info.chip--tint { background: var(--status-info-bg); }
+.chip--success.chip--tint { background: var(--status-success-bg); }
+.chip--warning.chip--tint { background: var(--status-warning-bg); }
+.chip--danger.chip--tint { background: var(--status-danger-bg); }
+
+/* --- state panel (F7): heading, body, one primary action -------------------- */
+
+.state-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  text-align: center;
+  padding: var(--spacing-2xl);
+}
+
+.state-panel-title {
+  margin: 0;
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+}
+
+.state-panel-body {
+  margin: 0;
+  max-width: 420px;
+  color: var(--text-secondary);
+  font-size: var(--type-body-size);
+}
+
+.state-panel-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.state-panel-mono {
+  font-family: var(--font-family-mono);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}

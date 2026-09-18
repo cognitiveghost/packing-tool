@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Packer Mode</title>
+<!-- gui/packer_bridge.py writes theme_css_vars() over the marker before the
+     page loads, then packer.js keeps it current from the bridge. -->
+<style id="theme-vars">/* theme-vars */</style>
+<link rel="stylesheet" href="packer.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="packer.js" defer></script>
+</head>
+<body>
+<div class="doc">
+  <div class="doc-main" id="doc-main">
+    <div class="doc-banner" id="banner" hidden></div>
+    <div class="feedback" id="feedback">
+      <span class="feedback__text" id="feedback-text">Scan an order barcode</span>
+      <span class="feedback__raw" id="feedback-raw"></span>
+    </div>
+    <div class="extras" id="extras" hidden>
+      <div class="extras-title">Extra items scanned</div>
+      <div id="extras-rows"></div>
+    </div>
+    <div class="sku-list" id="sku-list" hidden></div>
+  </div>
+  <div class="side">
+    <div class="side-block">
+      <div class="side-block-title">Session progress</div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-numbers" id="progress-numbers">0 / 0 orders &middot; 0 / 0 items</div>
+    </div>
+    <div class="side-block history">
+      <div class="side-block-title">History</div>
+      <div id="history-rows"><div class="history-row"><span class="history-row__order">No orders yet</span></div></div>
+    </div>
+    <div class="side-block">
+      <div class="side-block-title">Summary</div>
+      <div class="summary-line"><span>Unique SKUs packed</span><strong id="summary-skus">0 / 0</strong></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

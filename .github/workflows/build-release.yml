@@ -73,9 +73,15 @@ jobs:
         # A missing gui/assets does not degrade: icon() raises during
         # MainWindow construction, and --windowed means the user double-clicks
         # an exe that silently never opens.
+        #
+        # QtWebEngineProcess.exe and packer.html are the same shape of problem
+        # for the order document: PyInstaller's hook-PySide6.QtWebEngineCore is
+        # supposed to collect the helper process, and if it silently does not,
+        # the only symptom is a dead view discovered over RDP after a full
+        # build and a several-hundred-MB download. Fail here instead.
         shell: pwsh
         run: |
-          foreach ($name in "package.svg", "Inter-Regular.ttf") {
+          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html") {
             if (-not (Get-ChildItem -Path "dist\Packers-Assistant" -Recurse -Filter $name)) {
               throw "PyInstaller did not bundle $name -- the app would not start."
             }

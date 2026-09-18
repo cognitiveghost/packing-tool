@@ -3,7 +3,6 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import ClassVar
 
 try:
     import winsound as _winsound
@@ -980,35 +979,15 @@ class MainWindow(QMainWindow):
 
         logger.debug(f"Current client set to: {client_id}")
 
-    # Muted theme-aware flash colors
-    _FLASH_COLORS: ClassVar[dict[str, str]] = {
-        "green": "status_success",
-        "red": "status_danger",
-        "orange": "status_warning",
-    }
-    _FRAME_DEFAULT_STYLE = PackerModeWidget.FRAME_DEFAULT_STYLE
-
     def flash_border(self, color: str):
-        """
-        Flashes the border of the packer mode table's frame.
-
-        Provides visual feedback for scan results (green = success, red = error).
+        """Flash the order document's edge with the scan's outcome.
 
         Args:
-            color (str): Key color: "green", "red", or "orange". Anything
-                else raises -- a silently-passed-through value would emit
-                dead CSS that Qt discards, and would sail past style_lint.
+            color (str): "green", "red" or "orange". Anything else raises --
+                a silently-passed-through value would emit a role no CSS rule
+                matches, and would sail past style_lint.
         """
-        hex_color = getattr(current_tokens(), self._FLASH_COLORS[color])
-        self.packer_mode_widget.table_frame.setStyleSheet(
-            f"QFrame#TableFrame {{ border: 2px solid {hex_color}; border-radius: 3px; }}"
-        )
-        QTimer.singleShot(
-            500,
-            lambda: self.packer_mode_widget.table_frame.setStyleSheet(
-                self._FRAME_DEFAULT_STYLE
-            ),
-        )
+        self.packer_mode_widget.flash_scan(color)
 
     def start_session(
         self, file_path: str | None = None, restore_dir: str | None = None

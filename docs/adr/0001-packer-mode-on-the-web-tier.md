@@ -35,6 +35,14 @@ warehouse machines.
 - Shopify ADR 0001's guardrails apply unchanged: colour only from
   `shared/theme.py` via `theme_css_vars()`, no hex in web assets, no
   shadows/gradients/transitions/transforms/px font sizes, one mono face.
+- **Amended 2026-09-18 (owner):** animation is *not* among those guardrails.
+  Shopify's ADR left it an open question rather than deciding it, and
+  `shared/style_lint.py` accordingly bans `transition`, `transform`,
+  `scale/rotate/translate` and `opacity` but not `animation`/`@keyframes`. A
+  `@keyframes` rule over properties the lint allows is permitted on this
+  repo's web tier — Bundle 4 uses one for the scan flash, the cue a packer
+  reads from across the floor. The banned list above is unchanged: an
+  animation may not reach for `transition`, `transform` or `opacity`.
 - No third web screen without a new ADR.
 
 ## Alternatives considered
