@@ -16,7 +16,7 @@
 
 **Unmatched scan** — a scan that matches no item in the order and no known barcode; it is not an item, so it has no item state.
 
-**Scanner capture** — the Qt input that receives barcode-scanner keystrokes; it must hold keyboard focus whenever Packer Mode is open.
+**Scanner capture** — the Qt input that receives barcode-scanner keystrokes; it must hold keyboard focus whenever Packer Mode is open. It is the field in Packer Mode's command bar.
 
 **Extras** — items scanned into an order that the order does not contain; the packer keeps or removes each one.
 
@@ -24,7 +24,9 @@
 
 **Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
 
-**Command bar** — the 60px row above Packing Tool's pages: client picker, session id, the page's actions, and the ⋯ overflow menu.
+**Command bar** — the 60px row above a screen, carrying what that screen is and what can be done to it. Above the pages it holds the client picker, session id, the page's actions and the ⋯ overflow menu; above Packer Mode it holds the order number, scanner capture, Skip order and Exit packing.
+
+**State panel** — the centred title, sentence and action a screen shows in place of its content when there is nothing to show or the work is done.
 
 **Toast** — a transient, non-blocking message at the window's bottom right for an outcome that needs no decision; failures use a dialog instead.
 
