@@ -78,14 +78,17 @@ def test_a_theme_switch_repaints_without_a_reload(page, qtbot, qapp):
         apply_theme(qapp, THEME_DARK)
 
 
-def test_the_view_never_takes_keyboard_focus(page):
+def test_the_view_never_takes_keyboard_focus(page, qtbot):
     from PySide6.QtCore import Qt
 
     view, _ = page
     assert view.focusPolicy() == Qt.FocusPolicy.NoFocus
-    assert view.focusProxy() is None or (
-        view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus
-    )
+
+    # The proxy is the widget that actually takes a click, and it is created
+    # lazily -- so require it here rather than tolerating None, which is the one
+    # case mount_packer_page's loadFinished re-assertion exists to cover.
+    qtbot.waitUntil(lambda: view.focusProxy() is not None, timeout=5000)
+    assert view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus
 
 
 def test_a_notification_reaches_the_band_with_its_role(page, qtbot):
@@ -509,3 +512,35 @@ def test_the_waiting_document_shows_no_list_and_no_banner(page, qtbot):
     bridge.set_banner({"order": "", "chips": [], "notes": ""})
     _until_js(qtbot, view, "document.getElementById('sku-list').hidden === true")
     assert _eval(qtbot, view, "document.getElementById('banner').hidden") is True
+
+
+# The Qt -> web translation layer. Every other feedback test drives
+# bridge.set_feedback(...) directly, i.e. post-translation, so a typo in the
+# prefix strip or in the colour mapping would leave the band uncoloured on
+# every scan with the suite still green.
+
+
+def test_a_notification_role_loses_its_status_prefix_on_the_way_out(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+
+    widget.show_notification("ITEM OK", "status_success")
+    assert widget.bridge.feedback["role"] == "success"
+
+    widget.show_notification("", "transparent")
+    assert widget.bridge.feedback["role"] == ""
+
+
+def test_flash_border_s_colour_words_reach_the_bridge_as_roles(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+
+    seen = []
+    widget.bridge.scanFlashed.connect(seen.append)
+    for color in ("green", "orange", "red"):
+        widget.flash_scan(color)
+    assert seen == ["success", "warning", "danger"]
