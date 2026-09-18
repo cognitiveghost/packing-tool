@@ -43,3 +43,45 @@ def test_mapping_an_unmatched_scan_forwards_the_barcode(qtbot, widget):
     with qtbot.waitSignal(widget.map_barcode_requested, timeout=1000) as caught:
         widget.bridge.mapBarcode("4006381333931")
     assert caught.args == ["4006381333931"]
+
+
+from gui.command_bar import BAR_HEIGHT
+
+
+def test_the_bar_is_the_same_sixty_pixels_the_pages_use(widget):
+    assert widget.packer_bar.height() == BAR_HEIGHT
+
+
+def test_the_scanner_is_visible_and_invites_a_scan(widget):
+    # A2: the shipped 1x1 hidden QLineEdit becomes a field the packer can see.
+    assert widget.scanner_input.placeholderText() == "Ready to scan"
+    assert widget.scanner_input.width() > 100
+    assert widget.scanner_input.parent() is widget.packer_bar
+
+
+def test_the_scanner_still_owns_the_keyboard(qtbot, widget):
+    # D3, restated for the bar: the field moved, the invariant did not.
+    widget.show()
+    qtbot.waitExposed(widget)
+    widget.activateWindow()
+    qtbot.wait(50)
+    widget.set_focus_to_scanner()
+    qtbot.wait(50)
+    assert widget.scanner_input.hasFocus()
+
+
+def test_skip_and_exit_sit_in_the_bar(widget):
+    assert widget.skip_order_button.parent() is widget.packer_bar
+    assert widget.exit_button.parent() is widget.packer_bar
+    assert widget.exit_button.text() == "Exit packing"
+    assert widget.skip_order_button.text() == "Skip order"
+
+
+def test_showing_an_order_names_it_in_the_bar(widget):
+    widget.display_order(
+        [{"SKU": "A", "Product_Name": "A", "Quantity": 1, "Order_Number": "10429"}],
+        [],
+    )
+    assert widget._order_label.text() == "#10429"
+    widget.clear_screen()
+    assert widget._order_label.text() == "No order"

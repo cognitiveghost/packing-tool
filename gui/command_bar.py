@@ -25,6 +25,23 @@ _CLIENT_WIDTH = 240
 _FILTER_WIDTH = 220
 
 
+def bar_css(tokens, selector: str = "CommandBar") -> str:
+    """The 60px bar's ground, its bottom border and its session label.
+
+    Packer Mode builds its own bar rather than becoming a fourth page of this
+    one -- it wants none of the client combo, filter or four buttons above, and
+    MainWindow aliases every one of them. What the two bars genuinely share is
+    this rule set, so it has one definition and takes the selector it paints.
+    Type-scoped: a bare rule would repaint every child button.
+    """
+    return (
+        f"{selector} {{ background-color: {tokens.surface_raised};"
+        f" border-bottom: 1px solid {tokens.border_subtle}; }}"
+        f" QLabel#cmdbarSession {{ {font_css('body')}"
+        f" font-family: {tokens.font_family_mono}; color: {tokens.text_secondary}; }}"
+    )
+
+
 class CommandBar(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -77,13 +94,7 @@ class CommandBar(QWidget):
         self._refresh()
 
     def _apply_theme(self, tokens) -> None:
-        # Type-scoped selectors: a bare rule would repaint every child button.
-        self.setStyleSheet(
-            f"CommandBar {{ background-color: {tokens.surface_raised};"
-            f" border-bottom: 1px solid {tokens.border_subtle}; }}"
-            f" QLabel#cmdbarSession {{ {font_css('body')}"
-            f" font-family: {tokens.font_family_mono}; color: {tokens.text_secondary}; }}"
-        )
+        self.setStyleSheet(bar_css(tokens))
 
     def set_page(self, name: str) -> None:
         if name not in PAGES:
