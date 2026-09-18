@@ -54,14 +54,16 @@ function renderItems() {
   const rows = state.bridge.items || [];
   els.skuList.textContent = "";
   els.skuList.hidden = rows.length === 0;
+  let changed = null;
   rows.forEach(function (r) {
     const row = document.createElement("div");
     row.className =
       "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : "");
+    if (r.just_changed) changed = row;
     row.appendChild(span("sku-row__product", r.product));
     row.appendChild(span("sku-row__sku", r.sku));
     row.appendChild(span("sku-row__qty", r.packed + " / " + r.required));
-    const chip = CHIP[r.state];
+    const chip = CHIP[r.state] || CHIP.pending;
     row.appendChild(span(chip.cls, chip.text));
     const actions = document.createElement("span");
     actions.className = "row-actions";
@@ -74,6 +76,7 @@ function renderItems() {
     row.appendChild(actions);
     els.skuList.appendChild(row);
   });
+  if (changed) changed.scrollIntoView({ block: "nearest" });
 }
 
 function renderBanner() {
@@ -108,10 +111,10 @@ function renderExtras() {
   rows.forEach(function (r) {
     const row = document.createElement("div");
     row.className = "extras-row";
-    // The extras row reuses the SKU row's grid, so it needs the same five
-    // cells: the product name is unknown for a scan the order does not
-    // contain, and the status cell stays empty (artboard P6).
-    row.appendChild(span("sku-row__product", ""));
+    // The extras row reuses the SKU row's grid, but there is no product name
+    // for a scan the order does not contain -- current_extra_items is
+    // normalised-SKU-to-count. So the SKU spans the product and SKU tracks
+    // (see .extras-row .sku-row__sku) and the status cell stays empty (P6).
     row.appendChild(span("sku-row__sku", r.sku));
     row.appendChild(span("sku-row__qty", "× " + r.count));
     row.appendChild(span("", ""));
@@ -200,6 +203,5 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderProgress();
   renderHistory();
   renderExtras();
-  window.packerBridge = bridge;
   document.documentElement.dataset.bridge = "ready";
 });

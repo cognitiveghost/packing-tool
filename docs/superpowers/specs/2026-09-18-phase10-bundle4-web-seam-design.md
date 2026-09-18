@@ -16,6 +16,17 @@ and every Qt widget it replaces is gone. Qt keeps the scanner, Skip, Exit and
 the dev simulator, still sitting where they sit today; Bundle 5 places them per
 the artboard and adds the two state panels, P1 and P8.
 
+**Scrolling (added at review, 2026-09-18).** This spec did not say what happens
+when an order has more lines than the document is tall. The `QTableWidget` it
+replaces scrolled, so the SKU list and the session history are
+`overflow-y: auto` — the same one-word difference that
+`shopify-fulfillment-tool`'s `.lines` rule already carries. Without it rows past
+the fold are laid out and then clipped, with no scrollbar and no wheel scroll,
+so the packer can neither see them nor reach their actions. The list re-renders
+whole on every scan, which resets scroll position, so the `just_changed` row is
+also scrolled into view. Wheel scrolling needs no keyboard focus, so D3's
+scanner invariant is untouched.
+
 ## Scope decisions (owner, 2026-09-18)
 
 ### S1 — The whole document lands in Bundle 4, not half of it
@@ -163,9 +174,9 @@ occupies in Shopify:
   last four are S2's action flags, flat rather than nested so the payload
   survives the QVariant round trip unchanged. JS renders what this decides and
   decides nothing itself.
-- `banner_chips(metadata) -> dict` — `{order, chips: [...], notes}`, carrying
+- `banner_payload(order_number, metadata) -> dict` — `{order, chips: [...], notes}`, carrying
   over `_update_metadata_banner`'s `nan`-and-empty cleaning verbatim.
-- `summary_lines(items, order_state) -> dict` — unique SKUs packed/total and
+- `summary_lines(rows) -> dict` — unique SKUs packed/total and
   items packed/total, replacing `_update_summary_panel` and
   `_refresh_summary_from_table` with one function over the model.
 
@@ -251,7 +262,7 @@ owns the scanner).
 
 | Seam | Test | Needs |
 |---|---|---|
-| Payload functions (`item_rows`, `banner_chips`, `summary_lines`) | `tests/test_packer_payload.py` | nothing |
+| Payload functions (`item_rows`, `banner_payload`, `summary_lines`, `flash_role`) | `tests/test_packer_payload.py` | nothing |
 | Bridge over a real Chromium — theme marker once, rows render, a slot reaches the widget's signal | `tests/test_packer_bridge.py` | QtWebEngine (pattern: Shopify `tests/test_results_bridge.py`) |
 | Scanner keeps focus after a click in the view (D3) | `tests/test_packer_scanner_focus.py` | QtWebEngine |
 | QtWebEngine stays installed | `tests/test_webengine_available.py` | nothing |

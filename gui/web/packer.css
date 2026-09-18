@@ -145,7 +145,7 @@ html, body { height: 100%; margin: 0; }
 .sku-list {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
@@ -163,6 +163,10 @@ html, body { height: 100%; margin: 0; }
   border-bottom: 1px solid var(--border-subtle);
 }
 .sku-row:last-child, .extras-row:last-child { border-bottom: none; }
+
+/* No product name exists for an extra, so its SKU takes the product track too
+   rather than leaving the widest cell blank. */
+.extras-row .sku-row__sku { grid-column: 1 / 3; }
 
 .sku-row__product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sku-row__sku { font-family: var(--font-family-mono); color: var(--text-secondary); }
@@ -226,7 +230,7 @@ html, body { height: 100%; margin: 0; }
 .progress-fill { height: 100%; background: var(--accent-fill); }
 .progress-numbers { font-size: var(--type-caption-size); color: var(--text-secondary); }
 
-.history { display: flex; flex-direction: column; overflow: hidden; }
+.history { display: flex; flex-direction: column; overflow-y: auto; }
 .history-row {
   display: flex;
   align-items: center;
@@ -247,14 +251,6 @@ html, body { height: 100%; margin: 0; }
 }
 .summary-line + .summary-line { margin-top: var(--spacing-xs); }
 .summary-line strong { color: var(--text); font-weight: 700; }
-
-/* --- state panel host (P1, P8): fills the main column, side stays visible --- */
-
-.doc-state {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-width: none;
-}
 
 /* --- buttons (lifted from artboard.css) -------------------------------------- */
 
@@ -335,14 +331,6 @@ html, body { height: 100%; margin: 0; }
 .chip--success.chip--tint { background: var(--status-success-bg); }
 .chip--warning.chip--tint { background: var(--status-warning-bg); }
 .chip--danger.chip--tint { background: var(--status-danger-bg); }
-
-/* --- card -------------------------------------------------------------------- */
-
-.card {
-  background: var(--surface-raised);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-lg);
-}
 
 /* --- state panel (F7): heading, body, one primary action -------------------- */
 
