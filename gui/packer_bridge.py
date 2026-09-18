@@ -84,6 +84,40 @@ def item_rows(
     return rows
 
 
+def unknown_rows(scans: list[str]) -> list[dict[str, Any]]:
+    """One row per unmatched scan, in scan order, each barcode once.
+
+    PackerLogic.unknown_scans appends every scan in this order that matched no
+    item and no mapping. The same wrong barcode scanned three times is one
+    thing to map, not three. The rows carry item_rows()' shape so the page
+    renders both lists with one function -- they ride in the same `items`
+    property, and the only action an unmatched scan offers is mapping it.
+    """
+    seen: list[str] = []
+    for scan in scans or []:
+        text = str(scan).strip()
+        if text and text not in seen:
+            seen.append(text)
+    return [
+        {
+            "row": -1,
+            "product": "Unknown SKU",
+            "sku": text,
+            "required": 0,
+            "packed": 0,
+            "state": "unknown",
+            "just_changed": False,
+            "multi": False,
+            "confirm": False,
+            "undo": False,
+            "force": False,
+            "map": False,
+            "mapBarcode": True,
+        }
+        for text in seen
+    ]
+
+
 def _clean(value: Any) -> str:
     """A metadata value as display text; pandas 'nan' and blanks become ''."""
     text = str(value).strip() if value is not None else ""

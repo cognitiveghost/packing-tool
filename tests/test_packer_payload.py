@@ -195,3 +195,29 @@ def test_multi_flags_a_line_that_needs_more_than_one_scan():
 def test_a_single_unit_line_is_never_multi():
     rows = item_rows([{"SKU": "A", "Product_Name": "A", "Quantity": 1}], [], {})
     assert rows[0]["multi"] is False
+
+
+from gui.packer_bridge import unknown_rows
+
+
+def test_an_unmatched_scan_becomes_a_row_that_offers_only_mapping():
+    rows = unknown_rows(["4006381333931"])
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["sku"] == "4006381333931"
+    assert row["product"] == "Unknown SKU"
+    assert row["state"] == "unknown"
+    assert row["mapBarcode"] is True
+    assert not any(row[flag] for flag in ("confirm", "undo", "force", "map"))
+
+
+def test_the_same_barcode_scanned_twice_is_one_row_to_map():
+    rows = unknown_rows(["999", "888", "999", " 999 ", ""])
+    assert [r["sku"] for r in rows] == ["999", "888"]
+
+
+def test_unknown_rows_carry_every_key_an_item_row_does():
+    # They ride in the same `items` property, so the page can render both
+    # with one function.
+    item = item_rows([{"SKU": "A", "Product_Name": "A", "Quantity": 1}], [], {})[0]
+    assert set(unknown_rows(["999"])[0]) == set(item)
