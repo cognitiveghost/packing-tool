@@ -48,7 +48,6 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import PAGES, CommandBar
-from gui.packer_bridge import flash_role
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -988,7 +987,7 @@ class MainWindow(QMainWindow):
                 a silently-passed-through value would emit a role no CSS rule
                 matches, and would sail past style_lint.
         """
-        self.packer_mode_widget.bridge.flash(flash_role(color))
+        self.packer_mode_widget.flash_scan(color)
 
     def start_session(
         self, file_path: str | None = None, restore_dir: str | None = None

@@ -43,8 +43,11 @@ def item_rows(
 ) -> list[dict[str, Any]]:
     """One row per order item, with its state and the actions it offers."""
     packed_by_row = {
-        _int(s.get("row"), 0): _int(s.get("packed"), 0) for s in order_state or []
+        _int(s.get("row"), -1): _int(s.get("packed"), 0) for s in order_state or []
     }
+    # A state entry with no usable row is dropped rather than mis-attributed to
+    # row 0, which would credit another item's scans to the first line.
+    packed_by_row.pop(-1, None)
     mapped = {normalize_sku(v) for v in (sku_map or {}).values()}
 
     rows = []

@@ -27,12 +27,16 @@ implements.
 - **Repo:** packing-tool only. Do not edit anything under `shared/` — it is
   one-way synced from this repo into shopify-fulfillment-tool, and this bundle
   needs no change there.
-- **Colour and size:** no hex, no colour name, no `px`/`pt` literal in any new
-  `.py`, `.css`, `.html` or `.js` file. Everything comes from
+- **Colour and size:** no hex and no colour name in any new
+  `.py`, `.css`, `.html` or `.js` file — colour comes from
   `theme_css_vars()`'s custom properties: `var(--surface)`, `var(--text)`,
   `var(--spacing-md)`, `var(--type-body-size)`, `var(--row-height)` and so on.
   `tests/test_style_literals_guard.py` already scans `gui/` and will fail
-  otherwise.
+  otherwise. Size is narrower than this plan first said: `shared/style_lint.py`
+  bans px *font* sizes (`_PX_FONT`), not px geometry — and it could not ban
+  geometry, since the artboard CSS this plan mandates lifting carries px track
+  widths and row heights of its own. So: no px font size, and px geometry only
+  where it comes from the artboard.
 - **Banned in web assets** (enforced by `shared/style_lint.py`): `box-shadow`,
   gradients, `transition`, `transform`, `scale`/`rotate`/`translate`,
   `opacity`. `animation` and `@keyframes` are allowed (spec S4) as long as the

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.packer_bridge import banner_payload, item_rows, summary_lines
+from gui.packer_bridge import banner_payload, flash_role, item_rows, summary_lines
 from gui.theme import current_tokens
 from shared.components.confirm_dialog import ConfirmDialog
 
@@ -279,8 +279,6 @@ class PackerModeWidget(QWidget):
             return
         target = self._rows[row]
         target["packed"] = packed_count
-        for candidate in self._rows:
-            candidate["just_changed"] = candidate is target
         self._rows = item_rows(
             self._items,
             [{"row": r["row"], "packed": r["packed"]} for r in self._rows],
@@ -339,7 +337,16 @@ class PackerModeWidget(QWidget):
         self.show_notification("Scan the next order's barcode", "status_info")
         self._push_rows()
         self.set_focus_to_scanner()
-        self.set_focus_to_scanner()
+
+    def flash_scan(self, color: str):
+        """Flash the document's edge with a scan's outcome.
+
+        Args:
+            color: "green", "red" or "orange", as main_window has named the
+                cue since it was a border on the table frame. Anything else
+                raises rather than emitting a role no CSS rule matches.
+        """
+        self.bridge.flash(flash_role(color))
 
     def set_focus_to_scanner(self):
         """

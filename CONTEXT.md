@@ -10,7 +10,7 @@
 
 **Feedback band** — the order document's outcome row: what the last scan did, in its status colour, with the raw scanned text beside it.
 
-**Scan flash** — the brief colour pulse on the feedback band that makes a scan's outcome visible from across the floor.
+**Scan flash** — the brief colour pulse on the order document's column edge that makes a scan's outcome visible from across the floor.
 
 **Item state** — an order item's packing state: *pending* (nothing packed), *partial* (some of the required quantity packed), *complete* (all of it).
 
