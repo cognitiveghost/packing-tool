@@ -121,6 +121,24 @@ def _session_seconds(started_at) -> int:
     return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
 
 
+def _unmapped_choices(order_state) -> list[tuple[str, str]]:
+    """This order's lines as (sku, label), the ones still owing scans first.
+
+    An unmatched scan happened while packing this order, so the SKU the packer
+    meant is almost always a line that is not finished yet.
+    """
+    return [
+        (
+            s["original_sku"],
+            f"{s['original_sku']} — {s['packed']} / {s['required']} packed",
+        )
+        for s in sorted(
+            order_state or [],
+            key=lambda s: s.get("packed", 0) >= s.get("required", 0),
+        )
+    ]
+
+
 class MainWindow(QMainWindow):
     """
     The main application window, acting as the central orchestrator.
@@ -376,6 +394,9 @@ class MainWindow(QMainWindow):
         self.packer_mode_widget.extra_confirmed.connect(self._on_extra_confirmed)
         self.packer_mode_widget.extra_removed.connect(self._on_extra_removed)
         self.packer_mode_widget.end_session_requested.connect(self.end_session)
+        self.packer_mode_widget.map_barcode_requested.connect(
+            self._on_map_barcode_from_packer
+        )
 
         # Stacked widget to switch between session view and packer mode
         self.stacked_widget = QStackedWidget()
@@ -2147,6 +2168,50 @@ class MainWindow(QMainWindow):
                 self.flash_border("green")
         self.packer_mode_widget.set_focus_to_scanner()
 
+    def _save_sku_mapping(self, barcode: str, sku: str) -> bool:
+        """Save one barcode → SKU mapping, confirming an overwrite first.
+
+        Shared by both directions of the Map SKU flow: the per-item button
+        knows the SKU and asks for the barcode, and the unmatched-scan row
+        knows the barcode and asks for the SKU.
+        """
+        try:
+            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
+            if barcode in existing and existing[barcode] != sku:
+                reply = QMessageBox.question(
+                    self,
+                    "Overwrite Mapping?",
+                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
+                    f"Replace with '{sku}'?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return False
+
+            existing[barcode] = sku
+            if not self.profile_manager.save_sku_mapping(
+                self.current_client_id, existing
+            ):
+                QMessageBox.warning(
+                    self, "Save Failed", "Could not save mapping to file server."
+                )
+                return False
+
+            if self.logic:
+                self.logic.sku_map = {
+                    self.logic._normalize_sku(k): v for k, v in existing.items()
+                }
+                logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
+            self.packer_mode_widget.show_notification(
+                f"Mapped: {barcode} → {sku}", "status_success"
+            )
+            return True
+        except Exception as e:
+            logger.exception("Failed to save quick SKU mapping")
+            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
+            return False
+
     def _on_map_sku_from_packer(self, sku: str):
         """Quick-add barcode→SKU mapping from packer mode.
 
@@ -2166,43 +2231,40 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.set_focus_to_scanner()
             return
 
-        barcode = barcode.strip()
-        try:
-            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
-            if barcode in existing and existing[barcode] != sku:
-                reply = QMessageBox.question(
-                    self,
-                    "Overwrite Mapping?",
-                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
-                    f"Replace with '{sku}'?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    self.packer_mode_widget.set_focus_to_scanner()
-                    return
+        self._save_sku_mapping(barcode.strip(), sku)
+        self.packer_mode_widget.set_focus_to_scanner()
 
-            existing[barcode] = sku
-            success = self.profile_manager.save_sku_mapping(
-                self.current_client_id, existing
-            )
-            if success:
-                if self.logic:
-                    self.logic.sku_map = {
-                        self.logic._normalize_sku(k): v for k, v in existing.items()
-                    }
-                    logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
-                self.packer_mode_widget.show_notification(
-                    f"Mapped: {barcode} → {sku}", "status_success"
-                )
-            else:
-                QMessageBox.warning(
-                    self, "Save Failed", "Could not save mapping to file server."
-                )
-        except Exception as e:
-            logger.exception("Failed to save quick SKU mapping")
-            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
+    def _on_map_barcode_from_packer(self, barcode: str):
+        """Map an unmatched scan to one of this order's SKUs, then replay it.
 
+        The reverse of _on_map_sku_from_packer: here the barcode is known and
+        the SKU is picked. Replaying the scan afterwards packs the item in the
+        same gesture -- the scan already happened, and making the packer scan
+        again to use a mapping they just made is a step with no purpose.
+        """
+        choices = (
+            _unmapped_choices(self.logic.current_order_state) if self.logic else []
+        )
+        if not (choices and self.current_client_id):
+            self.packer_mode_widget.set_focus_to_scanner()
+            return
+
+        labels = [label for _sku, label in choices]
+        picked, ok = QInputDialog.getItem(
+            self,
+            "Map SKU",
+            f"Barcode {barcode}\n\nWhich item did you scan?",
+            labels,
+            0,
+            False,
+        )
+        if not (ok and picked):
+            self.packer_mode_widget.set_focus_to_scanner()
+            return
+
+        sku = choices[labels.index(picked)][0]
+        if self._save_sku_mapping(barcode, sku):
+            self.on_scanner_input(barcode)
         self.packer_mode_widget.set_focus_to_scanner()
 
     def _on_extra_confirmed(self, norm_sku: str):

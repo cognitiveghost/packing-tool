@@ -101,3 +101,25 @@ def test_a_start_time_an_hour_ago_is_an_hour():
 
     started = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
     assert 3550 <= _session_seconds(started) <= 3650
+
+
+def test_the_pick_list_puts_the_lines_that_still_need_scans_first(qtbot):
+    from gui.main_window import _unmapped_choices
+
+    state = [
+        {"original_sku": "A", "packed": 2, "required": 2},
+        {"original_sku": "B", "packed": 0, "required": 1},
+        {"original_sku": "C", "packed": 1, "required": 4},
+    ]
+    assert _unmapped_choices(state) == [
+        ("B", "B — 0 / 1 packed"),
+        ("C", "C — 1 / 4 packed"),
+        ("A", "A — 2 / 2 packed"),
+    ]
+
+
+def test_the_pick_list_is_empty_when_there_is_no_order():
+    from gui.main_window import _unmapped_choices
+
+    assert _unmapped_choices(None) == []
+    assert _unmapped_choices([]) == []
