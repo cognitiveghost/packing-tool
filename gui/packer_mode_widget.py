@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -39,6 +40,10 @@ class PackerModeWidget(QWidget):
         map_sku_requested (Signal[str]): Emitted with original SKU on Map SKU press.
         extra_confirmed (Signal[str]): Emitted with normalized_sku on Keep extra.
         extra_removed (Signal[str]): Emitted with normalized_sku on Remove extra.
+        end_session_requested (Signal): Emitted when the session-complete panel's
+            End session button is pressed.
+        map_barcode_requested (Signal[str]): Emitted with the raw barcode of an
+            unmatched scan the packer chose to map.
         document_view (QWebEngineView): The order document (bridge: PackerBridge).
         scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
     """
@@ -51,6 +56,8 @@ class PackerModeWidget(QWidget):
     map_sku_requested = Signal(str)  # original SKU string
     extra_confirmed = Signal(str)  # normalized_sku
     extra_removed = Signal(str)  # normalized_sku
+    end_session_requested = Signal()  # P8's primary action
+    map_barcode_requested = Signal(str)  # raw barcode from an unmatched scan
 
     def __init__(self, parent: QWidget = None, sim_mode: bool = False):
         """
@@ -93,6 +100,14 @@ class PackerModeWidget(QWidget):
         self.bridge.mapRequested.connect(self._on_map_sku_requested)
         self.bridge.keepExtraRequested.connect(self._on_extra_confirmed)
         self.bridge.removeExtraRequested.connect(self._on_extra_removed)
+        self.bridge.mapBarcodeRequested.connect(self._on_map_barcode)
+        self.bridge.endSessionRequested.connect(self.end_session_requested.emit)
+        self.bridge.exitPackingRequested.connect(self.exit_packing_mode.emit)
+
+        # Task 9 places this in the bar; until then it tracks the order name
+        # with nothing to show it.
+        self._order_label = QLabel("No order")
+        self._order_label.setObjectName("cmdbarSession")
 
         # Scanner input — hidden line edit that captures barcode scanner keystrokes.
         self.scanner_input = QLineEdit()
@@ -233,6 +248,11 @@ class PackerModeWidget(QWidget):
         self.extra_removed.emit(norm_sku)
         self.set_focus_to_scanner()
 
+    def _on_map_barcode(self, barcode: str):
+        """Forward an unmatched scan's barcode; MainWindow owns the dialog."""
+        self.map_barcode_requested.emit(barcode)
+        self.set_focus_to_scanner()
+
     # ─── Public display methods ───────────────────────────────────────────────
 
     def display_order(
@@ -330,6 +350,7 @@ class PackerModeWidget(QWidget):
         self._sku_map = {}
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
+        self.bridge.set_session_end({})
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)
         self.skip_order_button.setEnabled(False)
@@ -337,6 +358,17 @@ class PackerModeWidget(QWidget):
         self.show_notification("Scan the next order's barcode", "status_info")
         self._push_rows()
         self.set_focus_to_scanner()
+
+    def show_session_complete(self, payload: dict[str, str]):
+        """Show the session's terminal state in place of the order document.
+
+        Args:
+            payload: gui.packer_bridge.session_end_payload()'s title and body.
+        """
+        self.bridge.set_session_end(payload)
+        self._order_label.setText("Session complete")
+        self.scanner_input.setEnabled(False)
+        self.skip_order_button.setEnabled(False)
 
     def flash_scan(self, color: str):
         """Flash the document's edge with a scan's outcome.
