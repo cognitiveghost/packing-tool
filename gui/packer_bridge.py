@@ -67,3 +67,49 @@ def item_rows(
             }
         )
     return rows
+
+
+def _clean(value: Any) -> str:
+    """A metadata value as display text; pandas 'nan' and blanks become ''."""
+    text = str(value).strip() if value is not None else ""
+    return "" if text.lower() == "nan" else text
+
+
+def banner_payload(
+    order_number: str, metadata: dict[str, Any] | None
+) -> dict[str, Any]:
+    """The metadata banner: the order number, its chips and its notes."""
+    metadata = metadata or {}
+    chips = [
+        _clean(metadata.get("order_type")),
+        _clean(metadata.get("shipping_provider")),
+        _clean(metadata.get("destination_country")),
+    ]
+    box = _clean(metadata.get("order_min_box"))
+    if box:
+        chips.append(f"Box {box}")
+    for tag in list(metadata.get("tags") or []) + list(
+        metadata.get("internal_tags") or []
+    ):
+        chips.append(_clean(tag))
+    return {
+        "order": str(order_number),
+        "chips": [c for c in chips if c],
+        "notes": _clean(metadata.get("notes")) or _clean(metadata.get("system_note")),
+    }
+
+
+def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Unique-SKU and item totals over item_rows()' output."""
+    required: dict[str, int] = {}
+    packed: dict[str, int] = {}
+    for row in rows:
+        sku = row["sku"]
+        required[sku] = required.get(sku, 0) + row["required"]
+        packed[sku] = packed.get(sku, 0) + row["packed"]
+    return {
+        "items_packed": sum(packed.values()),
+        "items_total": sum(required.values()),
+        "skus_packed": sum(1 for s in required if packed.get(s, 0) >= required[s]),
+        "skus_total": len(required),
+    }

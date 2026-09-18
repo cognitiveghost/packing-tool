@@ -75,3 +75,76 @@ def test_rows_carry_no_just_changed_tint_by_default():
     assert all(
         r["just_changed"] is False for r in item_rows(ITEMS, _state(1, 1, 1), {})
     )
+
+
+from gui.packer_bridge import banner_payload, summary_lines
+
+META = {
+    "order_type": "Retail",
+    "shipping_provider": "DPD",
+    "destination_country": "PL",
+    "order_min_box": "M",
+    "tags": ["repeat customer"],
+    "internal_tags": ["checked"],
+    "notes": "Fragile -- handle with care",
+}
+
+
+def test_the_banner_carries_bare_values_in_artboard_order():
+    assert banner_payload("10429", META) == {
+        "order": "10429",
+        "chips": ["Retail", "DPD", "PL", "Box M", "repeat customer", "checked"],
+        "notes": "Fragile -- handle with care",
+    }
+
+
+def test_pandas_nan_and_blanks_never_reach_a_chip():
+    payload = banner_payload(
+        "1",
+        {
+            "order_type": "nan",
+            "shipping_provider": "",
+            "destination_country": None,
+            "order_min_box": "L",
+            "tags": ["nan", "urgent"],
+            "notes": "nan",
+        },
+    )
+    assert payload == {"order": "1", "chips": ["Box L", "urgent"], "notes": ""}
+
+
+def test_a_system_note_stands_in_for_a_missing_note():
+    assert banner_payload("1", {"system_note": "Split shipment"})["notes"] == (
+        "Split shipment"
+    )
+
+
+def test_no_metadata_still_names_the_order():
+    assert banner_payload("10429", None) == {
+        "order": "10429",
+        "chips": [],
+        "notes": "",
+    }
+
+
+def test_the_summary_dedupes_repeated_skus():
+    rows = [
+        {"sku": "A", "required": 2, "packed": 2},
+        {"sku": "A", "required": 1, "packed": 0},
+        {"sku": "B", "required": 4, "packed": 4},
+    ]
+    assert summary_lines(rows) == {
+        "items_packed": 6,
+        "items_total": 7,
+        "skus_packed": 1,
+        "skus_total": 2,
+    }
+
+
+def test_an_empty_order_summarises_to_zeroes():
+    assert summary_lines([]) == {
+        "items_packed": 0,
+        "items_total": 0,
+        "skus_packed": 0,
+        "skus_total": 0,
+    }
