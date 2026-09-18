@@ -492,7 +492,7 @@ def test_clearing_the_screen_returns_to_waiting_and_keeps_the_session(qtbot):
     assert widget.bridge.items == []
     assert widget.bridge.extras == []
     assert widget.bridge.banner == {"order": "", "chips": [], "notes": ""}
-    assert widget.bridge.feedback["text"] == "Scan the next order's barcode"
+    assert widget.bridge.feedback["text"] == "Scan an order barcode"
     assert widget.bridge.history == [{"order": "10428", "status": "complete"}]
     assert widget.bridge.progress["orders_done"] == 8
 

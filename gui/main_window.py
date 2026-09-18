@@ -2007,12 +2007,12 @@ class MainWindow(QMainWindow):
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
                 self.packer_mode_widget.show_notification(
-                    f"ORDER {text} ALREADY COMPLETED", "status_warning"
+                    f"Order #{text} is already packed", "status_warning"
                 )
                 self.flash_border("orange")
             else:
                 self.packer_mode_widget.show_notification(
-                    "ORDER NOT FOUND", "status_danger"
+                    f"No order matches {text}", "status_danger"
                 )
                 self.flash_border("red")
                 _beep(400, 350)
@@ -2022,23 +2022,23 @@ class MainWindow(QMainWindow):
                 self.packer_mode_widget.update_item_row(
                     result["row"], result["packed"], result["is_complete"]
                 )
-                self.packer_mode_widget.show_notification("ITEM OK", "status_success")
+                row = self.packer_mode_widget.row_at(result["row"])
+                self.packer_mode_widget.show_notification(
+                    f"{row.get('sku', '')} confirmed — {result['packed']} of "
+                    f"{row.get('required', 0)} packed",
+                    "status_success",
+                )
                 self.flash_border("green")
                 _beep(1200, 80)
             elif status == "SKU_NOT_FOUND":
-                unknown_list = self.logic.unknown_scans
-                if len(unknown_list) > 1:
-                    detail = f"({len(unknown_list)} unknown scans)\nLast: {text}"
-                else:
-                    detail = f"Unknown: {text}"
                 self.packer_mode_widget.show_notification(
-                    f"INCORRECT ITEM!\n{detail}", "status_danger"
+                    f"Unknown SKU {text} — scan again or map it", "status_danger"
                 )
                 self.flash_border("red")
                 _beep(400, 350)
             elif status == "SKU_EXTRA":
                 self.packer_mode_widget.show_notification(
-                    "EXTRA ITEM!", "status_warning"
+                    "Extra item scanned — keep it or remove it", "status_warning"
                 )
                 self.flash_border("orange")
                 _beep(700, 200)
@@ -2050,7 +2050,8 @@ class MainWindow(QMainWindow):
                     result["row"], result["packed"], result["is_complete"]
                 )
                 self.packer_mode_widget.show_notification(
-                    "REVIEW EXTRA ITEMS!", "status_warning"
+                    "Review the extra items before this order can close",
+                    "status_warning",
                 )
                 self.flash_border("orange")
                 self.packer_mode_widget.show_extras_panel(
@@ -2105,7 +2106,7 @@ class MainWindow(QMainWindow):
     def _handle_order_completion(self, order_number: str):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
         self.packer_mode_widget.show_notification(
-            f"ORDER {order_number} COMPLETE!", "status_success"
+            f"Order #{order_number} packed. Scan the next order.", "status_success"
         )
         self.flash_border("green")
         _beep(1200, 80)
@@ -2140,7 +2141,9 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.update_item_row(row, result["packed"], False)
             self.flash_border("orange")
         elif status == "ITEM_ALREADY_ZERO":
-            self.packer_mode_widget.show_notification("Already at 0!", "status_warning")
+            self.packer_mode_widget.show_notification(
+                "Nothing packed on that line yet", "status_warning"
+            )
         self.packer_mode_widget.set_focus_to_scanner()
 
     def _on_force_confirm(self, row: int):
@@ -2159,7 +2162,8 @@ class MainWindow(QMainWindow):
                 # All items packed but extra items need resolution before completing
                 self.flash_border("orange")
                 self.packer_mode_widget.show_notification(
-                    "REVIEW EXTRA ITEMS!", "status_warning"
+                    "Review the extra items before this order can close",
+                    "status_warning",
                 )
                 self.packer_mode_widget.show_extras_panel(
                     self.logic.current_extra_items

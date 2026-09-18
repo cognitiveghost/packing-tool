@@ -328,6 +328,10 @@ class PackerModeWidget(QWidget):
         self._rows[row]["just_changed"] = True
         self._push_rows()
 
+    def row_at(self, row: int) -> dict[str, Any]:
+        """One item row's payload, for a caller writing a message about it."""
+        return dict(self._rows[row]) if 0 <= row < len(self._rows) else {}
+
     def _push_rows(self):
         """Send the item rows and the numbers derived from them."""
         self.bridge.set_items(self._rows)
@@ -377,7 +381,7 @@ class PackerModeWidget(QWidget):
         self.scanner_input.setEnabled(True)
         self.skip_order_button.setEnabled(False)
         self._raw_scan = ""
-        self.show_notification("Scan the next order's barcode", "status_info")
+        self.show_notification("Scan an order barcode", "status_info")
         self._push_rows()
         self.set_focus_to_scanner()
 
