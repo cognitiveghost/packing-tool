@@ -5,6 +5,7 @@ packages. Never mark these skip -- a bridge nobody can run is a bridge nobody
 guards.
 """
 
+import json
 import time
 
 import pytest
@@ -17,10 +18,14 @@ from shared.theme import THEME_DARK, THEME_LIGHT
 
 
 def _eval(qtbot, view, expr, timeout=5000):
+    # This PySide6/QtWebEngine build's runJavaScript cannot marshal a JS array
+    # back to Python (it silently comes back as ''), even though scalars and
+    # JSON.stringify's own string result round-trip fine. Route every result
+    # through JSON so array- and object-returning expressions work too.
     box = []
-    view.page().runJavaScript(expr, 0, box.append)
+    view.page().runJavaScript(f"JSON.stringify({expr})", 0, box.append)
     qtbot.waitUntil(lambda: bool(box), timeout=timeout)
-    return box[0]
+    return json.loads(box[0])
 
 
 def _until_js(qtbot, view, expr, timeout_s=20):
@@ -125,3 +130,113 @@ def test_a_flash_marks_the_document_column_and_clears_itself(page, qtbot):
         view,
         "document.getElementById('doc-main').dataset.flash === undefined",
     )
+
+
+ITEMS = [
+    {"SKU": "TS-4409-B", "Product_Name": "Wireless Mouse", "Quantity": 3},
+    {"SKU": "BX-3311-A", "Product_Name": "Laptop Stand", "Quantity": 8},
+]
+STATE = [
+    {
+        "original_sku": "TS-4409-B",
+        "normalized_sku": "TS4409B",
+        "required": 3,
+        "packed": 3,
+        "row": 0,
+    },
+    {
+        "original_sku": "BX-3311-A",
+        "normalized_sku": "BX3311A",
+        "required": 8,
+        "packed": 1,
+        "row": 1,
+    },
+]
+
+
+def test_the_list_draws_one_row_per_item_with_its_state(page, qtbot):
+    from gui.packer_bridge import item_rows
+
+    view, bridge = page
+    bridge.set_items(item_rows(ITEMS, STATE, {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 2")
+    assert _eval(
+        qtbot, view, "document.querySelectorAll('.sku-row')[0].className"
+    ).split() == ["sku-row", "sku-row--complete"]
+    assert _eval(
+        qtbot, view, "document.querySelectorAll('.sku-row')[1].className"
+    ).split() == ["sku-row", "sku-row--partial"]
+
+
+def test_a_row_shows_product_sku_and_the_packed_count(page, qtbot):
+    from gui.packer_bridge import item_rows
+
+    view, bridge = page
+    bridge.set_items(item_rows(ITEMS, STATE, {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 2")
+    assert (
+        _eval(
+            qtbot,
+            view,
+            "document.querySelector('.sku-row__product').textContent",
+        )
+        == "Wireless Mouse"
+    )
+    assert (
+        _eval(qtbot, view, "document.querySelector('.sku-row__sku').textContent")
+        == "TS-4409-B"
+    )
+    assert (
+        _eval(qtbot, view, "document.querySelector('.sku-row__qty').textContent")
+        == "3 / 3"
+    )
+
+
+def test_each_state_carries_the_artboard_s_chip(page, qtbot):
+    from gui.packer_bridge import item_rows
+
+    view, bridge = page
+    bridge.set_items(item_rows(ITEMS, STATE, {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.chip').length === 2")
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.chip')).map(c => c.textContent)",
+    ) == ["Complete", "Partial"]
+
+
+def test_the_row_a_scan_landed_on_is_tinted(page, qtbot):
+    from gui.packer_bridge import item_rows
+
+    view, bridge = page
+    rows = item_rows(ITEMS, STATE, {})
+    rows[1]["just_changed"] = True
+    bridge.set_items(rows)
+    _until_js(
+        qtbot,
+        view,
+        "document.querySelectorAll('.sku-row--just-changed').length === 1",
+    )
+
+
+def test_an_empty_list_hides_the_section(page, qtbot):
+    view, bridge = page
+    bridge.set_items([])
+    _until_js(qtbot, view, "document.getElementById('sku-list').hidden === true")
+
+
+def test_display_order_then_a_scan_updates_only_that_row(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE, metadata={"shipping_provider": "DPD"})
+    widget.update_item_row(1, 2, False)
+
+    rows = widget.bridge.items
+    assert [(r["packed"], r["state"]) for r in rows] == [
+        (3, "complete"),
+        (2, "partial"),
+    ]
+    assert [r["just_changed"] for r in rows] == [False, True]
+    assert widget.bridge.banner["chips"] == ["DPD"]

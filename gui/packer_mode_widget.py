@@ -4,12 +4,11 @@ from collections import defaultdict
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -19,16 +18,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from gui.packer_bridge import banner_payload, item_rows
 from gui.theme import current_tokens
-from packing_tool.packer_logic import normalize_sku
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +48,10 @@ class PackerModeWidget(QWidget):
         map_sku_requested (Signal[str]): Emitted with original SKU on Map SKU press.
         extra_confirmed (Signal[str]): Emitted with normalized_sku on Keep extra.
         extra_removed (Signal[str]): Emitted with normalized_sku on Remove extra.
-        table_frame (QFrame): Frame around items table used for flashing visual feedback.
-        table (QTableWidget): Table displaying the SKUs for the current order.
         session_progress_bar (QProgressBar): Shows completed/total orders for the session.
         document_view (QWebEngineView): The order document (bridge: PackerBridge).
         scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
         history_table (QTableWidget): History of scanned orders in this session.
-        main_tabs (QTabWidget): Holds the order-items table and session-summary table as tabs.
         packed_stat_label (QLabel): Glance-only tile — completed/total orders for the session.
         items_stat_label (QLabel): Glance-only tile — packed/total items for the current order.
     """
@@ -71,9 +65,6 @@ class PackerModeWidget(QWidget):
     extra_confirmed = Signal(str)  # normalized_sku
     extra_removed = Signal(str)  # normalized_sku
 
-    FRAME_DEFAULT_STYLE = (
-        "QFrame#TableFrame { border: 1px solid palette(mid); border-radius: 3px; }"
-    )
     # Shared max-height for the bottom info row (history/extras) and the matching
     # right-panel bottom section — keeps both panels' bottoms visually aligned.
     _BOTTOM_ROW_HEIGHT = 160
@@ -100,6 +91,9 @@ class PackerModeWidget(QWidget):
         self._feedback_text = "Scan an order barcode"
         self._feedback_role = "info"
         self._raw_scan = ""
+        self._items = []
+        self._rows = []
+        self._sku_map = {}
 
         from gui.packer_bridge import mount_packer_page
 
@@ -117,49 +111,7 @@ class PackerModeWidget(QWidget):
         self.session_progress_bar.setMaximum(1)
         left_layout.addWidget(self.session_progress_bar)
 
-        # [A] Order metadata banner (hidden until an order is loaded)
-        self.metadata_banner = QFrame()
-        self.metadata_banner.setObjectName("MetadataBanner")
-        self.metadata_banner.setStyleSheet(
-            "QFrame#MetadataBanner { border: 1px solid palette(mid); border-radius: 3px; "
-            "background-color: palette(alternate-base); }"
-        )
-        self.metadata_banner.setVisible(False)
-        _mbl = QHBoxLayout(self.metadata_banner)
-        _mbl.setContentsMargins(6, 3, 6, 3)
-        _mbl.setSpacing(6)
-        _chip_style = (
-            "QLabel { border: 1px solid palette(mid); border-radius: 4px; "
-            "padding: 2px 7px; background-color: palette(button); }"
-        )
-        self._meta_type_lbl = QLabel()
-        self._meta_courier_lbl = QLabel()
-        self._meta_country_lbl = QLabel()
-        self._meta_box_lbl = QLabel()
-        self._meta_tags_lbl = QLabel()
-        self._meta_notes_lbl = QLabel()
-        self._meta_notes_lbl.setWordWrap(True)
-        for lbl in [
-            self._meta_type_lbl,
-            self._meta_courier_lbl,
-            self._meta_country_lbl,
-            self._meta_box_lbl,
-            self._meta_tags_lbl,
-            self._meta_notes_lbl,
-        ]:
-            f = lbl.font()
-            f.setPointSize(9)
-            lbl.setFont(f)
-            lbl.setStyleSheet(_chip_style)
-            lbl.setVisible(False)
-            _mbl.addWidget(lbl)
-        # Notes label takes remaining space
-        _mbl.setStretchFactor(self._meta_notes_lbl, 1)
-        left_layout.addWidget(self.metadata_banner)
-
         # Scanner input — hidden line edit that captures barcode scanner keystrokes.
-        # Moved here (top of the main panel, right under the metadata banner) from
-        # the right column so it's the first thing under the banner.
         self.scanner_input = QLineEdit()
         self.scanner_input.setFixedSize(1, 1)
         self.scanner_input.returnPressed.connect(self._on_scan)
@@ -167,34 +119,6 @@ class PackerModeWidget(QWidget):
         scan_row.setSpacing(8)
         scan_row.addWidget(self.scanner_input, 1)
         left_layout.addLayout(scan_row)
-
-        # Items table inside a frame
-        self.table_frame = QFrame()
-        self.table_frame.setObjectName("TableFrame")
-        self.table_frame.setFrameShape(QFrame.Shape.Box)
-        self.table_frame.setFrameShadow(QFrame.Shadow.Plain)
-        self.table_frame.setStyleSheet(self.FRAME_DEFAULT_STYLE)
-        frame_layout = QVBoxLayout(self.table_frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(
-            ["Product Name", "SKU", "Qty", "Status", "Actions"]
-        )
-        hdr = self.table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.Fixed)
-        hdr.resizeSection(4, 135)
-        hdr.setStretchLastSection(False)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.table.setFocusPolicy(Qt.NoFocus)
-
-        frame_layout.addWidget(self.table)
 
         # Bottom row: history table (left half) + extras panel (right half, hidden until needed)
         _bottom_row = QWidget()
@@ -290,12 +214,7 @@ class PackerModeWidget(QWidget):
         self.summary_table.setFocusPolicy(Qt.NoFocus)
         _sfl.addWidget(self.summary_table)
 
-        # Tabs: order items (main scan table) + session summary, side by side in one
-        # tab container instead of summary_frame living in the right column.
-        self.main_tabs = QTabWidget()
-        self.main_tabs.addTab(self.table_frame, "Order Items")
-        self.main_tabs.addTab(self.summary_frame, "Session Summary")
-        left_layout.addWidget(self.main_tabs, 1)
+        left_layout.addWidget(self.summary_frame, 1)
         left_layout.addWidget(_bottom_row)  # history/extras stay under the tabs
 
         # ─── RIGHT PANEL ─────────────────────────────────────────────────────
@@ -460,127 +379,60 @@ class PackerModeWidget(QWidget):
         metadata: dict[str, Any] | None = None,
         sku_map: dict[str, str] | None = None,
     ):
-        """
-        Populates the items table with the details of the current order.
+        """Show one order in the document.
 
         Args:
-            items: List of product dicts for the order.
-            order_state: Current packing state (packed counts per row).
-            metadata: Optional order-level metadata dict (tags, notes, etc.).
-            sku_map: Optional normalized barcode→SKU mapping for Map SKU detection.
+            items: The order's product dicts, as PackerLogic returns them.
+            order_state: PackerLogic.current_order_state for this order.
+            metadata: Order-level metadata for the banner.
+            sku_map: Normalised barcode -> SKU, for the Map SKU action.
         """
-        # [A] Show metadata banner if available
-        self._update_metadata_banner(metadata)
-
-        self.table.setRowCount(len(items))
-
-        # First, populate the table with all items as 'Pending'
-        for row, item in enumerate(items):
-            sku = item.get("SKU", "")
-            quantity_str = str(item.get("Quantity", ""))
-            try:
-                quantity_int = int(float(quantity_str))
-            except (ValueError, TypeError):
-                quantity_int = 1
-
-            self.table.setItem(row, 0, QTableWidgetItem(item.get("Product_Name", "")))
-            self.table.setItem(row, 1, QTableWidgetItem(sku))
-
-            # [C] Amber highlight when quantity > 1
-            qty_item = QTableWidgetItem(f"0 / {quantity_int}")
-            if quantity_int > 1:
-                qty_item.setBackground(QColor(current_tokens().status_warning_bg))
-                qty_item.setForeground(QColor(current_tokens().status_warning))
-            self.table.setItem(row, 2, qty_item)
-
-            status_item = QTableWidgetItem("Pending")
-            palette = self.table.palette()
-            pending_bg = palette.color(QPalette.ColorRole.Highlight).lighter(180)
-            pending_fg = palette.color(QPalette.ColorRole.HighlightedText)
-            status_item.setBackground(pending_bg)
-            status_item.setForeground(pending_fg)
-            self.table.setItem(row, 3, status_item)
-
-            # Actions column: Confirm / -1 / Force / Map
-            actions_widget = self._make_actions_widget(
-                row, sku, quantity_int, sku_map or {}
-            )
-            self.table.setCellWidget(row, 4, actions_widget)
-
-        # Now update rows that have existing progress (e.g., resumed order)
-        for state_item in order_state:
-            row_index = state_item.get("row")
-            packed_count = state_item.get("packed", 0)
-            if (
-                row_index is not None
-                and packed_count > 0
-                and row_index < self.table.rowCount()
-            ):
-                required_count = state_item.get("required", 1)
-                is_complete = packed_count >= required_count
-                self.update_item_row(row_index, packed_count, is_complete)
-
-        # [D] Update summary panel
-        self._update_summary_panel(items, order_state)
-
-        # [E] Enable skip button now that an order is active
+        self._items = list(items)
+        self._sku_map = dict(sku_map or {})
+        self._rows = item_rows(self._items, order_state, self._sku_map)
+        order_number = (
+            items[0].get("Order_Number", items[0].get("order_number", ""))
+            if items
+            else ""
+        )
+        self.bridge.set_banner(banner_payload(order_number, metadata))
+        self._push_rows()
         self.skip_order_button.setEnabled(True)
-
-        order_num = items[0].get("Order_Number", items[0].get("order_number", ""))
-        self.status_label.setText(f"Order {order_num}\nIn Progress...")
         self.set_focus_to_scanner()
 
     def update_item_row(self, row: int, packed_count: int, is_complete: bool):
-        """
-        Updates a single row in the items table to reflect a new packed count.
+        """Update one item's packed count after a scan or a manual action.
 
         Args:
-            row: The table row index to update.
-            packed_count: The new number of items packed for that SKU.
-            is_complete: Whether this SKU is now fully packed.
+            row: The item's index, as PackerLogic reports it.
+            packed_count: The item's new packed count.
+            is_complete: Whether this item is now fully packed. Kept in the
+                signature because every existing call site passes it; the row's
+                state is derived from packed against required, so the two can
+                never disagree.
         """
-        quantity_item = self.table.item(row, 2)
-        if quantity_item is None:
-            logger.warning(f"Cannot update row {row}: quantity item is None")
+        if not 0 <= row < len(self._rows):
+            logger.warning("Cannot update row %s: no such item in this order", row)
             return
+        target = self._rows[row]
+        target["packed"] = packed_count
+        for candidate in self._rows:
+            candidate["just_changed"] = candidate is target
+        self._rows = item_rows(
+            self._items,
+            [{"row": r["row"], "packed": r["packed"]} for r in self._rows],
+            self._sku_map,
+        )
+        self._rows[row]["just_changed"] = True
+        self._push_rows()
 
-        parts = quantity_item.text().split(" / ")
-        required_str = parts[1] if len(parts) > 1 else "1"
-        quantity_item.setText(f"{packed_count} / {required_str}")
+    def _push_rows(self):
+        """Send the item rows and the numbers derived from them."""
+        self.bridge.set_items(self._rows)
+        self._push_progress()
 
-        try:
-            req_int = int(required_str)
-        except ValueError:
-            req_int = 1
-
-        if is_complete:
-            status_item = QTableWidgetItem("Packed")
-            status_item.setBackground(QColor(current_tokens().status_success_bg))
-            status_item.setForeground(QColor(current_tokens().status_success))
-            self.table.setItem(row, 3, status_item)
-            # Clear amber on completion — use palette text color to avoid black-on-dark rendering
-            quantity_item.setBackground(QColor())
-            quantity_item.setForeground(
-                self.table.palette().color(QPalette.ColorRole.Text)
-            )
-            # Disable Confirm and Force buttons; leave -1 active for possible undo
-            cell_widget = self.table.cellWidget(row, 4)
-            if cell_widget:
-                for btn in cell_widget.findChildren(QPushButton):
-                    tip = btn.toolTip()
-                    if tip in (
-                        "Confirm Manually",
-                        "Force confirm all remaining quantity (qty > 5 only)",
-                    ):
-                        btn.setEnabled(False)
-        else:
-            # Re-apply amber highlight for multi-qty items still in progress
-            if req_int > 1:
-                quantity_item.setBackground(QColor(current_tokens().status_warning_bg))
-                quantity_item.setForeground(QColor(current_tokens().status_warning))
-
-        # [Fix 8] Keep summary panel live during scanning
-        self._refresh_summary_from_table()
+    def _push_progress(self):
+        """The side column's numbers. Task 7 fills this in."""
 
     def show_notification(self, text: str, role: str):
         """Show the scan outcome in the document's feedback band.
@@ -716,129 +568,6 @@ class PackerModeWidget(QWidget):
             self._extras_section_title.setStyleSheet("")
 
     # ─── Private helpers ──────────────────────────────────────────────────────
-
-    def _make_actions_widget(
-        self,
-        row: int,
-        sku: str,
-        required_qty: int,
-        sku_map: dict[str, str],
-    ) -> QWidget:
-        """
-        Builds the multi-button widget for the Actions column.
-
-        Buttons included:
-          OK   — Confirm Manually (always present)
-          -1   — Undo last scan (always present; requires confirmation dialog)
-          F✓   — Force confirm all qty (present, but enabled only when required_qty > 5)
-          Map  — Open SKU mapping dialog (only when this SKU is not a value in sku_map)
-        """
-        container = QWidget()
-        container.setFocusPolicy(Qt.NoFocus)
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(2, 1, 2, 1)
-        layout.setSpacing(3)
-
-        _style = QApplication.instance().style()
-        _icon_sz = QSize(16, 16)
-
-        def _icon_btn(sp: QStyle.StandardPixmap, tip: str, w: int) -> QPushButton:
-            btn = QPushButton()
-            btn.setIcon(_style.standardIcon(sp))
-            btn.setIconSize(_icon_sz)
-            btn.setToolTip(tip)
-            btn.setFixedWidth(w)
-            btn.setFocusPolicy(Qt.NoFocus)
-            return btn
-
-        # ✓ — Confirm Manually (equivalent to scanning the SKU barcode)
-        confirm_btn = _icon_btn(
-            QStyle.StandardPixmap.SP_DialogApplyButton,
-            "Confirm Manually",
-            28,
-        )
-        confirm_btn.clicked.connect(partial(self._on_manual_confirm, sku))
-        layout.addWidget(confirm_btn)
-
-        # ← — Undo last scan
-        minus_btn = _icon_btn(
-            QStyle.StandardPixmap.SP_ArrowLeft,
-            "Undo last scan for this item",
-            28,
-        )
-        minus_btn.clicked.connect(partial(self._on_cancel_item, row))
-        layout.addWidget(minus_btn)
-
-        # ⏩ — Force confirm all qty (enabled only when qty > 5)
-        force_btn = _icon_btn(
-            QStyle.StandardPixmap.SP_MediaSkipForward,
-            "Force confirm all remaining quantity (qty > 5 only)",
-            28,
-        )
-        force_btn.setEnabled(required_qty > 5)
-        force_btn.clicked.connect(partial(self._on_force_confirm, row))
-        layout.addWidget(force_btn)
-
-        # Map SKU — shown only when SKU has no barcode mapping
-        norm_sku = normalize_sku(sku)
-        sku_is_mapped = norm_sku in set(sku_map.values())
-        if not sku_is_mapped:
-            map_btn = QPushButton("Map")
-            map_btn.setToolTip("Add barcode mapping for this SKU")
-            map_btn.setFixedWidth(40)
-            map_btn.setFocusPolicy(Qt.NoFocus)
-            map_btn.clicked.connect(partial(self._on_map_sku_requested, sku))
-            layout.addWidget(map_btn)
-
-        layout.addStretch()
-        return container
-
-    def _update_metadata_banner(self, metadata: dict[str, Any] | None = None):
-        """Populate and show/hide the order metadata banner as chip labels."""
-        if not metadata:
-            self.metadata_banner.setVisible(False)
-            return
-
-        def _clean(val) -> str:
-            """Return empty string for None, empty, or pandas 'nan' string values."""
-            s = str(val).strip() if val is not None else ""
-            return "" if s.lower() == "nan" else s
-
-        def _show_chip(lbl: QLabel, text: str):
-            if text:
-                lbl.setText(text)
-                lbl.setVisible(True)
-            else:
-                lbl.setText("")
-                lbl.setVisible(False)
-
-        order_type = _clean(metadata.get("order_type", ""))
-        _show_chip(self._meta_type_lbl, f"Type: {order_type}" if order_type else "")
-
-        courier = _clean(metadata.get("shipping_provider", ""))
-        _show_chip(self._meta_courier_lbl, f"Courier: {courier}" if courier else "")
-
-        country = _clean(metadata.get("destination_country", ""))
-        _show_chip(self._meta_country_lbl, f"Dest: {country}" if country else "")
-
-        box = _clean(metadata.get("order_min_box", ""))
-        _show_chip(self._meta_box_lbl, f"Box: {box}" if box else "")
-
-        all_tags = list(metadata.get("tags") or []) + list(
-            metadata.get("internal_tags") or []
-        )
-        tags_str = ", ".join(
-            str(t)
-            for t in all_tags
-            if t is not None and str(t).strip().lower() != "nan"
-        )
-        _show_chip(self._meta_tags_lbl, f"Tags: {tags_str}" if tags_str else "")
-
-        notes = _clean(metadata.get("notes") or metadata.get("system_note") or "")
-        _show_chip(self._meta_notes_lbl, notes if notes else "")
-
-        has_anything = any([order_type, courier, country, box, tags_str, notes])
-        self.metadata_banner.setVisible(has_anything)
 
     def _update_summary_panel(
         self,

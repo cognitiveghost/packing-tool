@@ -26,6 +26,68 @@ function flash(role) {
   els.docMain.dataset.flash = role;
 }
 
+const CHIP = {
+  complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
+  partial: { text: "Partial", cls: "chip chip--warning chip--tint chip--hollow" },
+  pending: { text: "Pending", cls: "chip chip--neutral chip--hollow" },
+};
+
+function span(cls, text) {
+  const el = document.createElement("span");
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+function actionButton(label, action, row, sku) {
+  const btn = document.createElement("button");
+  btn.className = "btn btn--ghost";
+  btn.type = "button";
+  btn.textContent = label;
+  btn.dataset.action = action;
+  btn.dataset.row = row;
+  btn.dataset.sku = sku;
+  return btn;
+}
+
+function renderItems() {
+  const rows = state.bridge.items || [];
+  els.skuList.textContent = "";
+  els.skuList.hidden = rows.length === 0;
+  rows.forEach(function (r) {
+    const row = document.createElement("div");
+    row.className =
+      "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : "");
+    row.appendChild(span("sku-row__product", r.product));
+    row.appendChild(span("sku-row__sku", r.sku));
+    row.appendChild(span("sku-row__qty", r.packed + " / " + r.required));
+    const chip = CHIP[r.state];
+    row.appendChild(span(chip.cls, chip.text));
+    const actions = document.createElement("span");
+    actions.className = "row-actions";
+    // Label "Force", not "Force confirm": three buttons have to share the
+    // row's 190px actions slot (spec S2).
+    if (r.confirm) actions.appendChild(actionButton("Confirm", "confirm", r.row, r.sku));
+    if (r.undo) actions.appendChild(actionButton("Undo", "undo", r.row, r.sku));
+    if (r.force) actions.appendChild(actionButton("Force", "force", r.row, r.sku));
+    if (r.map) actions.appendChild(actionButton("Map SKU", "map", r.row, r.sku));
+    row.appendChild(actions);
+    els.skuList.appendChild(row);
+  });
+}
+
+function renderBanner() {
+  const b = state.bridge.banner || {};
+  const chips = b.chips || [];
+  els.banner.textContent = "";
+  els.banner.hidden = !b.order && chips.length === 0 && !b.notes;
+  if (b.order) els.banner.appendChild(span("doc-banner-order", "#" + b.order));
+  chips.forEach(function (c) {
+    els.banner.appendChild(span("doc-banner-tag", c));
+  });
+  if (b.notes) els.banner.appendChild(span("doc-banner-notes", b.notes));
+}
+
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
   state.bridge = bridge;
@@ -34,16 +96,22 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.feedback = document.getElementById("feedback");
   els.feedbackText = document.getElementById("feedback-text");
   els.feedbackRaw = document.getElementById("feedback-raw");
+  els.skuList = document.getElementById("sku-list");
+  els.banner = document.getElementById("banner");
 
   onTheme();
   bridge.themeCssChanged.connect(onTheme);
   bridge.feedbackChanged.connect(renderFeedback);
   bridge.scanFlashed.connect(flash);
+  bridge.itemsChanged.connect(renderItems);
+  bridge.bannerChanged.connect(renderBanner);
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
 
   renderFeedback();
+  renderItems();
+  renderBanner();
   window.packerBridge = bridge;
   document.documentElement.dataset.bridge = "ready";
 });
