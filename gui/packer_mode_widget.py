@@ -1,21 +1,15 @@
 import logging
 import os
-from functools import partial
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
-    QFrame,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -97,6 +91,8 @@ class PackerModeWidget(QWidget):
         self.bridge.undoRequested.connect(self._on_cancel_item)
         self.bridge.forceRequested.connect(self._on_force_confirm)
         self.bridge.mapRequested.connect(self._on_map_sku_requested)
+        self.bridge.keepExtraRequested.connect(self._on_extra_confirmed)
+        self.bridge.removeExtraRequested.connect(self._on_extra_removed)
 
         # Scanner input — hidden line edit that captures barcode scanner keystrokes.
         self.scanner_input = QLineEdit()
@@ -106,41 +102,6 @@ class PackerModeWidget(QWidget):
         scan_row.setSpacing(8)
         scan_row.addWidget(self.scanner_input, 1)
         left_layout.addLayout(scan_row)
-
-        # [J] Extra items panel (hidden by default) — Task 8 moves this into the document.
-        _extras_container = QWidget()
-        _ecvl = QVBoxLayout(_extras_container)
-        _ecvl.setContentsMargins(0, 0, 0, 0)
-        _ecvl.setSpacing(2)
-        self._extras_section_title = QLabel(
-            ""
-        )  # shown as "EXTRA ITEMS DETECTED" when panel is active
-        _etsf = self._extras_section_title.font()
-        _etsf.setPointSize(9)
-        _etsf.setBold(True)
-        self._extras_section_title.setFont(_etsf)
-        self._extras_section_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        _ecvl.addWidget(self._extras_section_title)
-
-        self.extras_panel = QFrame()
-        self.extras_panel.setObjectName("ExtrasPanel")
-        self.extras_panel.setStyleSheet(
-            f"QFrame#ExtrasPanel {{ border: 2px solid {current_tokens().status_warning}; border-radius: 3px; }}"
-        )
-        self.extras_panel.setVisible(False)
-        _epl = QVBoxLayout(self.extras_panel)
-        _epl.setContentsMargins(4, 4, 4, 4)
-        _epl.setSpacing(3)
-        self.extras_table = QTableWidget()
-        self.extras_table.setColumnCount(3)
-        self.extras_table.setHorizontalHeaderLabels(["SKU", "×", "Action"])
-        self.extras_table.horizontalHeader().setStretchLastSection(True)
-        self.extras_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.extras_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.extras_table.setFocusPolicy(Qt.NoFocus)
-        _epl.addWidget(self.extras_table)
-        _ecvl.addWidget(self.extras_panel)
-        left_layout.addWidget(_extras_container)
 
         # ─── RIGHT PANEL ─────────────────────────────────────────────────────
         right_widget = QWidget()
@@ -434,43 +395,11 @@ class PackerModeWidget(QWidget):
     # [J] Feature J ────────────────────────────────────────────────────────────
 
     def show_extras_panel(self, extras: dict[str, int]):
-        """
-        Populates and shows the extras panel with Keep/Remove buttons.
+        """Show the items scanned into this order that it does not contain.
 
         Args:
-            extras: Dict of {normalized_sku: extra_count}.
+            extras: PackerLogic.current_extra_items -- normalised SKU to count.
         """
-        self.extras_table.setRowCount(len(extras))
-        for i, (norm_sku, count) in enumerate(extras.items()):
-            self.extras_table.setItem(i, 0, QTableWidgetItem(norm_sku))
-            self.extras_table.setItem(i, 1, QTableWidgetItem(str(count)))
-
-            btn_widget = QWidget()
-            btn_layout = QHBoxLayout(btn_widget)
-            btn_layout.setContentsMargins(2, 1, 2, 1)
-            btn_layout.setSpacing(3)
-
-            keep_btn = QPushButton("Keep")
-            keep_btn.setFixedWidth(70)
-            keep_btn.setFocusPolicy(Qt.NoFocus)
-            keep_btn.clicked.connect(partial(self._on_extra_confirmed, norm_sku))
-
-            remove_btn = QPushButton("Remove")
-            remove_btn.setFixedWidth(80)
-            remove_btn.setFocusPolicy(Qt.NoFocus)
-            remove_btn.clicked.connect(partial(self._on_extra_removed, norm_sku))
-
-            btn_layout.addWidget(keep_btn)
-            btn_layout.addWidget(remove_btn)
-            self.extras_table.setCellWidget(i, 2, btn_widget)
-
-        is_visible = len(extras) > 0
-        self.extras_panel.setVisible(is_visible)
-        if is_visible:
-            self._extras_section_title.setText("EXTRA ITEMS DETECTED")
-            self._extras_section_title.setStyleSheet(
-                f"color: {current_tokens().status_warning};"
-            )
-        else:
-            self._extras_section_title.setText("")
-            self._extras_section_title.setStyleSheet("")
+        self.bridge.set_extras(
+            [{"sku": sku, "count": count} for sku, count in (extras or {}).items()]
+        )

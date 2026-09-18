@@ -411,3 +411,61 @@ def test_a_skipped_order_is_marked_as_such_in_history(qtbot):
         {"order": "10429", "status": "skipped"},
         {"order": "10428", "status": "complete"},
     ]
+
+
+def test_extras_appear_above_the_list_with_keep_and_remove(page, qtbot):
+    view, bridge = page
+    bridge.set_extras(
+        [{"sku": "BX-9910-Z", "count": 1}, {"sku": "TS-1200-A", "count": 2}]
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.extras-row').length === 2")
+    assert _eval(qtbot, view, "document.getElementById('extras').hidden") is False
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.extras-row .sku-row__qty'))"
+        ".map(e => e.textContent)",
+    ) == ["× 1", "× 2"]
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.extras-row .btn'))"
+        ".map(b => b.textContent)",
+    ) == ["Keep", "Remove", "Keep", "Remove"]
+
+
+def test_no_extras_hides_the_section(page, qtbot):
+    view, bridge = page
+    bridge.set_extras([{"sku": "X", "count": 1}])
+    _until_js(qtbot, view, "document.getElementById('extras').hidden === false")
+    bridge.set_extras([])
+    _until_js(qtbot, view, "document.getElementById('extras').hidden === true")
+
+
+def test_keep_and_remove_carry_the_normalised_sku(page, qtbot):
+    view, bridge = page
+    kept, removed = [], []
+    bridge.keepExtraRequested.connect(kept.append)
+    bridge.removeExtraRequested.connect(removed.append)
+    bridge.set_extras([{"sku": "BX9910Z", "count": 1}])
+    _until_js(qtbot, view, "document.querySelectorAll('.extras-row').length === 1")
+    view.page().runJavaScript(
+        "document.querySelector('[data-action=\"keep\"]').click()"
+    )
+    qtbot.waitUntil(lambda: kept == ["BX9910Z"], timeout=5000)
+    view.page().runJavaScript(
+        "document.querySelector('[data-action=\"remove\"]').click()"
+    )
+    qtbot.waitUntil(lambda: removed == ["BX9910Z"], timeout=5000)
+
+
+def test_the_widget_turns_the_extras_dict_into_rows(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.show_extras_panel({"BX9910Z": 1, "TS1200A": 2})
+    assert widget.bridge.extras == [
+        {"sku": "BX9910Z", "count": 1},
+        {"sku": "TS1200A", "count": 2},
+    ]
