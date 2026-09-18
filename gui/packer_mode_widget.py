@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -152,18 +151,27 @@ class PackerModeWidget(QWidget):
 
         on_theme_changed(self, self._apply_bar_theme)
 
-    def _build_sim_group(self) -> QGroupBox:
+    def _build_sim_group(self) -> QWidget:
         """The dev scan simulator, inline in the bar (artboard P3-1920).
+
+        A plain QWidget, not a QGroupBox: the artboard's `.sim-group` is one
+        44px row with the "DEV" label beside the input, not a fieldset with a
+        title above it -- a QGroupBox title reserves space above its layout
+        that a 44px-tall box inside a 60px bar does not have, which squeezed
+        the input and button down to an unreadable few px.
 
         Opt-in only: the ScanSimulatorMode config setting (wired through
         main.py) or PACKER_DEV_SIM=1 for a one-off.
         """
-        group = QGroupBox("DEV")
+        group = QWidget()
         group.setObjectName("SimGroup")
+        group.setAttribute(Qt.WA_StyledBackground, True)
         group.setFixedHeight(BAR_HEIGHT - 16)
         layout = QHBoxLayout(group)
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(4)
+        label = QLabel("DEV")
+        label.setObjectName("SimGroupLabel")
         self.sim_input = QLineEdit()
         self.sim_input.setFixedWidth(SIM_INPUT_WIDTH)
         self.sim_input.setPlaceholderText("Order number or SKU")
@@ -171,6 +179,7 @@ class PackerModeWidget(QWidget):
         button = QPushButton("Simulate scan")
         button.setFocusPolicy(Qt.NoFocus)
         button.clicked.connect(self._on_sim_scan)
+        layout.addWidget(label)
         layout.addWidget(self.sim_input)
         layout.addWidget(button)
         return group
@@ -178,10 +187,10 @@ class PackerModeWidget(QWidget):
     def _apply_bar_theme(self, tokens) -> None:
         self.setStyleSheet(
             bar_css(tokens, "QWidget#PackerBar")
-            + f" QGroupBox#SimGroup {{ border: 1px dashed {tokens.status_warning};"
-            f" border-radius: {tokens.radius}px; color: {tokens.status_warning};"
+            + f" QWidget#SimGroup {{ border: 1px dashed {tokens.status_warning};"
+            f" border-radius: {tokens.radius}px; }}"
+            f" QLabel#SimGroupLabel {{ color: {tokens.status_warning};"
             f" {font_css('caption', bold=True)} }}"
-            " QGroupBox#SimGroup::title { subcontrol-origin: margin; left: 8px; }"
         )
 
     def showEvent(self, event):
