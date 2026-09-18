@@ -108,6 +108,15 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
+  els.skuList.addEventListener("click", function (event) {
+    const btn = event.target.closest("[data-action]");
+    if (!btn) return;
+    const row = Number(btn.dataset.row);
+    if (btn.dataset.action === "confirm") bridge.confirmItem(row);
+    else if (btn.dataset.action === "undo") bridge.undoItem(row);
+    else if (btn.dataset.action === "force") bridge.forceItem(row);
+    else if (btn.dataset.action === "map") bridge.mapSku(btn.dataset.sku);
+  });
 
   renderFeedback();
   renderItems();

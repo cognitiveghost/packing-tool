@@ -9,13 +9,13 @@ from PySide6.QtGui import QColor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from gui.packer_bridge import banner_payload, item_rows
 from gui.theme import current_tokens
+from shared.components.confirm_dialog import ConfirmDialog
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,10 @@ class PackerModeWidget(QWidget):
         self.bridge = mount_packer_page(self.document_view)
         left_layout.addWidget(self.document_view, 1)
         self._push_feedback()
+        self.bridge.confirmRequested.connect(self._on_manual_confirm)
+        self.bridge.undoRequested.connect(self._on_cancel_item)
+        self.bridge.forceRequested.connect(self._on_force_confirm)
+        self.bridge.mapRequested.connect(self._on_map_sku_requested)
 
         # [B] Session progress bar
         self.session_progress_bar = QProgressBar()
@@ -320,38 +325,38 @@ class PackerModeWidget(QWidget):
 
     # ─── Action button slots ──────────────────────────────────────────────────
 
-    def _on_manual_confirm(self, sku: str):
-        """
-        Private slot for the 'Confirm Manually' button. Emits the
-        barcode_scanned signal with the SKU for the corresponding row.
-        """
-        if sku:
-            self.barcode_scanned.emit(sku)
+    def _on_manual_confirm(self, row: int):
+        """Confirm one item by hand -- the same as scanning its SKU."""
+        if 0 <= row < len(self._rows):
+            self.barcode_scanned.emit(self._rows[row]["sku"])
         self.set_focus_to_scanner()
 
     def _on_cancel_item(self, row: int):
-        """Show confirmation dialog then emit cancel_item_requested."""
-        reply = QMessageBox.question(
-            self,
-            "Undo Scan",
-            "Undo the last scan for this item?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.cancel_item_requested.emit(row)
+        """Undo the last scan for one item.
+
+        No confirmation: undoing a scan is undone by scanning again, and a
+        confirm is for acts Undo cannot reach (shared.components.ConfirmDialog).
+        """
+        self.cancel_item_requested.emit(row)
         self.set_focus_to_scanner()
 
     def _on_force_confirm(self, row: int):
-        """Show confirmation dialog then emit force_confirm_requested."""
-        reply = QMessageBox.question(
+        """Force-confirm every remaining unit of one item. Not undoable."""
+        if not 0 <= row < len(self._rows):
+            return
+        item = self._rows[row]
+        remaining = item["required"] - item["packed"]
+        dialog = ConfirmDialog(
             self,
-            "Force Confirm",
-            "Force-confirm ALL remaining quantity for this item?\nThis cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            title="Force confirm this item?",
+            body=(
+                f"{item['product']} ({item['sku']}): {remaining} of "
+                f"{item['required']} still unscanned. Forcing marks them packed "
+                "without a scan, and cannot be undone."
+            ),
+            verb="Force confirm",
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.force_confirm_requested.emit(row)
         self.set_focus_to_scanner()
 

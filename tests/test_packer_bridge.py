@@ -240,3 +240,78 @@ def test_display_order_then_a_scan_updates_only_that_row(qtbot):
     ]
     assert [r["just_changed"] for r in rows] == [False, True]
     assert widget.bridge.banner["chips"] == ["DPD"]
+
+
+def test_a_confirm_click_re_emits_the_row_s_sku_as_a_scan(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    seen = []
+    widget.barcode_scanned.connect(seen.append)
+    widget.bridge.confirmItem(1)
+    assert seen == ["BX-3311-A"]
+
+
+def test_an_undo_click_asks_nothing_and_reaches_the_cancel_signal(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    seen = []
+    widget.cancel_item_requested.connect(seen.append)
+    widget.bridge.undoItem(1)
+    assert seen == [1]
+
+
+def test_a_force_click_confirms_first(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from gui import packer_mode_widget as module
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    seen = []
+    widget.force_confirm_requested.connect(seen.append)
+
+    monkeypatch.setattr(
+        module.ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Rejected
+    )
+    widget.bridge.forceItem(1)
+    assert seen == []
+
+    monkeypatch.setattr(
+        module.ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Accepted
+    )
+    widget.bridge.forceItem(1)
+    assert seen == [1]
+
+
+def test_a_map_click_carries_the_original_sku(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    seen = []
+    widget.map_sku_requested.connect(seen.append)
+    widget.bridge.mapSku("BX-3311-A")
+    assert seen == ["BX-3311-A"]
+
+
+def test_clicking_a_row_action_in_the_page_calls_its_slot(page, qtbot):
+    from gui.packer_bridge import item_rows
+
+    view, bridge = page
+    calls = []
+    bridge.confirmRequested.connect(calls.append)
+    bridge.set_items(item_rows(ITEMS, STATE, {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 2")
+    view.page().runJavaScript(
+        "document.querySelector('[data-action=\"confirm\"]').click()"
+    )
+    qtbot.waitUntil(lambda: calls == [1], timeout=5000)
