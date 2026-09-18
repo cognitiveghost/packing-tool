@@ -155,6 +155,9 @@ function renderHistory() {
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
   state.bridge = bridge;
+  // The test harness drives the page through this handle; nothing in the
+  // page reads it.
+  window.packerBridge = bridge;
   els.themeVars = document.getElementById("theme-vars");
   els.docMain = document.getElementById("doc-main");
   els.feedback = document.getElementById("feedback");

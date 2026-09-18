@@ -221,6 +221,7 @@ class PackerBridge(QObject):
     extrasChanged = Signal()
     historyChanged = Signal()
     progressChanged = Signal()
+    sessionEndChanged = Signal()
     # JS-facing: the scan cue (S4). The page draws it; Qt has no element left
     # on this screen to flash.
     scanFlashed = Signal(str)
@@ -232,6 +233,8 @@ class PackerBridge(QObject):
     mapRequested = Signal(str)
     keepExtraRequested = Signal(str)
     removeExtraRequested = Signal(str)
+    endSessionRequested = Signal()
+    exitPackingRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -242,6 +245,7 @@ class PackerBridge(QObject):
         self._extras: list = []
         self._history: list = []
         self._progress: dict = {}
+        self._session_end: dict = {}
 
     # --- out: Python -> JS -------------------------------------------------
 
@@ -280,6 +284,14 @@ class PackerBridge(QObject):
 
     progress = Property("QVariantMap", _get_progress, notify=progressChanged)
 
+    def _get_session_end(self) -> dict:
+        return self._session_end
+
+    # The eighth property, and the one Bundle 4 declined to add on spec: a
+    # finished session is a state the document cannot infer from an empty
+    # items list, because waiting for the next order looks exactly the same.
+    sessionEnd = Property("QVariantMap", _get_session_end, notify=sessionEndChanged)
+
     # --- in: JS -> Python --------------------------------------------------
 
     @Slot(int)
@@ -305,6 +317,14 @@ class PackerBridge(QObject):
     @Slot(str)
     def removeExtra(self, sku) -> None:
         self.removeExtraRequested.emit(str(sku))
+
+    @Slot()
+    def endSession(self) -> None:
+        self.endSessionRequested.emit()
+
+    @Slot()
+    def exitPacking(self) -> None:
+        self.exitPackingRequested.emit()
 
     # --- Python-facing API -------------------------------------------------
 
@@ -339,6 +359,10 @@ class PackerBridge(QObject):
 
     def flash(self, role: str) -> None:
         self.scanFlashed.emit(str(role))
+
+    def set_session_end(self, payload: dict) -> None:
+        self._session_end = dict(payload or {})
+        self.sessionEndChanged.emit()
 
 
 def deny_focus(view: QWebEngineView) -> None:

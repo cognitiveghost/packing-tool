@@ -544,3 +544,14 @@ def test_flash_border_s_colour_words_reach_the_bridge_as_roles(qtbot):
     for color in ("green", "orange", "red"):
         widget.flash_scan(color)
     assert seen == ["success", "warning", "danger"]
+
+
+def test_the_page_reads_the_session_end_payload(qtbot, page):
+    view, bridge = page
+    assert _eval(qtbot, view, "window.packerBridge.sessionEnd") == {}
+    bridge.set_session_end(
+        {"title": "Session complete", "body": "2 of 2 orders packed."}
+    )
+    _until_js(
+        qtbot, view, "window.packerBridge.sessionEnd.title === 'Session complete'"
+    )
