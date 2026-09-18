@@ -85,3 +85,19 @@ def test_showing_an_order_names_it_in_the_bar(widget):
     assert widget._order_label.text() == "#10429"
     widget.clear_screen()
     assert widget._order_label.text() == "No order"
+
+
+from gui.main_window import _session_seconds
+
+
+def test_a_missing_or_unparseable_start_time_is_no_duration():
+    assert _session_seconds(None) == 0
+    assert _session_seconds("") == 0
+    assert _session_seconds("not a timestamp") == 0
+
+
+def test_a_start_time_an_hour_ago_is_an_hour():
+    from datetime import datetime, timedelta
+
+    started = (datetime.now().astimezone() - timedelta(hours=1)).isoformat()
+    assert 3550 <= _session_seconds(started) <= 3650

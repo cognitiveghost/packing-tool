@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import PAGES, CommandBar
+from gui.packer_bridge import session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -103,6 +104,21 @@ def order_summary(total: int, packed: int, in_progress: int) -> str:
         return ""
     noun = "order" if total == 1 else "orders"
     return f"{total} {noun} · {packed} packed · {in_progress} in progress"
+
+
+def _session_seconds(started_at) -> int:
+    """Seconds since an ISO session start; 0 when it is missing or unreadable.
+
+    A session restored from disk can carry anything in started_at, and a
+    sentence that reports "in 0s" is better than one that raises.
+    """
+    if not started_at:
+        return 0
+    try:
+        start = datetime.fromisoformat(str(started_at))
+    except (TypeError, ValueError):
+        return 0
+    return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
 
 
 class MainWindow(QMainWindow):
@@ -359,6 +375,7 @@ class MainWindow(QMainWindow):
         self.packer_mode_widget.map_sku_requested.connect(self._on_map_sku_from_packer)
         self.packer_mode_widget.extra_confirmed.connect(self._on_extra_confirmed)
         self.packer_mode_widget.extra_removed.connect(self._on_extra_removed)
+        self.packer_mode_widget.end_session_requested.connect(self.end_session)
 
         # Stacked widget to switch between session view and packer mode
         self.stacked_widget = QStackedWidget()
@@ -2228,30 +2245,31 @@ class MainWindow(QMainWindow):
         (and the user clicking Yes → end_session() → self.logic = None) would corrupt
         the caller's stack frame that still holds references to self.logic.
         """
-        QTimer.singleShot(0, self._show_all_complete_dialog)
+        QTimer.singleShot(0, self._show_session_complete)
 
-    def _show_all_complete_dialog(self):
-        """Show the 'all orders packed/processed' prompt after the current event loop cycle."""
+    def _show_session_complete(self):
+        """Show the session's terminal state in the document (Bundle 5 spec S2).
+
+        This replaces the "End session now?" QMessageBox. The decision the
+        modal asked is now P8's two buttons, so the packer answers it on the
+        screen that announced the session was over instead of through a dialog
+        over it.
+        """
         if not self.logic:
             return
-        skipped_count = len(self.logic.session_packing_state.get("skipped_orders", []))
-        if skipped_count:
-            msg = (
-                f"All processable orders have been packed!\n"
-                f"{skipped_count} order(s) were skipped.\n\n"
-                f"End session now?"
+        state = self.logic.session_packing_state
+        self.packer_mode_widget.show_session_complete(
+            session_end_payload(
+                packed=len(state.get("completed_orders", [])),
+                total=len(self.logic.orders_data),
+                skipped=len(state.get("skipped_orders", [])),
+                items=sum(
+                    order.get("items_count", 0)
+                    for order in (self.logic.completed_orders_metadata or [])
+                ),
+                seconds=_session_seconds(self.logic.started_at),
             )
-        else:
-            msg = "All orders have been packed!\nEnd session now?"
-        reply = QMessageBox.question(
-            self,
-            "Session Complete",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.end_session()
 
     # REMOVED: open_restore_session_dialog() method (dead code)
     # This method was never called. Functionality replaced by Session Browser's
