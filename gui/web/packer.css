@@ -172,6 +172,15 @@ html, body { height: 100%; margin: 0; }
 .sku-row__sku { font-family: var(--font-family-mono); color: var(--text-secondary); }
 .sku-row__qty { font-variant-numeric: tabular-nums; text-align: right; }
 
+/* [C], carried over from the Qt table it replaced: a line that needs more
+   than one scan says so until it is done (Bundle 5 spec S4). */
+.sku-row__qty--multi {
+  color: var(--status-warning);
+  background: var(--status-warning-bg);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--spacing-xs);
+}
+
 /* Row tint marks state (F5): complete/partial live, pending/unknown resting
    until acted on. Never a filled row -- a left edge only. */
 .sku-row--complete { border-left: 3px solid var(--status-success); }
@@ -369,3 +378,17 @@ html, body { height: 100%; margin: 0; }
   font-size: var(--type-caption-size);
   color: var(--text-secondary);
 }
+
+/* The panel takes the main column's place. The regions it replaces stay in
+   the DOM -- the bridge keeps filling them -- but only one of the two paints,
+   so nothing has to be hidden from JS.  */
+/* The panel fills the column the item list sized (packer-document.css:230);
+   .doc-main's 900px basis is the document's width, not the panel's. */
+.doc-main.doc-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+}
+
+.doc-main.doc-state > :not(.state-panel) { display: none; }
+.doc-main:not(.doc-state) > .state-panel { display: none; }

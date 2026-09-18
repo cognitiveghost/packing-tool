@@ -36,6 +36,12 @@ warehouse machines.
   `shared/theme.py` via `theme_css_vars()`, no hex in web assets, no
   shadows/gradients/transitions/transforms/px font sizes, one mono face.
 - **Amended 2026-09-18 (owner):** animation is *not* among those guardrails.
+- **Amended 2026-09-18 (Bundle 5, spec A1):** the scanner `QLineEdit` is no
+  longer hidden — it is a visible 280px field in Packer Mode's command bar, so
+  a packer can see what the scanner typed. The invariant was never
+  *invisibility*: it is **focus**. The same widget still holds keyboard focus,
+  the web view is still `NoFocus`, and the same regression test still sends a
+  scan after a click inside the view.
   Shopify's ADR left it an open question rather than deciding it, and
   `shared/style_lint.py` accordingly bans `transition`, `transform`,
   `scale/rotate/translate` and `opacity` but not `animation`/`@keyframes`. A

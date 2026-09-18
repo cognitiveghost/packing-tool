@@ -30,6 +30,7 @@ const CHIP = {
   complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
   partial: { text: "Partial", cls: "chip chip--warning chip--tint chip--hollow" },
   pending: { text: "Pending", cls: "chip chip--neutral chip--hollow" },
+  unknown: { text: "No match", cls: "chip chip--danger chip--tint chip--hollow" },
 };
 
 function span(cls, text) {
@@ -50,30 +51,50 @@ function actionButton(label, action, row, sku) {
   return btn;
 }
 
+function rowEl(cls, cells, buttons) {
+  const row = document.createElement("div");
+  row.className = cls;
+  cells.forEach(function (cell) {
+    row.appendChild(span(cell[0], cell[1]));
+  });
+  const actions = document.createElement("span");
+  actions.className = "row-actions";
+  buttons.forEach(function (btn) {
+    actions.appendChild(btn);
+  });
+  row.appendChild(actions);
+  return row;
+}
+
 function renderItems() {
   const rows = state.bridge.items || [];
   els.skuList.textContent = "";
   els.skuList.hidden = rows.length === 0;
   let changed = null;
   rows.forEach(function (r) {
-    const row = document.createElement("div");
-    row.className =
-      "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : "");
-    if (r.just_changed) changed = row;
-    row.appendChild(span("sku-row__product", r.product));
-    row.appendChild(span("sku-row__sku", r.sku));
-    row.appendChild(span("sku-row__qty", r.packed + " / " + r.required));
     const chip = CHIP[r.state] || CHIP.pending;
-    row.appendChild(span(chip.cls, chip.text));
-    const actions = document.createElement("span");
-    actions.className = "row-actions";
+    const buttons = [];
     // Label "Force", not "Force confirm": three buttons have to share the
     // row's 190px actions slot (spec S2).
-    if (r.confirm) actions.appendChild(actionButton("Confirm", "confirm", r.row, r.sku));
-    if (r.undo) actions.appendChild(actionButton("Undo", "undo", r.row, r.sku));
-    if (r.force) actions.appendChild(actionButton("Force", "force", r.row, r.sku));
-    if (r.map) actions.appendChild(actionButton("Map SKU", "map", r.row, r.sku));
-    row.appendChild(actions);
+    if (r.confirm) buttons.push(actionButton("Confirm", "confirm", r.row, r.sku));
+    if (r.undo) buttons.push(actionButton("Undo", "undo", r.row, r.sku));
+    if (r.force) buttons.push(actionButton("Force", "force", r.row, r.sku));
+    if (r.map) buttons.push(actionButton("Map SKU", "map", r.row, r.sku));
+    if (r.mapBarcode) buttons.push(actionButton("Map SKU", "mapBarcode", r.row, r.sku));
+    const row = rowEl(
+      "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : ""),
+      [
+        ["sku-row__product", r.product],
+        ["sku-row__sku", r.sku],
+        [
+          "sku-row__qty" + (r.multi ? " sku-row__qty--multi" : ""),
+          r.state === "unknown" ? "—" : r.packed + " / " + r.required,
+        ],
+        [chip.cls, chip.text],
+      ],
+      buttons
+    );
+    if (r.just_changed) changed = row;
     els.skuList.appendChild(row);
   });
   if (changed) changed.scrollIntoView({ block: "nearest" });
@@ -109,21 +130,20 @@ function renderExtras() {
   els.extrasRows.textContent = "";
   els.extras.hidden = rows.length === 0;
   rows.forEach(function (r) {
-    const row = document.createElement("div");
-    row.className = "extras-row";
     // The extras row reuses the SKU row's grid, but there is no product name
     // for a scan the order does not contain -- current_extra_items is
     // normalised-SKU-to-count. So the SKU spans the product and SKU tracks
     // (see .extras-row .sku-row__sku) and the status cell stays empty (P6).
-    row.appendChild(span("sku-row__sku", r.sku));
-    row.appendChild(span("sku-row__qty", "× " + r.count));
-    row.appendChild(span("", ""));
-    const actions = document.createElement("span");
-    actions.className = "row-actions";
-    actions.appendChild(actionButton("Keep", "keep", -1, r.sku));
-    actions.appendChild(actionButton("Remove", "remove", -1, r.sku));
-    row.appendChild(actions);
-    els.extrasRows.appendChild(row);
+    els.extrasRows.appendChild(
+      rowEl(
+        "extras-row",
+        [["sku-row__sku", r.sku], ["sku-row__qty", "× " + r.count], ["", ""]],
+        [
+          actionButton("Keep", "keep", -1, r.sku),
+          actionButton("Remove", "remove", -1, r.sku),
+        ]
+      )
+    );
   });
 }
 
@@ -152,9 +172,42 @@ function renderHistory() {
   });
 }
 
+function renderSessionEnd() {
+  const s = state.bridge.sessionEnd || {};
+  const over = Boolean(s.title);
+  // One class decides the whole swap; CSS hides the regions the panel
+  // replaces, so there is no per-region bookkeeping to get out of step.
+  els.docMain.classList.toggle("doc-state", over);
+  els.stateTitle.textContent = s.title || "";
+  els.stateBody.textContent = s.body || "";
+}
+
+// One entry per action a row can offer. Both listeners share it, so a new
+// action is one line here rather than a branch in each cascade.
+const ACTIONS = {
+  confirm: function (btn, bridge) { bridge.confirmItem(Number(btn.dataset.row)); },
+  undo: function (btn, bridge) { bridge.undoItem(Number(btn.dataset.row)); },
+  force: function (btn, bridge) { bridge.forceItem(Number(btn.dataset.row)); },
+  map: function (btn, bridge) { bridge.mapSku(btn.dataset.sku); },
+  mapBarcode: function (btn, bridge) { bridge.mapBarcode(btn.dataset.sku); },
+  keep: function (btn, bridge) { bridge.keepExtra(btn.dataset.sku); },
+  remove: function (btn, bridge) { bridge.removeExtra(btn.dataset.sku); },
+  endSession: function (btn, bridge) { bridge.endSession(); },
+  exitPacking: function (btn, bridge) { bridge.exitPacking(); },
+};
+
+function onActionClick(event) {
+  const btn = event.target.closest("[data-action]");
+  const run = btn && ACTIONS[btn.dataset.action];
+  if (run) run(btn, state.bridge);
+}
+
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
   state.bridge = bridge;
+  // The test harness drives the page through this handle; nothing in the
+  // page reads it.
+  window.packerBridge = bridge;
   els.themeVars = document.getElementById("theme-vars");
   els.docMain = document.getElementById("doc-main");
   els.feedback = document.getElementById("feedback");
@@ -168,6 +221,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.historyRows = document.getElementById("history-rows");
   els.extras = document.getElementById("extras");
   els.extrasRows = document.getElementById("extras-rows");
+  els.stateTitle = document.getElementById("state-title");
+  els.stateBody = document.getElementById("state-body");
 
   onTheme();
   bridge.themeCssChanged.connect(onTheme);
@@ -178,24 +233,15 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.progressChanged.connect(renderProgress);
   bridge.historyChanged.connect(renderHistory);
   bridge.extrasChanged.connect(renderExtras);
+  bridge.sessionEndChanged.connect(renderSessionEnd);
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
-  els.skuList.addEventListener("click", function (event) {
-    const btn = event.target.closest("[data-action]");
-    if (!btn) return;
-    const row = Number(btn.dataset.row);
-    if (btn.dataset.action === "confirm") bridge.confirmItem(row);
-    else if (btn.dataset.action === "undo") bridge.undoItem(row);
-    else if (btn.dataset.action === "force") bridge.forceItem(row);
-    else if (btn.dataset.action === "map") bridge.mapSku(btn.dataset.sku);
-  });
-  els.extrasRows.addEventListener("click", function (event) {
-    const btn = event.target.closest("[data-action]");
-    if (!btn) return;
-    if (btn.dataset.action === "keep") bridge.keepExtra(btn.dataset.sku);
-    else if (btn.dataset.action === "remove") bridge.removeExtra(btn.dataset.sku);
-  });
+  // Delegated from doc-main, not each region: the state panel's buttons live
+  // outside sku-list and extras-rows, and one listener at the shared ancestor
+  // covers all three without double-firing on a click that bubbles through
+  // more than one of them.
+  els.docMain.addEventListener("click", onActionClick);
 
   renderFeedback();
   renderItems();
@@ -203,5 +249,6 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderProgress();
   renderHistory();
   renderExtras();
+  renderSessionEnd();
   document.documentElement.dataset.bridge = "ready";
 });

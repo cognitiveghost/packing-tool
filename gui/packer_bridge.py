@@ -42,19 +42,22 @@ def item_rows(
     sku_map: dict[str, str],
 ) -> list[dict[str, Any]]:
     """One row per order item, with its state and the actions it offers."""
-    packed_by_row = {
-        _int(s.get("row"), -1): _int(s.get("packed"), 0) for s in order_state or []
-    }
+    state_by_row = {_int(s.get("row"), -1): s for s in order_state or []}
     # A state entry with no usable row is dropped rather than mis-attributed to
     # row 0, which would credit another item's scans to the first line.
-    packed_by_row.pop(-1, None)
+    state_by_row.pop(-1, None)
     mapped = {normalize_sku(v) for v in (sku_map or {}).values()}
 
     rows = []
     for index, item in enumerate(items):
+        entry = state_by_row.get(index) or {}
         sku = str(item.get("SKU", ""))
-        required = max(_int(item.get("Quantity")), 1)
-        packed = packed_by_row.get(index, 0)
+        # PackerLogic decides completion from the state's own `required`, so
+        # the document reads it first or it disagrees with the logic on a
+        # resumed session. A restored entry can carry 0 for "not recorded"
+        # (packer_logic.py:440), which falls through to the packing list.
+        required = max(_int(entry.get("required"), 0) or _int(item.get("Quantity")), 1)
+        packed = _int(entry.get("packed"), 0)
         if packed >= required:
             state = "complete"
         elif packed > 0:
@@ -74,9 +77,45 @@ def item_rows(
                 "undo": packed > 0,
                 "force": required > FORCE_CONFIRM_MIN_QTY and packed < required,
                 "map": normalize_sku(sku) not in mapped,
+                "multi": required > 1 and packed < required,
+                "mapBarcode": False,
             }
         )
     return rows
+
+
+def unknown_rows(scans: list[str]) -> list[dict[str, Any]]:
+    """One row per unmatched scan, in scan order, each barcode once.
+
+    PackerLogic.unknown_scans appends every scan in this order that matched no
+    item and no mapping. The same wrong barcode scanned three times is one
+    thing to map, not three. The rows carry item_rows()' shape so the page
+    renders both lists with one function -- they ride in the same `items`
+    property, and the only action an unmatched scan offers is mapping it.
+    """
+    seen: list[str] = []
+    for scan in scans or []:
+        text = str(scan).strip()
+        if text and text not in seen:
+            seen.append(text)
+    return [
+        {
+            "row": -1,
+            "product": "Unknown SKU",
+            "sku": text,
+            "required": 0,
+            "packed": 0,
+            "state": "unknown",
+            "just_changed": False,
+            "multi": False,
+            "confirm": False,
+            "undo": False,
+            "force": False,
+            "map": False,
+            "mapBarcode": True,
+        }
+        for text in seen
+    ]
 
 
 def _clean(value: Any) -> str:
@@ -125,6 +164,35 @@ def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _duration(seconds: int) -> str:
+    """A session's length in the largest two units that are not zero."""
+    hours, rest = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"
+
+
+def session_end_payload(
+    packed: int, total: int, skipped: int, items: int, seconds: int
+) -> dict[str, str]:
+    """The state panel's title and sentence when the session is over (P8).
+
+    The skipped clause appears only when something was skipped, and the
+    duration only when the session's start time is known -- a sentence that
+    reports "0 skipped, in 0s" tells the packer about nothing that happened.
+    """
+    parts = [f"{packed} of {total} orders packed"]
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    parts.append(f"{items} {'item' if items == 1 else 'items'}")
+    if seconds:
+        parts.append(f"in {_duration(seconds)}")
+    return {"title": "Session complete", "body": ", ".join(parts) + "."}
+
+
 # main_window.flash_border() has always been called with a colour word. The
 # document speaks in status roles, so the translation lives here rather than in
 # a dict on MainWindow. An unknown word raises: a silently-passed-through value
@@ -153,6 +221,7 @@ class PackerBridge(QObject):
     extrasChanged = Signal()
     historyChanged = Signal()
     progressChanged = Signal()
+    sessionEndChanged = Signal()
     # JS-facing: the scan cue (S4). The page draws it; Qt has no element left
     # on this screen to flash.
     scanFlashed = Signal(str)
@@ -164,6 +233,9 @@ class PackerBridge(QObject):
     mapRequested = Signal(str)
     keepExtraRequested = Signal(str)
     removeExtraRequested = Signal(str)
+    endSessionRequested = Signal()
+    exitPackingRequested = Signal()
+    mapBarcodeRequested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -174,6 +246,7 @@ class PackerBridge(QObject):
         self._extras: list = []
         self._history: list = []
         self._progress: dict = {}
+        self._session_end: dict = {}
 
     # --- out: Python -> JS -------------------------------------------------
 
@@ -212,6 +285,14 @@ class PackerBridge(QObject):
 
     progress = Property("QVariantMap", _get_progress, notify=progressChanged)
 
+    def _get_session_end(self) -> dict:
+        return self._session_end
+
+    # The eighth property, and the one Bundle 4 declined to add on spec: a
+    # finished session is a state the document cannot infer from an empty
+    # items list, because waiting for the next order looks exactly the same.
+    sessionEnd = Property("QVariantMap", _get_session_end, notify=sessionEndChanged)
+
     # --- in: JS -> Python --------------------------------------------------
 
     @Slot(int)
@@ -237,6 +318,18 @@ class PackerBridge(QObject):
     @Slot(str)
     def removeExtra(self, sku) -> None:
         self.removeExtraRequested.emit(str(sku))
+
+    @Slot(str)
+    def mapBarcode(self, barcode) -> None:
+        self.mapBarcodeRequested.emit(str(barcode))
+
+    @Slot()
+    def endSession(self) -> None:
+        self.endSessionRequested.emit()
+
+    @Slot()
+    def exitPacking(self) -> None:
+        self.exitPackingRequested.emit()
 
     # --- Python-facing API -------------------------------------------------
 
@@ -271,6 +364,10 @@ class PackerBridge(QObject):
 
     def flash(self, role: str) -> None:
         self.scanFlashed.emit(str(role))
+
+    def set_session_end(self, payload: dict) -> None:
+        self._session_end = dict(payload or {})
+        self.sessionEndChanged.emit()
 
 
 def deny_focus(view: QWebEngineView) -> None:

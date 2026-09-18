@@ -12,9 +12,17 @@ import pytest
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
-from gui.packer_bridge import PAGE, THEME_MARKER, mount_packer_page
+from gui.packer_bridge import (
+    PAGE,
+    THEME_MARKER,
+    item_rows,
+    mount_packer_page,
+    unknown_rows,
+)
 from gui.theme import apply_theme
 from shared.theme import THEME_DARK, THEME_LIGHT
+
+ITEMS_FOR_PAGE = [{"SKU": "TS-4409-B", "Product_Name": "Wireless Mouse", "Quantity": 3}]
 
 
 def _eval(qtbot, view, expr, timeout=5000):
@@ -158,7 +166,6 @@ STATE = [
 
 
 def test_the_list_draws_one_row_per_item_with_its_state(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -172,7 +179,6 @@ def test_the_list_draws_one_row_per_item_with_its_state(page, qtbot):
 
 
 def test_a_row_shows_product_sku_and_the_packed_count(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -196,7 +202,6 @@ def test_a_row_shows_product_sku_and_the_packed_count(page, qtbot):
 
 
 def test_each_state_carries_the_artboard_s_chip(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -209,7 +214,6 @@ def test_each_state_carries_the_artboard_s_chip(page, qtbot):
 
 
 def test_the_row_a_scan_landed_on_is_tinted(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     rows = item_rows(ITEMS, STATE, {})
@@ -307,7 +311,6 @@ def test_a_map_click_carries_the_original_sku(qtbot):
 
 
 def test_clicking_a_row_action_in_the_page_calls_its_slot(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     calls = []
@@ -489,7 +492,7 @@ def test_clearing_the_screen_returns_to_waiting_and_keeps_the_session(qtbot):
     assert widget.bridge.items == []
     assert widget.bridge.extras == []
     assert widget.bridge.banner == {"order": "", "chips": [], "notes": ""}
-    assert widget.bridge.feedback["text"] == "Scan the next order's barcode"
+    assert widget.bridge.feedback["text"] == "Scan an order barcode"
     assert widget.bridge.history == [{"order": "10428", "status": "complete"}]
     assert widget.bridge.progress["orders_done"] == 8
 
@@ -544,3 +547,145 @@ def test_flash_border_s_colour_words_reach_the_bridge_as_roles(qtbot):
     for color in ("green", "orange", "red"):
         widget.flash_scan(color)
     assert seen == ["success", "warning", "danger"]
+
+
+def test_the_page_reads_the_session_end_payload(qtbot, page):
+    view, bridge = page
+    assert _eval(qtbot, view, "window.packerBridge.sessionEnd") == {}
+    bridge.set_session_end(
+        {"title": "Session complete", "body": "2 of 2 orders packed."}
+    )
+    _until_js(
+        qtbot, view, "window.packerBridge.sessionEnd.title === 'Session complete'"
+    )
+
+
+def test_an_unmatched_scan_draws_a_no_match_row_that_only_maps(qtbot, page):
+    view, bridge = page
+    bridge.set_items(unknown_rows(["4006381333931"]))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row').className") == (
+        "sku-row sku-row--unknown"
+    )
+    cells = _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.sku-row > span'))"
+        ".map(function (e) { return e.textContent; })",
+    )
+    assert cells[:3] == ["Unknown SKU", "4006381333931", "—"]
+    assert "No match" in cells[3]
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.sku-row .btn'))"
+        ".map(function (e) { return e.textContent; })",
+    ) == ["Map SKU"]
+
+
+def test_mapping_an_unmatched_scan_reaches_python_with_the_barcode(qtbot, page):
+    view, bridge = page
+    bridge.set_items(unknown_rows(["4006381333931"]))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row .btn').length === 1")
+    with qtbot.waitSignal(bridge.mapBarcodeRequested, timeout=5000) as caught:
+        view.page().runJavaScript("document.querySelector('.sku-row .btn').click()")
+    assert caught.args == ["4006381333931"]
+
+
+def test_the_quantity_cell_warns_while_a_multi_unit_line_is_unfinished(qtbot, page):
+    view, bridge = page
+    bridge.set_items(
+        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 1, "required": 3}], {})
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
+        "sku-row__qty sku-row__qty--multi"
+    )
+
+
+def test_a_finished_multi_unit_line_drops_the_warning(qtbot, page):
+    view, bridge = page
+    bridge.set_items(
+        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 3, "required": 3}], {})
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
+        "sku-row__qty"
+    )
+
+
+def test_a_finished_session_replaces_the_document_with_its_panel(qtbot, page):
+    view, bridge = page
+    bridge.set_items(item_rows(ITEMS_FOR_PAGE, [], {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    bridge.set_session_end(
+        {"title": "Session complete", "body": "2 of 2 orders packed."}
+    )
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    # The list is still in the DOM -- the bridge keeps filling it -- but the
+    # panel has the column.
+    assert (
+        _eval(
+            qtbot, view, "getComputedStyle(document.getElementById('sku-list')).display"
+        )
+        == "none"
+    )
+    assert _eval(
+        qtbot, view, "document.querySelector('.state-panel-title').textContent"
+    ) == ("Session complete")
+    assert _eval(
+        qtbot, view, "document.querySelector('.state-panel-body').textContent"
+    ) == ("2 of 2 orders packed.")
+
+
+def test_clearing_the_session_end_gives_the_document_back(qtbot, page):
+    view, bridge = page
+    bridge.set_session_end({"title": "Session complete", "body": "done."})
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    bridge.set_session_end({})
+    _until_js(
+        qtbot,
+        view,
+        "!document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    assert (
+        _eval(
+            qtbot,
+            view,
+            "getComputedStyle(document.querySelector('.state-panel')).display",
+        )
+        == "none"
+    )
+
+
+def test_the_panels_buttons_reach_python(qtbot, page):
+    view, bridge = page
+    bridge.set_session_end({"title": "Session complete", "body": "done."})
+    _until_js(
+        qtbot,
+        view,
+        "document.querySelectorAll('.state-panel-actions .btn').length === 2",
+    )
+    labels = _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.state-panel-actions .btn'))"
+        ".map(function (e) { return e.textContent; })",
+    )
+    assert labels == ["End session", "Exit packing"]
+    with qtbot.waitSignal(bridge.endSessionRequested, timeout=5000):
+        view.page().runJavaScript(
+            "document.querySelector('[data-action=\"endSession\"]').click()"
+        )
+    with qtbot.waitSignal(bridge.exitPackingRequested, timeout=5000):
+        view.page().runJavaScript(
+            "document.querySelector('[data-action=\"exitPacking\"]').click()"
+        )

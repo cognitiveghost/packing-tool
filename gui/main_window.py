@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import PAGES, CommandBar
+from gui.packer_bridge import session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -103,6 +104,39 @@ def order_summary(total: int, packed: int, in_progress: int) -> str:
         return ""
     noun = "order" if total == 1 else "orders"
     return f"{total} {noun} · {packed} packed · {in_progress} in progress"
+
+
+def _session_seconds(started_at) -> int:
+    """Seconds since an ISO session start; 0 when it is missing or unreadable.
+
+    A session restored from disk can carry anything in started_at, and a
+    sentence that reports "in 0s" is better than one that raises.
+    """
+    if not started_at:
+        return 0
+    try:
+        start = datetime.fromisoformat(str(started_at))
+    except (TypeError, ValueError):
+        return 0
+    return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
+
+
+def _unmapped_choices(order_state) -> list[tuple[str, str]]:
+    """This order's lines as (sku, label), the ones still owing scans first.
+
+    An unmatched scan happened while packing this order, so the SKU the packer
+    meant is almost always a line that is not finished yet.
+    """
+    return [
+        (
+            s["original_sku"],
+            f"{s['original_sku']} — {s['packed']} / {s['required']} packed",
+        )
+        for s in sorted(
+            order_state or [],
+            key=lambda s: s["packed"] >= s["required"],
+        )
+    ]
 
 
 class MainWindow(QMainWindow):
@@ -359,6 +393,10 @@ class MainWindow(QMainWindow):
         self.packer_mode_widget.map_sku_requested.connect(self._on_map_sku_from_packer)
         self.packer_mode_widget.extra_confirmed.connect(self._on_extra_confirmed)
         self.packer_mode_widget.extra_removed.connect(self._on_extra_removed)
+        self.packer_mode_widget.end_session_requested.connect(self.end_session)
+        self.packer_mode_widget.map_barcode_requested.connect(
+            self._on_map_barcode_from_packer
+        )
 
         # Stacked widget to switch between session view and packer mode
         self.stacked_widget = QStackedWidget()
@@ -1898,6 +1936,9 @@ class MainWindow(QMainWindow):
             self.order_tree.clear()
         self.sb_summary_label.setText("")
 
+        if self.packer_mode_widget:
+            self.packer_mode_widget.reset_for_new_session()
+
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
             self.stacked_widget.setCurrentWidget(self.session_widget)
@@ -1969,12 +2010,12 @@ class MainWindow(QMainWindow):
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
                 self.packer_mode_widget.show_notification(
-                    f"ORDER {text} ALREADY COMPLETED", "status_warning"
+                    f"Order #{text} is already packed", "status_warning"
                 )
                 self.flash_border("orange")
             else:
                 self.packer_mode_widget.show_notification(
-                    "ORDER NOT FOUND", "status_danger"
+                    f"No order matches {text}", "status_danger"
                 )
                 self.flash_border("red")
                 _beep(400, 350)
@@ -1984,23 +2025,24 @@ class MainWindow(QMainWindow):
                 self.packer_mode_widget.update_item_row(
                     result["row"], result["packed"], result["is_complete"]
                 )
-                self.packer_mode_widget.show_notification("ITEM OK", "status_success")
+                row = self.packer_mode_widget.row_at(result["row"])
+                self.packer_mode_widget.show_notification(
+                    f"{row.get('sku', '')} confirmed — {result['packed']} of "
+                    f"{row.get('required', 0)} packed",
+                    "status_success",
+                )
                 self.flash_border("green")
                 _beep(1200, 80)
             elif status == "SKU_NOT_FOUND":
-                unknown_list = self.logic.unknown_scans
-                if len(unknown_list) > 1:
-                    detail = f"({len(unknown_list)} unknown scans)\nLast: {text}"
-                else:
-                    detail = f"Unknown: {text}"
                 self.packer_mode_widget.show_notification(
-                    f"INCORRECT ITEM!\n{detail}", "status_danger"
+                    f"Unknown SKU {text} — scan again or map it", "status_danger"
                 )
+                self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
                 self.flash_border("red")
                 _beep(400, 350)
             elif status == "SKU_EXTRA":
                 self.packer_mode_widget.show_notification(
-                    "EXTRA ITEM!", "status_warning"
+                    "Extra item scanned — keep it or remove it", "status_warning"
                 )
                 self.flash_border("orange")
                 _beep(700, 200)
@@ -2012,7 +2054,8 @@ class MainWindow(QMainWindow):
                     result["row"], result["packed"], result["is_complete"]
                 )
                 self.packer_mode_widget.show_notification(
-                    "REVIEW EXTRA ITEMS!", "status_warning"
+                    "Review the extra items before this order can close",
+                    "status_warning",
                 )
                 self.flash_border("orange")
                 self.packer_mode_widget.show_extras_panel(
@@ -2067,7 +2110,7 @@ class MainWindow(QMainWindow):
     def _handle_order_completion(self, order_number: str):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
         self.packer_mode_widget.show_notification(
-            f"ORDER {order_number} COMPLETE!", "status_success"
+            f"Order #{order_number} packed. Scan the next order.", "status_success"
         )
         self.flash_border("green")
         _beep(1200, 80)
@@ -2102,7 +2145,9 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.update_item_row(row, result["packed"], False)
             self.flash_border("orange")
         elif status == "ITEM_ALREADY_ZERO":
-            self.packer_mode_widget.show_notification("Already at 0!", "status_warning")
+            self.packer_mode_widget.show_notification(
+                "Nothing packed on that line yet", "status_warning"
+            )
         self.packer_mode_widget.set_focus_to_scanner()
 
     def _on_force_confirm(self, row: int):
@@ -2121,7 +2166,8 @@ class MainWindow(QMainWindow):
                 # All items packed but extra items need resolution before completing
                 self.flash_border("orange")
                 self.packer_mode_widget.show_notification(
-                    "REVIEW EXTRA ITEMS!", "status_warning"
+                    "Review the extra items before this order can close",
+                    "status_warning",
                 )
                 self.packer_mode_widget.show_extras_panel(
                     self.logic.current_extra_items
@@ -2129,6 +2175,50 @@ class MainWindow(QMainWindow):
             else:
                 self.flash_border("green")
         self.packer_mode_widget.set_focus_to_scanner()
+
+    def _save_sku_mapping(self, barcode: str, sku: str) -> bool:
+        """Save one barcode → SKU mapping, confirming an overwrite first.
+
+        Shared by both directions of the Map SKU flow: the per-item button
+        knows the SKU and asks for the barcode, and the unmatched-scan row
+        knows the barcode and asks for the SKU.
+        """
+        try:
+            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
+            if barcode in existing and existing[barcode] != sku:
+                reply = QMessageBox.question(
+                    self,
+                    "Overwrite Mapping?",
+                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
+                    f"Replace with '{sku}'?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return False
+
+            existing[barcode] = sku
+            if not self.profile_manager.save_sku_mapping(
+                self.current_client_id, existing
+            ):
+                QMessageBox.warning(
+                    self, "Save Failed", "Could not save mapping to file server."
+                )
+                return False
+
+            if self.logic:
+                self.logic.sku_map = {
+                    self.logic._normalize_sku(k): v for k, v in existing.items()
+                }
+                logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
+            self.packer_mode_widget.show_notification(
+                f"Mapped: {barcode} → {sku}", "status_success"
+            )
+            return True
+        except Exception as e:
+            logger.exception("Failed to save quick SKU mapping")
+            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
+            return False
 
     def _on_map_sku_from_packer(self, sku: str):
         """Quick-add barcode→SKU mapping from packer mode.
@@ -2149,43 +2239,45 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.set_focus_to_scanner()
             return
 
-        barcode = barcode.strip()
-        try:
-            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
-            if barcode in existing and existing[barcode] != sku:
-                reply = QMessageBox.question(
-                    self,
-                    "Overwrite Mapping?",
-                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
-                    f"Replace with '{sku}'?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    self.packer_mode_widget.set_focus_to_scanner()
-                    return
+        self._save_sku_mapping(barcode.strip(), sku)
+        self.packer_mode_widget.set_focus_to_scanner()
 
-            existing[barcode] = sku
-            success = self.profile_manager.save_sku_mapping(
-                self.current_client_id, existing
-            )
-            if success:
-                if self.logic:
-                    self.logic.sku_map = {
-                        self.logic._normalize_sku(k): v for k, v in existing.items()
-                    }
-                    logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
-                self.packer_mode_widget.show_notification(
-                    f"Mapped: {barcode} → {sku}", "status_success"
-                )
-            else:
-                QMessageBox.warning(
-                    self, "Save Failed", "Could not save mapping to file server."
-                )
-        except Exception as e:
-            logger.exception("Failed to save quick SKU mapping")
-            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
+    def _on_map_barcode_from_packer(self, barcode: str):
+        """Map an unmatched scan to one of this order's SKUs, then replay it.
 
+        The reverse of _on_map_sku_from_packer: here the barcode is known and
+        the SKU is picked. Replaying the scan afterwards packs the item in the
+        same gesture -- the scan already happened, and making the packer scan
+        again to use a mapping they just made is a step with no purpose.
+        """
+        choices = (
+            _unmapped_choices(self.logic.current_order_state) if self.logic else []
+        )
+        if not (choices and self.current_client_id):
+            self.packer_mode_widget.set_focus_to_scanner()
+            return
+
+        labels = [label for _sku, label in choices]
+        picked, ok = QInputDialog.getItem(
+            self,
+            "Map SKU",
+            f"Barcode {barcode}\n\nWhich item did you scan?",
+            labels,
+            0,
+            False,
+        )
+        if not (ok and picked):
+            self.packer_mode_widget.set_focus_to_scanner()
+            return
+
+        sku = choices[labels.index(picked)][0]
+        if self._save_sku_mapping(barcode, sku):
+            # It matches an item now, so its "No match" row goes with the mapping.
+            self.logic.unknown_scans = [
+                scan for scan in self.logic.unknown_scans if scan != barcode
+            ]
+            self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
+            self.on_scanner_input(barcode)
         self.packer_mode_widget.set_focus_to_scanner()
 
     def _on_extra_confirmed(self, norm_sku: str):
@@ -2228,30 +2320,31 @@ class MainWindow(QMainWindow):
         (and the user clicking Yes → end_session() → self.logic = None) would corrupt
         the caller's stack frame that still holds references to self.logic.
         """
-        QTimer.singleShot(0, self._show_all_complete_dialog)
+        QTimer.singleShot(0, self._show_session_complete)
 
-    def _show_all_complete_dialog(self):
-        """Show the 'all orders packed/processed' prompt after the current event loop cycle."""
+    def _show_session_complete(self):
+        """Show the session's terminal state in the document (Bundle 5 spec S2).
+
+        This replaces the "End session now?" QMessageBox. The decision the
+        modal asked is now P8's two buttons, so the packer answers it on the
+        screen that announced the session was over instead of through a dialog
+        over it.
+        """
         if not self.logic:
             return
-        skipped_count = len(self.logic.session_packing_state.get("skipped_orders", []))
-        if skipped_count:
-            msg = (
-                f"All processable orders have been packed!\n"
-                f"{skipped_count} order(s) were skipped.\n\n"
-                f"End session now?"
+        state = self.logic.session_packing_state
+        self.packer_mode_widget.show_session_complete(
+            session_end_payload(
+                packed=len(state.get("completed_orders", [])),
+                total=len(self.logic.orders_data),
+                skipped=len(state.get("skipped_orders", [])),
+                items=sum(
+                    order.get("items_count", 0)
+                    for order in (self.logic.completed_orders_metadata or [])
+                ),
+                seconds=_session_seconds(self.logic.started_at),
             )
-        else:
-            msg = "All orders have been packed!\nEnd session now?"
-        reply = QMessageBox.question(
-            self,
-            "Session Complete",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.end_session()
 
     # REMOVED: open_restore_session_dialog() method (dead code)
     # This method was never called. Functionality replaced by Session Browser's

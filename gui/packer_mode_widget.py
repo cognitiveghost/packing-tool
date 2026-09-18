@@ -6,19 +6,29 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QDialog,
-    QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from gui.packer_bridge import banner_payload, flash_role, item_rows, summary_lines
-from gui.theme import current_tokens
+from gui.command_bar import BAR_HEIGHT, bar_css
+from gui.packer_bridge import (
+    banner_payload,
+    flash_role,
+    item_rows,
+    summary_lines,
+    unknown_rows,
+)
 from shared.components.confirm_dialog import ConfirmDialog
+from shared.theme import font_css, on_theme_changed
 
 logger = logging.getLogger(__name__)
+
+SCANNER_WIDTH = 280
+SIM_INPUT_WIDTH = 160
 
 
 class PackerModeWidget(QWidget):
@@ -39,8 +49,13 @@ class PackerModeWidget(QWidget):
         map_sku_requested (Signal[str]): Emitted with original SKU on Map SKU press.
         extra_confirmed (Signal[str]): Emitted with normalized_sku on Keep extra.
         extra_removed (Signal[str]): Emitted with normalized_sku on Remove extra.
+        end_session_requested (Signal): Emitted when the session-complete panel's
+            End session button is pressed.
+        map_barcode_requested (Signal[str]): Emitted with the raw barcode of an
+            unmatched scan the packer chose to map.
         document_view (QWebEngineView): The order document (bridge: PackerBridge).
-        scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
+        packer_bar (QWidget): The 60px command bar above the document.
+        scanner_input (QLineEdit): Visible line edit that captures barcode scanner input.
     """
 
     barcode_scanned = Signal(str)
@@ -51,6 +66,8 @@ class PackerModeWidget(QWidget):
     map_sku_requested = Signal(str)  # original SKU string
     extra_confirmed = Signal(str)  # normalized_sku
     extra_removed = Signal(str)  # normalized_sku
+    end_session_requested = Signal()  # P8's primary action
+    map_barcode_requested = Signal(str)  # raw barcode from an unmatched scan
 
     def __init__(self, parent: QWidget = None, sim_mode: bool = False):
         """
@@ -64,18 +81,13 @@ class PackerModeWidget(QWidget):
         super().__init__(parent)
         self._sim_mode = sim_mode
 
-        main_layout = QHBoxLayout(self)
-
-        # ─── LEFT PANEL ──────────────────────────────────────────────────────
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setSpacing(4)
-
         self._feedback_text = "Scan an order barcode"
         self._feedback_role = "info"
         self._raw_scan = ""
         self._items = []
         self._rows = []
+        self._unknown = []
+        self._session_over = False
         self._sku_map = {}
         self._orders_done = 0
         self._orders_total = 0
@@ -85,7 +97,6 @@ class PackerModeWidget(QWidget):
 
         self.document_view = QWebEngineView(self)
         self.bridge = mount_packer_page(self.document_view)
-        left_layout.addWidget(self.document_view, 1)
         self._push_feedback()
         self.bridge.confirmRequested.connect(self._on_manual_confirm)
         self.bridge.undoRequested.connect(self._on_cancel_item)
@@ -93,61 +104,102 @@ class PackerModeWidget(QWidget):
         self.bridge.mapRequested.connect(self._on_map_sku_requested)
         self.bridge.keepExtraRequested.connect(self._on_extra_confirmed)
         self.bridge.removeExtraRequested.connect(self._on_extra_removed)
+        self.bridge.mapBarcodeRequested.connect(self._on_map_barcode)
+        self.bridge.endSessionRequested.connect(self.end_session_requested.emit)
+        self.bridge.exitPackingRequested.connect(self.exit_packing_mode.emit)
 
-        # Scanner input — hidden line edit that captures barcode scanner keystrokes.
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ─── COMMAND BAR (artboard A1: the rail is hidden while packing, and
+        # this bar carries the order, the scanner, Skip and Exit) ────────────
+        self.packer_bar = QWidget()
+        self.packer_bar.setObjectName("PackerBar")
+        # A plain QWidget subclass ignores a background rule without this.
+        self.packer_bar.setAttribute(Qt.WA_StyledBackground, True)
+        self.packer_bar.setFixedHeight(BAR_HEIGHT)
+        bar = QHBoxLayout(self.packer_bar)
+        bar.setContentsMargins(12, 0, 12, 0)
+        bar.setSpacing(8)
+
+        self._order_label = QLabel("No order")
+        self._order_label.setObjectName("cmdbarSession")
+        bar.addWidget(self._order_label)
+
+        # The scanner field, A2: the shipped 1x1 hidden QLineEdit, grown to a
+        # field the packer can see. The global QSS already lands a QLineEdit on
+        # control_height, so it needs a width and nothing else -- and because
+        # it is still the widget the scanner types into, the visible focus ring
+        # and the disabled state are the real thing rather than a copy of it.
         self.scanner_input = QLineEdit()
-        self.scanner_input.setFixedSize(1, 1)
+        self.scanner_input.setFixedWidth(SCANNER_WIDTH)
+        self.scanner_input.setPlaceholderText("Ready to scan")
         self.scanner_input.returnPressed.connect(self._on_scan)
-        scan_row = QHBoxLayout()
-        scan_row.setSpacing(8)
-        scan_row.addWidget(self.scanner_input, 1)
-        left_layout.addLayout(scan_row)
+        bar.addWidget(self.scanner_input)
 
-        # ─── RIGHT PANEL ─────────────────────────────────────────────────────
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-
-        # Dev mode: visible scan simulator panel (replaces physical barcode scanner).
-        # Opt-in only: via the ScanSimulatorMode config setting (self._sim_mode, wired
-        # through main.py) or, for a quick one-off without touching config, PACKER_DEV_SIM=1.
         if self._sim_mode or os.environ.get("PACKER_DEV_SIM"):
-            sim_group = QGroupBox("Scan Simulator (Dev Mode)")
-            sim_group.setStyleSheet(
-                f"QGroupBox {{ border: 2px dashed {current_tokens().status_warning}; border-radius: 6px; "
-                f"margin-top: 6px; padding: 4px; color: {current_tokens().status_warning}; font-weight: bold; }}"
-                "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
-            )
-            sim_layout = QHBoxLayout(sim_group)
-            self.sim_input = QLineEdit()
-            self.sim_input.setPlaceholderText(
-                "Type order number or SKU, press Enter to scan..."
-            )
-            self.sim_input.returnPressed.connect(self._on_sim_scan)
-            sim_btn = QPushButton("Scan")
-            sim_btn.setFixedWidth(70)
-            sim_btn.clicked.connect(self._on_sim_scan)
-            sim_layout.addWidget(self.sim_input)
-            sim_layout.addWidget(sim_btn)
-            right_layout.addWidget(sim_group)
+            bar.addWidget(self._build_sim_group())
 
-        # [E] Skip Order button — placed directly under the scan-info card
-        self.skip_order_button = QPushButton("Skip Order →")
+        bar.addStretch(1)
+
+        self.skip_order_button = QPushButton("Skip order")
         self.skip_order_button.setFocusPolicy(Qt.NoFocus)
         self.skip_order_button.setEnabled(False)
         self.skip_order_button.clicked.connect(self.skip_order_requested.emit)
-        right_layout.addWidget(self.skip_order_button)
+        bar.addWidget(self.skip_order_button)
 
-        right_layout.addStretch()
-
-        self.exit_button = QPushButton("<< Back to Menu")
-        font = self.exit_button.font()
-        font.setPointSize(14)
-        self.exit_button.setFont(font)
+        self.exit_button = QPushButton("Exit packing")
+        self.exit_button.setFocusPolicy(Qt.NoFocus)
         self.exit_button.clicked.connect(self.exit_packing_mode.emit)
-        right_layout.addWidget(self.exit_button)
+        bar.addWidget(self.exit_button)
 
-        main_layout.addWidget(left_widget, stretch=3)
-        main_layout.addWidget(right_widget, stretch=1)
+        root.addWidget(self.packer_bar)
+        root.addWidget(self.document_view, 1)
+
+        on_theme_changed(self, self._apply_bar_theme)
+
+    def _build_sim_group(self) -> QWidget:
+        """The dev scan simulator, inline in the bar (artboard P3-1920).
+
+        A plain QWidget, not a QGroupBox: the artboard's `.sim-group` is one
+        44px row with the "DEV" label beside the input, not a fieldset with a
+        title above it -- a QGroupBox title reserves space above its layout
+        that a 44px-tall box inside a 60px bar does not have, which squeezed
+        the input and button down to an unreadable few px.
+
+        Opt-in only: the ScanSimulatorMode config setting (wired through
+        main.py) or PACKER_DEV_SIM=1 for a one-off.
+        """
+        group = QWidget()
+        group.setObjectName("SimGroup")
+        group.setAttribute(Qt.WA_StyledBackground, True)
+        group.setFixedHeight(BAR_HEIGHT - 16)
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(8, 0, 8, 0)
+        layout.setSpacing(4)
+        label = QLabel("DEV")
+        label.setObjectName("SimGroupLabel")
+        self.sim_input = QLineEdit()
+        self.sim_input.setFixedWidth(SIM_INPUT_WIDTH)
+        self.sim_input.setPlaceholderText("Order number or SKU")
+        self.sim_input.returnPressed.connect(self._on_sim_scan)
+        button = QPushButton("Simulate scan")
+        button.setFocusPolicy(Qt.NoFocus)
+        button.clicked.connect(self._on_sim_scan)
+        layout.addWidget(label)
+        layout.addWidget(self.sim_input)
+        layout.addWidget(button)
+        return group
+
+    def _apply_bar_theme(self, tokens) -> None:
+        self.setStyleSheet(
+            bar_css(tokens, "QWidget#PackerBar")
+            + f" QWidget#SimGroup {{ border: 1px dashed {tokens.status_warning};"
+            f" border-radius: {tokens.radius}px; }}"
+            f" QLabel#SimGroupLabel {{ color: {tokens.status_warning};"
+            f" {font_css('caption', bold=True)} }}"
+        )
 
     def showEvent(self, event):
         """Re-assert the scanner's claim on the keyboard every time we appear."""
@@ -233,6 +285,11 @@ class PackerModeWidget(QWidget):
         self.extra_removed.emit(norm_sku)
         self.set_focus_to_scanner()
 
+    def _on_map_barcode(self, barcode: str):
+        """Forward an unmatched scan's barcode; MainWindow owns the dialog."""
+        self.map_barcode_requested.emit(barcode)
+        self.set_focus_to_scanner()
+
     # ─── Public display methods ───────────────────────────────────────────────
 
     def display_order(
@@ -251,6 +308,7 @@ class PackerModeWidget(QWidget):
             sku_map: Normalised barcode -> SKU, for the Map SKU action.
         """
         self._items = list(items)
+        self._unknown = []
         self._sku_map = dict(sku_map or {})
         self._rows = item_rows(self._items, order_state, self._sku_map)
         order_number = (
@@ -259,6 +317,7 @@ class PackerModeWidget(QWidget):
             else ""
         )
         self.bridge.set_banner(banner_payload(order_number, metadata))
+        self._order_label.setText(f"#{order_number}" if order_number else "No order")
         self._push_rows()
         self.skip_order_button.setEnabled(True)
         self.set_focus_to_scanner()
@@ -281,15 +340,27 @@ class PackerModeWidget(QWidget):
         target["packed"] = packed_count
         self._rows = item_rows(
             self._items,
-            [{"row": r["row"], "packed": r["packed"]} for r in self._rows],
+            [
+                {"row": r["row"], "packed": r["packed"], "required": r["required"]}
+                for r in self._rows
+            ],
             self._sku_map,
         )
         self._rows[row]["just_changed"] = True
         self._push_rows()
 
+    def row_at(self, row: int) -> dict[str, Any]:
+        """One item row's payload, for a caller writing a message about it."""
+        return dict(self._rows[row]) if 0 <= row < len(self._rows) else {}
+
     def _push_rows(self):
-        """Send the item rows and the numbers derived from them."""
-        self.bridge.set_items(self._rows)
+        """Send the item rows plus the unmatched scans, and the numbers.
+
+        The unknown rows ride in the same `items` property so the list stays
+        one list in one scroll container. The progress numbers are built from
+        the item rows alone -- an unmatched scan is not a line to pack.
+        """
+        self.bridge.set_items(self._rows + unknown_rows(self._unknown))
         self._push_progress()
 
     def _push_progress(self):
@@ -324,19 +395,63 @@ class PackerModeWidget(QWidget):
 
         The session's history and order counts stay: they belong to the
         session, not to the order that just ended.
+
+        A finished session outranks a per-order reset, so this refuses
+        while the session-complete panel is up: the last order schedules
+        this call 3s out, and it would otherwise wipe the panel that is
+        the only way to end the session from this screen.
         """
+        if self._session_over:
+            return
         self._items = []
         self._rows = []
+        self._unknown = []
         self._sku_map = {}
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
+        self._order_label.setText("No order")
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)
         self.skip_order_button.setEnabled(False)
         self._raw_scan = ""
-        self.show_notification("Scan the next order's barcode", "status_info")
+        self.show_notification("Scan an order barcode", "status_info")
         self._push_rows()
         self.set_focus_to_scanner()
+
+    def show_session_complete(self, payload: dict[str, str]):
+        """Show the session's terminal state in place of the order document.
+
+        Args:
+            payload: gui.packer_bridge.session_end_payload()'s title and body.
+        """
+        self._session_over = True
+        self.bridge.set_session_end(payload)
+        self._order_label.setText("Session complete")
+        self.scanner_input.setPlaceholderText("Scanner disabled")
+        self.scanner_input.setEnabled(False)
+        self.skip_order_button.setEnabled(False)
+
+    def reset_for_new_session(self):
+        """Take the session-complete panel down and clear the document.
+
+        clear_screen() refuses while the panel is up, so ending the session
+        is the one place that lowers it -- and the next session then opens
+        on a document that is packing rather than finished.
+        """
+        self._session_over = False
+        self.bridge.set_session_end({})
+        self.scanner_input.setPlaceholderText("Ready to scan")
+        self.clear_screen()
+
+    def show_unknown_scans(self, scans: list[str]):
+        """Show this order's unmatched scans as rows under the item rows.
+
+        Args:
+            scans: PackerLogic.unknown_scans -- the raw text of every scan
+                in this order that matched no item and no mapping.
+        """
+        self._unknown = list(scans or [])
+        self._push_rows()
 
     def flash_scan(self, color: str):
         """Flash the document's edge with a scan's outcome.

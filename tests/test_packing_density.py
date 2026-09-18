@@ -26,3 +26,12 @@ def test_loading_the_theme_switches_to_floor_density(qapp, monkeypatch):
     finally:
         shared_theme.set_density(before)
         qapp.setStyleSheet(sheet)
+
+
+def test_both_bars_share_one_definition_of_the_bar(qapp):
+    from gui.command_bar import bar_css
+    from gui.theme import current_tokens
+
+    tokens = current_tokens()
+    assert "PackerBar" in bar_css(tokens, "QWidget#PackerBar")
+    assert bar_css(tokens).startswith("CommandBar {")
