@@ -12,9 +12,17 @@ import pytest
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
-from gui.packer_bridge import PAGE, THEME_MARKER, mount_packer_page
+from gui.packer_bridge import (
+    PAGE,
+    THEME_MARKER,
+    item_rows,
+    mount_packer_page,
+    unknown_rows,
+)
 from gui.theme import apply_theme
 from shared.theme import THEME_DARK, THEME_LIGHT
+
+ITEMS_FOR_PAGE = [{"SKU": "TS-4409-B", "Product_Name": "Wireless Mouse", "Quantity": 3}]
 
 
 def _eval(qtbot, view, expr, timeout=5000):
@@ -158,7 +166,6 @@ STATE = [
 
 
 def test_the_list_draws_one_row_per_item_with_its_state(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -172,7 +179,6 @@ def test_the_list_draws_one_row_per_item_with_its_state(page, qtbot):
 
 
 def test_a_row_shows_product_sku_and_the_packed_count(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -196,7 +202,6 @@ def test_a_row_shows_product_sku_and_the_packed_count(page, qtbot):
 
 
 def test_each_state_carries_the_artboard_s_chip(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     bridge.set_items(item_rows(ITEMS, STATE, {}))
@@ -209,7 +214,6 @@ def test_each_state_carries_the_artboard_s_chip(page, qtbot):
 
 
 def test_the_row_a_scan_landed_on_is_tinted(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     rows = item_rows(ITEMS, STATE, {})
@@ -307,7 +311,6 @@ def test_a_map_click_carries_the_original_sku(qtbot):
 
 
 def test_clicking_a_row_action_in_the_page_calls_its_slot(page, qtbot):
-    from gui.packer_bridge import item_rows
 
     view, bridge = page
     calls = []
@@ -554,4 +557,58 @@ def test_the_page_reads_the_session_end_payload(qtbot, page):
     )
     _until_js(
         qtbot, view, "window.packerBridge.sessionEnd.title === 'Session complete'"
+    )
+
+
+def test_an_unmatched_scan_draws_a_no_match_row_that_only_maps(qtbot, page):
+    view, bridge = page
+    bridge.set_items(unknown_rows(["4006381333931"]))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row').className") == (
+        "sku-row sku-row--unknown"
+    )
+    cells = _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.sku-row > span'))"
+        ".map(function (e) { return e.textContent; })",
+    )
+    assert cells[:3] == ["Unknown SKU", "4006381333931", "—"]
+    assert "No match" in cells[3]
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.sku-row .btn'))"
+        ".map(function (e) { return e.textContent; })",
+    ) == ["Map SKU"]
+
+
+def test_mapping_an_unmatched_scan_reaches_python_with_the_barcode(qtbot, page):
+    view, bridge = page
+    bridge.set_items(unknown_rows(["4006381333931"]))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row .btn').length === 1")
+    with qtbot.waitSignal(bridge.mapBarcodeRequested, timeout=5000) as caught:
+        view.page().runJavaScript("document.querySelector('.sku-row .btn').click()")
+    assert caught.args == ["4006381333931"]
+
+
+def test_the_quantity_cell_warns_while_a_multi_unit_line_is_unfinished(qtbot, page):
+    view, bridge = page
+    bridge.set_items(
+        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 1, "required": 3}], {})
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
+        "sku-row__qty sku-row__qty--multi"
+    )
+
+
+def test_a_finished_multi_unit_line_drops_the_warning(qtbot, page):
+    view, bridge = page
+    bridge.set_items(
+        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 3, "required": 3}], {})
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
+        "sku-row__qty"
     )

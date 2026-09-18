@@ -30,6 +30,7 @@ const CHIP = {
   complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
   partial: { text: "Partial", cls: "chip chip--warning chip--tint chip--hollow" },
   pending: { text: "Pending", cls: "chip chip--neutral chip--hollow" },
+  unknown: { text: "No match", cls: "chip chip--danger chip--tint chip--hollow" },
 };
 
 function span(cls, text) {
@@ -79,12 +80,16 @@ function renderItems() {
     if (r.undo) buttons.push(actionButton("Undo", "undo", r.row, r.sku));
     if (r.force) buttons.push(actionButton("Force", "force", r.row, r.sku));
     if (r.map) buttons.push(actionButton("Map SKU", "map", r.row, r.sku));
+    if (r.mapBarcode) buttons.push(actionButton("Map SKU", "mapBarcode", r.row, r.sku));
     const row = rowEl(
       "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : ""),
       [
         ["sku-row__product", r.product],
         ["sku-row__sku", r.sku],
-        ["sku-row__qty", r.packed + " / " + r.required],
+        [
+          "sku-row__qty" + (r.multi ? " sku-row__qty--multi" : ""),
+          r.state === "unknown" ? "—" : r.packed + " / " + r.required,
+        ],
         [chip.cls, chip.text],
       ],
       buttons
@@ -174,6 +179,7 @@ const ACTIONS = {
   undo: function (btn, bridge) { bridge.undoItem(Number(btn.dataset.row)); },
   force: function (btn, bridge) { bridge.forceItem(Number(btn.dataset.row)); },
   map: function (btn, bridge) { bridge.mapSku(btn.dataset.sku); },
+  mapBarcode: function (btn, bridge) { bridge.mapBarcode(btn.dataset.sku); },
   keep: function (btn, bridge) { bridge.keepExtra(btn.dataset.sku); },
   remove: function (btn, bridge) { bridge.removeExtra(btn.dataset.sku); },
 };

@@ -235,6 +235,7 @@ class PackerBridge(QObject):
     removeExtraRequested = Signal(str)
     endSessionRequested = Signal()
     exitPackingRequested = Signal()
+    mapBarcodeRequested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -317,6 +318,10 @@ class PackerBridge(QObject):
     @Slot(str)
     def removeExtra(self, sku) -> None:
         self.removeExtraRequested.emit(str(sku))
+
+    @Slot(str)
+    def mapBarcode(self, barcode) -> None:
+        self.mapBarcodeRequested.emit(str(barcode))
 
     @Slot()
     def endSession(self) -> None:
