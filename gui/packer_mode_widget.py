@@ -6,6 +6,7 @@ from typing import Any
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -30,6 +31,7 @@ from gui.theme import current_tokens
 from packing_tool.packer_logic import normalize_sku
 
 logger = logging.getLogger(__name__)
+
 
 class PackerModeWidget(QWidget):
     """
@@ -61,16 +63,19 @@ class PackerModeWidget(QWidget):
         packed_stat_label (QLabel): Glance-only tile — completed/total orders for the session.
         items_stat_label (QLabel): Glance-only tile — packed/total items for the current order.
     """
-    barcode_scanned        = Signal(str)
-    exit_packing_mode      = Signal()
-    skip_order_requested   = Signal()
-    cancel_item_requested  = Signal(int)   # row index
-    force_confirm_requested = Signal(int)  # row index
-    map_sku_requested      = Signal(str)   # original SKU string
-    extra_confirmed        = Signal(str)   # normalized_sku
-    extra_removed          = Signal(str)   # normalized_sku
 
-    FRAME_DEFAULT_STYLE = "QFrame#TableFrame { border: 1px solid palette(mid); border-radius: 3px; }"
+    barcode_scanned = Signal(str)
+    exit_packing_mode = Signal()
+    skip_order_requested = Signal()
+    cancel_item_requested = Signal(int)  # row index
+    force_confirm_requested = Signal(int)  # row index
+    map_sku_requested = Signal(str)  # original SKU string
+    extra_confirmed = Signal(str)  # normalized_sku
+    extra_removed = Signal(str)  # normalized_sku
+
+    FRAME_DEFAULT_STYLE = (
+        "QFrame#TableFrame { border: 1px solid palette(mid); border-radius: 3px; }"
+    )
     # Shared max-height for the bottom info row (history/extras) and the matching
     # right-panel bottom section — keeps both panels' bottoms visually aligned.
     _BOTTOM_ROW_HEIGHT = 160
@@ -93,6 +98,12 @@ class PackerModeWidget(QWidget):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(4)
+
+        from gui.packer_bridge import mount_packer_page
+
+        self.document_view = QWebEngineView(self)
+        self.bridge = mount_packer_page(self.document_view)
+        left_layout.addWidget(self.document_view, 1)
 
         # [B] Session progress bar
         self.session_progress_bar = QProgressBar()
@@ -118,17 +129,24 @@ class PackerModeWidget(QWidget):
             "QLabel { border: 1px solid palette(mid); border-radius: 4px; "
             "padding: 2px 7px; background-color: palette(button); }"
         )
-        self._meta_type_lbl    = QLabel()
+        self._meta_type_lbl = QLabel()
         self._meta_courier_lbl = QLabel()
         self._meta_country_lbl = QLabel()
-        self._meta_box_lbl     = QLabel()
-        self._meta_tags_lbl    = QLabel()
-        self._meta_notes_lbl   = QLabel()
+        self._meta_box_lbl = QLabel()
+        self._meta_tags_lbl = QLabel()
+        self._meta_notes_lbl = QLabel()
         self._meta_notes_lbl.setWordWrap(True)
-        for lbl in [self._meta_type_lbl, self._meta_courier_lbl,
-                    self._meta_country_lbl, self._meta_box_lbl,
-                    self._meta_tags_lbl, self._meta_notes_lbl]:
-            f = lbl.font(); f.setPointSize(9); lbl.setFont(f)
+        for lbl in [
+            self._meta_type_lbl,
+            self._meta_courier_lbl,
+            self._meta_country_lbl,
+            self._meta_box_lbl,
+            self._meta_tags_lbl,
+            self._meta_notes_lbl,
+        ]:
+            f = lbl.font()
+            f.setPointSize(9)
+            lbl.setFont(f)
             lbl.setStyleSheet(_chip_style)
             lbl.setVisible(False)
             _mbl.addWidget(lbl)
@@ -158,7 +176,9 @@ class PackerModeWidget(QWidget):
 
         self.table = QTableWidget()
         self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["Product Name", "SKU", "Qty", "Status", "Actions"])
+        self.table.setHorizontalHeaderLabels(
+            ["Product Name", "SKU", "Qty", "Status", "Actions"]
+        )
         hdr = self.table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -186,7 +206,9 @@ class PackerModeWidget(QWidget):
         _hist_vl.setSpacing(2)
         _hist_title = QLabel("Scanned Orders History:")
         _hist_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        _hf = _hist_title.font(); _hf.setPointSize(9); _hist_title.setFont(_hf)
+        _hf = _hist_title.font()
+        _hf.setPointSize(9)
+        _hist_title.setFont(_hf)
         _hist_vl.addWidget(_hist_title)
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(1)
@@ -205,9 +227,12 @@ class PackerModeWidget(QWidget):
         _ecvl = QVBoxLayout(_extras_container)
         _ecvl.setContentsMargins(0, 0, 0, 0)
         _ecvl.setSpacing(2)
-        self._extras_section_title = QLabel("")  # shown as "EXTRA ITEMS DETECTED" when panel is active
+        self._extras_section_title = QLabel(
+            ""
+        )  # shown as "EXTRA ITEMS DETECTED" when panel is active
         _etsf = self._extras_section_title.font()
-        _etsf.setPointSize(9); _etsf.setBold(True)
+        _etsf.setPointSize(9)
+        _etsf.setBold(True)
         self._extras_section_title.setFont(_etsf)
         self._extras_section_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         _ecvl.addWidget(self._extras_section_title)
@@ -242,11 +267,15 @@ class PackerModeWidget(QWidget):
         _sfl.setContentsMargins(4, 2, 4, 2)
         _sfl.setSpacing(2)
         _sh = QLabel("Summary (unique SKUs):")
-        _shf = _sh.font(); _shf.setPointSize(9); _sh.setFont(_shf)
+        _shf = _sh.font()
+        _shf.setPointSize(9)
+        _sh.setFont(_shf)
         _sfl.addWidget(_sh)
         self.summary_table = QTableWidget()
         self.summary_table.setColumnCount(4)
-        self.summary_table.setHorizontalHeaderLabels(["SKU", "Product", "Packed/Total", "Status"])
+        self.summary_table.setHorizontalHeaderLabels(
+            ["SKU", "Product", "Packed/Total", "Status"]
+        )
         _shdr = self.summary_table.horizontalHeader()
         _shdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         _shdr.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -294,7 +323,9 @@ class PackerModeWidget(QWidget):
             )
             sim_layout = QHBoxLayout(sim_group)
             self.sim_input = QLineEdit()
-            self.sim_input.setPlaceholderText("Type order number or SKU, press Enter to scan...")
+            self.sim_input.setPlaceholderText(
+                "Type order number or SKU, press Enter to scan..."
+            )
             self.sim_input.returnPressed.connect(self._on_sim_scan)
             sim_btn = QPushButton("Scan")
             sim_btn.setFixedWidth(70)
@@ -320,7 +351,9 @@ class PackerModeWidget(QWidget):
         _osl = QVBoxLayout(_order_section)
         _osl.setContentsMargins(10, 8, 10, 8)
         self.status_label = QLabel("Scan an order barcode")
-        font = QFont(); font.setPointSize(13); font.setBold(True)
+        font = QFont()
+        font.setPointSize(13)
+        font.setBold(True)
         self.status_label.setFont(font)
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setWordWrap(True)
@@ -342,13 +375,17 @@ class PackerModeWidget(QWidget):
         _fsl.setContentsMargins(10, 6, 10, 8)
         _fsl.setSpacing(3)
         self.notification_label = QLabel("")
-        notif_font = QFont(); notif_font.setPointSize(22); notif_font.setBold(True)
+        notif_font = QFont()
+        notif_font.setPointSize(22)
+        notif_font.setBold(True)
         self.notification_label.setFont(notif_font)
         self.notification_label.setAlignment(Qt.AlignCenter)
         self.notification_label.setWordWrap(True)
         raw_scan_title = QLabel("Last Scan:")
         raw_scan_title.setAlignment(Qt.AlignCenter)
-        _rsf = raw_scan_title.font(); _rsf.setPointSize(9); raw_scan_title.setFont(_rsf)
+        _rsf = raw_scan_title.font()
+        _rsf.setPointSize(9)
+        raw_scan_title.setFont(_rsf)
         self.raw_scan_label = QLabel("-")
         self.raw_scan_label.setAlignment(Qt.AlignCenter)
         self.raw_scan_label.setObjectName("RawScanLabel")
@@ -379,7 +416,8 @@ class PackerModeWidget(QWidget):
         _rbottom_layout.addStretch()
 
         self.exit_button = QPushButton("<< Back to Menu")
-        font = self.exit_button.font(); font.setPointSize(14)
+        font = self.exit_button.font()
+        font.setPointSize(14)
         self.exit_button.setFont(font)
         self.exit_button.clicked.connect(self.exit_packing_mode.emit)
         _rbottom_layout.addWidget(self.exit_button)
@@ -388,6 +426,14 @@ class PackerModeWidget(QWidget):
 
         main_layout.addWidget(left_widget, stretch=3)
         main_layout.addWidget(right_widget, stretch=1)
+
+    def showEvent(self, event):
+        """Re-assert the scanner's claim on the keyboard every time we appear."""
+        super().showEvent(event)
+        from gui.packer_bridge import deny_focus
+
+        deny_focus(self.document_view)
+        self.set_focus_to_scanner()
 
     # ─── Scanner input handlers ───────────────────────────────────────────────
 
@@ -427,7 +473,8 @@ class PackerModeWidget(QWidget):
     def _on_cancel_item(self, row: int):
         """Show confirmation dialog then emit cancel_item_requested."""
         reply = QMessageBox.question(
-            self, "Undo Scan",
+            self,
+            "Undo Scan",
             "Undo the last scan for this item?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -439,7 +486,8 @@ class PackerModeWidget(QWidget):
     def _on_force_confirm(self, row: int):
         """Show confirmation dialog then emit force_confirm_requested."""
         reply = QMessageBox.question(
-            self, "Force Confirm",
+            self,
+            "Force Confirm",
             "Force-confirm ALL remaining quantity for this item?\nThis cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -488,14 +536,14 @@ class PackerModeWidget(QWidget):
 
         # First, populate the table with all items as 'Pending'
         for row, item in enumerate(items):
-            sku = item.get('SKU', '')
-            quantity_str = str(item.get('Quantity', ''))
+            sku = item.get("SKU", "")
+            quantity_str = str(item.get("Quantity", ""))
             try:
                 quantity_int = int(float(quantity_str))
             except (ValueError, TypeError):
                 quantity_int = 1
 
-            self.table.setItem(row, 0, QTableWidgetItem(item.get('Product_Name', '')))
+            self.table.setItem(row, 0, QTableWidgetItem(item.get("Product_Name", "")))
             self.table.setItem(row, 1, QTableWidgetItem(sku))
 
             # [C] Amber highlight when quantity > 1
@@ -514,15 +562,21 @@ class PackerModeWidget(QWidget):
             self.table.setItem(row, 3, status_item)
 
             # Actions column: Confirm / -1 / Force / Map
-            actions_widget = self._make_actions_widget(row, sku, quantity_int, sku_map or {})
+            actions_widget = self._make_actions_widget(
+                row, sku, quantity_int, sku_map or {}
+            )
             self.table.setCellWidget(row, 4, actions_widget)
 
         # Now update rows that have existing progress (e.g., resumed order)
         for state_item in order_state:
-            row_index = state_item.get('row')
-            packed_count = state_item.get('packed', 0)
-            if row_index is not None and packed_count > 0 and row_index < self.table.rowCount():
-                required_count = state_item.get('required', 1)
+            row_index = state_item.get("row")
+            packed_count = state_item.get("packed", 0)
+            if (
+                row_index is not None
+                and packed_count > 0
+                and row_index < self.table.rowCount()
+            ):
+                required_count = state_item.get("required", 1)
                 is_complete = packed_count >= required_count
                 self.update_item_row(row_index, packed_count, is_complete)
 
@@ -532,7 +586,7 @@ class PackerModeWidget(QWidget):
         # [E] Enable skip button now that an order is active
         self.skip_order_button.setEnabled(True)
 
-        order_num = items[0].get('Order_Number', items[0].get('order_number', ''))
+        order_num = items[0].get("Order_Number", items[0].get("order_number", ""))
         self.status_label.setText(f"Order {order_num}\nIn Progress...")
         self.set_focus_to_scanner()
 
@@ -550,8 +604,8 @@ class PackerModeWidget(QWidget):
             logger.warning(f"Cannot update row {row}: quantity item is None")
             return
 
-        parts = quantity_item.text().split(' / ')
-        required_str = parts[1] if len(parts) > 1 else '1'
+        parts = quantity_item.text().split(" / ")
+        required_str = parts[1] if len(parts) > 1 else "1"
         quantity_item.setText(f"{packed_count} / {required_str}")
 
         try:
@@ -574,7 +628,10 @@ class PackerModeWidget(QWidget):
             if cell_widget:
                 for btn in cell_widget.findChildren(QPushButton):
                     tip = btn.toolTip()
-                    if tip in ("Confirm Manually", "Force confirm all remaining quantity (qty > 5 only)"):
+                    if tip in (
+                        "Confirm Manually",
+                        "Force confirm all remaining quantity (qty > 5 only)",
+                    ):
                         btn.setEnabled(False)
         else:
             # Re-apply amber highlight for multi-qty items still in progress
@@ -596,7 +653,9 @@ class PackerModeWidget(QWidget):
                 palette escape the theme; the role is the contract.
         """
         self.notification_label.setText(text)
-        color = "transparent" if role == "transparent" else getattr(current_tokens(), role)
+        color = (
+            "transparent" if role == "transparent" else getattr(current_tokens(), role)
+        )
         self.notification_label.setStyleSheet(f"color: {color};")
 
     def clear_screen(self):
@@ -707,7 +766,9 @@ class PackerModeWidget(QWidget):
         self.extras_panel.setVisible(is_visible)
         if is_visible:
             self._extras_section_title.setText("EXTRA ITEMS DETECTED")
-            self._extras_section_title.setStyleSheet(f"color: {current_tokens().status_warning};")
+            self._extras_section_title.setStyleSheet(
+                f"color: {current_tokens().status_warning};"
+            )
         else:
             self._extras_section_title.setText("")
             self._extras_section_title.setStyleSheet("")
@@ -798,8 +859,8 @@ class PackerModeWidget(QWidget):
 
         def _clean(val) -> str:
             """Return empty string for None, empty, or pandas 'nan' string values."""
-            s = str(val).strip() if val is not None else ''
-            return '' if s.lower() == 'nan' else s
+            s = str(val).strip() if val is not None else ""
+            return "" if s.lower() == "nan" else s
 
         def _show_chip(lbl: QLabel, text: str):
             if text:
@@ -809,26 +870,29 @@ class PackerModeWidget(QWidget):
                 lbl.setText("")
                 lbl.setVisible(False)
 
-        order_type = _clean(metadata.get('order_type', ''))
+        order_type = _clean(metadata.get("order_type", ""))
         _show_chip(self._meta_type_lbl, f"Type: {order_type}" if order_type else "")
 
-        courier = _clean(metadata.get('shipping_provider', ''))
+        courier = _clean(metadata.get("shipping_provider", ""))
         _show_chip(self._meta_courier_lbl, f"Courier: {courier}" if courier else "")
 
-        country = _clean(metadata.get('destination_country', ''))
+        country = _clean(metadata.get("destination_country", ""))
         _show_chip(self._meta_country_lbl, f"Dest: {country}" if country else "")
 
-        box = _clean(metadata.get('order_min_box', ''))
+        box = _clean(metadata.get("order_min_box", ""))
         _show_chip(self._meta_box_lbl, f"Box: {box}" if box else "")
 
-        all_tags = list(metadata.get('tags') or []) + list(metadata.get('internal_tags') or [])
+        all_tags = list(metadata.get("tags") or []) + list(
+            metadata.get("internal_tags") or []
+        )
         tags_str = ", ".join(
-            str(t) for t in all_tags
-            if t is not None and str(t).strip().lower() != 'nan'
+            str(t)
+            for t in all_tags
+            if t is not None and str(t).strip().lower() != "nan"
         )
         _show_chip(self._meta_tags_lbl, f"Tags: {tags_str}" if tags_str else "")
 
-        notes = _clean(metadata.get('notes') or metadata.get('system_note') or '')
+        notes = _clean(metadata.get("notes") or metadata.get("system_note") or "")
         _show_chip(self._meta_notes_lbl, notes if notes else "")
 
         has_anything = any([order_type, courier, country, box, tags_str, notes])
@@ -849,18 +913,18 @@ class PackerModeWidget(QWidget):
         sku_name: dict[str, str] = {}
 
         for item in items:
-            sku = item.get('SKU', item.get('sku', ''))
+            sku = item.get("SKU", item.get("sku", ""))
             try:
-                qty = int(float(item.get('Quantity', item.get('quantity', 1))))
+                qty = int(float(item.get("Quantity", item.get("quantity", 1))))
             except (ValueError, TypeError):
                 qty = 1
             sku_totals[sku] += qty
             if sku not in sku_name:
-                sku_name[sku] = item.get('Product_Name', item.get('product_name', ''))
+                sku_name[sku] = item.get("Product_Name", item.get("product_name", ""))
 
         for state in order_state:
-            orig = state.get('original_sku', '')
-            sku_packed[orig] += state.get('packed', 0)
+            orig = state.get("original_sku", "")
+            sku_packed[orig] += state.get("packed", 0)
 
         unique_skus = sorted(sku_totals.keys())
         self.summary_table.setRowCount(len(unique_skus))
@@ -869,7 +933,7 @@ class PackerModeWidget(QWidget):
             total = sku_totals[sku]
             packed = sku_packed.get(sku, 0)
             self.summary_table.setItem(i, 0, QTableWidgetItem(sku))
-            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, '')))
+            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, "")))
             self.summary_table.setItem(i, 2, QTableWidgetItem(f"{packed} / {total}"))
             status_text = "Done" if packed >= total else "Pending"
             status_item = QTableWidgetItem(status_text)
@@ -901,17 +965,17 @@ class PackerModeWidget(QWidget):
 
         for r in range(self.table.rowCount()):
             name_item = self.table.item(r, 0)
-            sku_item  = self.table.item(r, 1)
-            qty_item  = self.table.item(r, 2)
+            sku_item = self.table.item(r, 1)
+            qty_item = self.table.item(r, 2)
             if sku_item is None or qty_item is None:
                 continue
             sku = sku_item.text()
             if sku not in sku_name:
-                sku_name[sku] = name_item.text() if name_item else ''
-            parts = qty_item.text().split(' / ')
+                sku_name[sku] = name_item.text() if name_item else ""
+            parts = qty_item.text().split(" / ")
             try:
                 packed = int(parts[0])
-                total  = int(parts[1]) if len(parts) > 1 else 1
+                total = int(parts[1]) if len(parts) > 1 else 1
             except (ValueError, IndexError):
                 packed, total = 0, 1
             sku_packed[sku] += packed
@@ -920,10 +984,10 @@ class PackerModeWidget(QWidget):
         unique_skus = sorted(sku_totals.keys())
         self.summary_table.setRowCount(len(unique_skus))
         for i, sku in enumerate(unique_skus):
-            total  = sku_totals[sku]
+            total = sku_totals[sku]
             packed = sku_packed.get(sku, 0)
             self.summary_table.setItem(i, 0, QTableWidgetItem(sku))
-            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, '')))
+            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, "")))
             self.summary_table.setItem(i, 2, QTableWidgetItem(f"{packed} / {total}"))
             status_text = "Done" if packed >= total else "Pending"
             status_item = QTableWidgetItem(status_text)
