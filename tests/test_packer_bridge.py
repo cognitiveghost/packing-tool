@@ -469,3 +469,43 @@ def test_the_widget_turns_the_extras_dict_into_rows(qtbot):
         {"sku": "BX9910Z", "count": 1},
         {"sku": "TS1200A", "count": 2},
     ]
+
+
+def test_clearing_the_screen_returns_to_waiting_and_keeps_the_session(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.update_session_progress(8, 13)
+    widget.add_order_to_history("10428")
+    widget.display_order(ITEMS, STATE, metadata={"shipping_provider": "DPD"})
+    widget.show_extras_panel({"X": 1})
+
+    widget.clear_screen()
+
+    assert widget.bridge.items == []
+    assert widget.bridge.extras == []
+    assert widget.bridge.banner == {"order": "", "chips": [], "notes": ""}
+    assert widget.bridge.feedback["text"] == "Scan the next order's barcode"
+    assert widget.bridge.history == [{"order": "10428", "status": "complete"}]
+    assert widget.bridge.progress["orders_done"] == 8
+
+
+def test_clearing_the_screen_re_enables_the_scanner_and_disables_skip(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    widget.scanner_input.setEnabled(False)
+    widget.clear_screen()
+    assert widget.scanner_input.isEnabled() is True
+    assert widget.skip_order_button.isEnabled() is False
+
+
+def test_the_waiting_document_shows_no_list_and_no_banner(page, qtbot):
+    view, bridge = page
+    bridge.set_items([])
+    bridge.set_banner({"order": "", "chips": [], "notes": ""})
+    _until_js(qtbot, view, "document.getElementById('sku-list').hidden === true")
+    assert _eval(qtbot, view, "document.getElementById('banner').hidden") is True

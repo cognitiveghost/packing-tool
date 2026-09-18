@@ -322,28 +322,23 @@ class PackerModeWidget(QWidget):
         self._push_feedback()
 
     def clear_screen(self):
+        """Reset the document to waiting for the next order.
+
+        The session's history and order counts stay: they belong to the
+        session, not to the order that just ended.
         """
-        Resets the widget to its initial state, ready for the next order.
-        """
-        self.table.clearContents()
-        self.table.setRowCount(0)
-        self.status_label.setText("Scan the next order's barcode")
-        self.notification_label.setText("")
+        self._items = []
+        self._rows = []
+        self._sku_map = {}
+        self.bridge.set_banner(banner_payload("", None))
+        self.bridge.set_extras([])
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)
-        # [A] Hide metadata banner
-        self.metadata_banner.setVisible(False)
-        # [D] Clear summary panel (summary_frame is now a permanent tab page, not
-        # a widget that's shown/hidden — the tab always exists, only its data changes)
-        self.summary_table.setRowCount(0)
-        self.items_stat_label.setText("Items: 0 / 0")
-        # [E] Disable skip button
         self.skip_order_button.setEnabled(False)
-        # [J] Hide extras panel and reset title
-        self.extras_panel.setVisible(False)
-        self.extras_table.setRowCount(0)
-        self._extras_section_title.setText("")
-        self._extras_section_title.setStyleSheet("")
+        self._raw_scan = ""
+        self.show_notification("Scan the next order's barcode", "status_info")
+        self._push_rows()
+        self.set_focus_to_scanner()
         self.set_focus_to_scanner()
 
     def set_focus_to_scanner(self):
