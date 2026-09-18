@@ -172,6 +172,16 @@ function renderHistory() {
   });
 }
 
+function renderSessionEnd() {
+  const s = state.bridge.sessionEnd || {};
+  const over = Boolean(s.title);
+  // One class decides the whole swap; CSS hides the regions the panel
+  // replaces, so there is no per-region bookkeeping to get out of step.
+  els.docMain.classList.toggle("doc-state", over);
+  els.stateTitle.textContent = s.title || "";
+  els.stateBody.textContent = s.body || "";
+}
+
 // One entry per action a row can offer. Both listeners share it, so a new
 // action is one line here rather than a branch in each cascade.
 const ACTIONS = {
@@ -182,6 +192,8 @@ const ACTIONS = {
   mapBarcode: function (btn, bridge) { bridge.mapBarcode(btn.dataset.sku); },
   keep: function (btn, bridge) { bridge.keepExtra(btn.dataset.sku); },
   remove: function (btn, bridge) { bridge.removeExtra(btn.dataset.sku); },
+  endSession: function (btn, bridge) { bridge.endSession(); },
+  exitPacking: function (btn, bridge) { bridge.exitPacking(); },
 };
 
 function onActionClick(event) {
@@ -209,6 +221,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.historyRows = document.getElementById("history-rows");
   els.extras = document.getElementById("extras");
   els.extrasRows = document.getElementById("extras-rows");
+  els.stateTitle = document.getElementById("state-title");
+  els.stateBody = document.getElementById("state-body");
 
   onTheme();
   bridge.themeCssChanged.connect(onTheme);
@@ -219,11 +233,15 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.progressChanged.connect(renderProgress);
   bridge.historyChanged.connect(renderHistory);
   bridge.extrasChanged.connect(renderExtras);
+  bridge.sessionEndChanged.connect(renderSessionEnd);
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
-  els.skuList.addEventListener("click", onActionClick);
-  els.extrasRows.addEventListener("click", onActionClick);
+  // Delegated from doc-main, not each region: the state panel's buttons live
+  // outside sku-list and extras-rows, and one listener at the shared ancestor
+  // covers all three without double-firing on a click that bubbles through
+  // more than one of them.
+  els.docMain.addEventListener("click", onActionClick);
 
   renderFeedback();
   renderItems();
@@ -231,5 +249,6 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderProgress();
   renderHistory();
   renderExtras();
+  renderSessionEnd();
   document.documentElement.dataset.bridge = "ready";
 });

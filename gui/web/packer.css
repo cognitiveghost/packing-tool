@@ -378,3 +378,9 @@ html, body { height: 100%; margin: 0; }
   font-size: var(--type-caption-size);
   color: var(--text-secondary);
 }
+
+/* The panel takes the main column's place. The regions it replaces stay in
+   the DOM -- the bridge keeps filling them -- but only one of the two paints,
+   so nothing has to be hidden from JS.  */
+.doc-main.doc-state > :not(.state-panel) { display: none; }
+.doc-main:not(.doc-state) > .state-panel { display: none; }

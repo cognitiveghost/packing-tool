@@ -612,3 +612,80 @@ def test_a_finished_multi_unit_line_drops_the_warning(qtbot, page):
     assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
         "sku-row__qty"
     )
+
+
+def test_a_finished_session_replaces_the_document_with_its_panel(qtbot, page):
+    view, bridge = page
+    bridge.set_items(item_rows(ITEMS_FOR_PAGE, [], {}))
+    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
+    bridge.set_session_end(
+        {"title": "Session complete", "body": "2 of 2 orders packed."}
+    )
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    # The list is still in the DOM -- the bridge keeps filling it -- but the
+    # panel has the column.
+    assert (
+        _eval(
+            qtbot, view, "getComputedStyle(document.getElementById('sku-list')).display"
+        )
+        == "none"
+    )
+    assert _eval(
+        qtbot, view, "document.querySelector('.state-panel-title').textContent"
+    ) == ("Session complete")
+    assert _eval(
+        qtbot, view, "document.querySelector('.state-panel-body').textContent"
+    ) == ("2 of 2 orders packed.")
+
+
+def test_clearing_the_session_end_gives_the_document_back(qtbot, page):
+    view, bridge = page
+    bridge.set_session_end({"title": "Session complete", "body": "done."})
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    bridge.set_session_end({})
+    _until_js(
+        qtbot,
+        view,
+        "!document.getElementById('doc-main').classList.contains('doc-state')",
+    )
+    assert (
+        _eval(
+            qtbot,
+            view,
+            "getComputedStyle(document.querySelector('.state-panel')).display",
+        )
+        == "none"
+    )
+
+
+def test_the_panels_buttons_reach_python(qtbot, page):
+    view, bridge = page
+    bridge.set_session_end({"title": "Session complete", "body": "done."})
+    _until_js(
+        qtbot,
+        view,
+        "document.querySelectorAll('.state-panel-actions .btn').length === 2",
+    )
+    labels = _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.state-panel-actions .btn'))"
+        ".map(function (e) { return e.textContent; })",
+    )
+    assert labels == ["End session", "Exit packing"]
+    with qtbot.waitSignal(bridge.endSessionRequested, timeout=5000):
+        view.page().runJavaScript(
+            "document.querySelector('[data-action=\"endSession\"]').click()"
+        )
+    with qtbot.waitSignal(bridge.exitPackingRequested, timeout=5000):
+        view.page().runJavaScript(
+            "document.querySelector('[data-action=\"exitPacking\"]').click()"
+        )
