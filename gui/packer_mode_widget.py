@@ -15,7 +15,13 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import BAR_HEIGHT, bar_css
-from gui.packer_bridge import banner_payload, flash_role, item_rows, summary_lines
+from gui.packer_bridge import (
+    banner_payload,
+    flash_role,
+    item_rows,
+    summary_lines,
+    unknown_rows,
+)
 from shared.components.confirm_dialog import ConfirmDialog
 from shared.theme import font_css, on_theme_changed
 
@@ -80,6 +86,8 @@ class PackerModeWidget(QWidget):
         self._raw_scan = ""
         self._items = []
         self._rows = []
+        self._unknown = []
+        self._session_over = False
         self._sku_map = {}
         self._orders_done = 0
         self._orders_total = 0
@@ -300,6 +308,7 @@ class PackerModeWidget(QWidget):
             sku_map: Normalised barcode -> SKU, for the Map SKU action.
         """
         self._items = list(items)
+        self._unknown = []
         self._sku_map = dict(sku_map or {})
         self._rows = item_rows(self._items, order_state, self._sku_map)
         order_number = (
@@ -331,7 +340,10 @@ class PackerModeWidget(QWidget):
         target["packed"] = packed_count
         self._rows = item_rows(
             self._items,
-            [{"row": r["row"], "packed": r["packed"]} for r in self._rows],
+            [
+                {"row": r["row"], "packed": r["packed"], "required": r["required"]}
+                for r in self._rows
+            ],
             self._sku_map,
         )
         self._rows[row]["just_changed"] = True
@@ -342,8 +354,13 @@ class PackerModeWidget(QWidget):
         return dict(self._rows[row]) if 0 <= row < len(self._rows) else {}
 
     def _push_rows(self):
-        """Send the item rows and the numbers derived from them."""
-        self.bridge.set_items(self._rows)
+        """Send the item rows plus the unmatched scans, and the numbers.
+
+        The unknown rows ride in the same `items` property so the list stays
+        one list in one scroll container. The progress numbers are built from
+        the item rows alone -- an unmatched scan is not a line to pack.
+        """
+        self.bridge.set_items(self._rows + unknown_rows(self._unknown))
         self._push_progress()
 
     def _push_progress(self):
@@ -378,13 +395,20 @@ class PackerModeWidget(QWidget):
 
         The session's history and order counts stay: they belong to the
         session, not to the order that just ended.
+
+        A finished session outranks a per-order reset, so this refuses
+        while the session-complete panel is up: the last order schedules
+        this call 3s out, and it would otherwise wipe the panel that is
+        the only way to end the session from this screen.
         """
+        if self._session_over:
+            return
         self._items = []
         self._rows = []
+        self._unknown = []
         self._sku_map = {}
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
-        self.bridge.set_session_end({})
         self._order_label.setText("No order")
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)
@@ -400,10 +424,34 @@ class PackerModeWidget(QWidget):
         Args:
             payload: gui.packer_bridge.session_end_payload()'s title and body.
         """
+        self._session_over = True
         self.bridge.set_session_end(payload)
         self._order_label.setText("Session complete")
+        self.scanner_input.setPlaceholderText("Scanner disabled")
         self.scanner_input.setEnabled(False)
         self.skip_order_button.setEnabled(False)
+
+    def reset_for_new_session(self):
+        """Take the session-complete panel down and clear the document.
+
+        clear_screen() refuses while the panel is up, so ending the session
+        is the one place that lowers it -- and the next session then opens
+        on a document that is packing rather than finished.
+        """
+        self._session_over = False
+        self.bridge.set_session_end({})
+        self.scanner_input.setPlaceholderText("Ready to scan")
+        self.clear_screen()
+
+    def show_unknown_scans(self, scans: list[str]):
+        """Show this order's unmatched scans as rows under the item rows.
+
+        Args:
+            scans: PackerLogic.unknown_scans -- the raw text of every scan
+                in this order that matched no item and no mapping.
+        """
+        self._unknown = list(scans or [])
+        self._push_rows()
 
     def flash_scan(self, color: str):
         """Flash the document's edge with a scan's outcome.

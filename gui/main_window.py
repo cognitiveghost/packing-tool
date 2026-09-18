@@ -134,7 +134,7 @@ def _unmapped_choices(order_state) -> list[tuple[str, str]]:
         )
         for s in sorted(
             order_state or [],
-            key=lambda s: s.get("packed", 0) >= s.get("required", 0),
+            key=lambda s: s["packed"] >= s["required"],
         )
     ]
 
@@ -1936,6 +1936,9 @@ class MainWindow(QMainWindow):
             self.order_tree.clear()
         self.sb_summary_label.setText("")
 
+        if self.packer_mode_widget:
+            self.packer_mode_widget.reset_for_new_session()
+
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
             self.stacked_widget.setCurrentWidget(self.session_widget)
@@ -2034,6 +2037,7 @@ class MainWindow(QMainWindow):
                 self.packer_mode_widget.show_notification(
                     f"Unknown SKU {text} — scan again or map it", "status_danger"
                 )
+                self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
                 self.flash_border("red")
                 _beep(400, 350)
             elif status == "SKU_EXTRA":
@@ -2268,6 +2272,11 @@ class MainWindow(QMainWindow):
 
         sku = choices[labels.index(picked)][0]
         if self._save_sku_mapping(barcode, sku):
+            # It matches an item now, so its "No match" row goes with the mapping.
+            self.logic.unknown_scans = [
+                scan for scan in self.logic.unknown_scans if scan != barcode
+            ]
+            self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
             self.on_scanner_input(barcode)
         self.packer_mode_widget.set_focus_to_scanner()
 

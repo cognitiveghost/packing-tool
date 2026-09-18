@@ -382,5 +382,13 @@ html, body { height: 100%; margin: 0; }
 /* The panel takes the main column's place. The regions it replaces stay in
    the DOM -- the bridge keeps filling them -- but only one of the two paints,
    so nothing has to be hidden from JS.  */
+/* The panel fills the column the item list sized (packer-document.css:230);
+   .doc-main's 900px basis is the document's width, not the panel's. */
+.doc-main.doc-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+}
+
 .doc-main.doc-state > :not(.state-panel) { display: none; }
 .doc-main:not(.doc-state) > .state-panel { display: none; }
