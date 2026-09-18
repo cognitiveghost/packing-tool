@@ -164,6 +164,35 @@ def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _duration(seconds: int) -> str:
+    """A session's length in the largest two units that are not zero."""
+    hours, rest = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"
+
+
+def session_end_payload(
+    packed: int, total: int, skipped: int, items: int, seconds: int
+) -> dict[str, str]:
+    """The state panel's title and sentence when the session is over (P8).
+
+    The skipped clause appears only when something was skipped, and the
+    duration only when the session's start time is known -- a sentence that
+    reports "0 skipped, in 0s" tells the packer about nothing that happened.
+    """
+    parts = [f"{packed} of {total} orders packed"]
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    parts.append(f"{items} {'item' if items == 1 else 'items'}")
+    if seconds:
+        parts.append(f"in {_duration(seconds)}")
+    return {"title": "Session complete", "body": ", ".join(parts) + "."}
+
+
 # main_window.flash_border() has always been called with a colour word. The
 # document speaks in status roles, so the translation lives here rather than in
 # a dict on MainWindow. An unknown word raises: a silently-passed-through value

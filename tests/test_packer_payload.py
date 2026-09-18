@@ -221,3 +221,31 @@ def test_unknown_rows_carry_every_key_an_item_row_does():
     # with one function.
     item = item_rows([{"SKU": "A", "Product_Name": "A", "Quantity": 1}], [], {})[0]
     assert set(unknown_rows(["999"])[0]) == set(item)
+
+
+from gui.packer_bridge import session_end_payload
+
+
+def test_the_session_sentence_reads_like_the_artboard():
+    payload = session_end_payload(
+        packed=12, total=13, skipped=1, items=66, seconds=6480
+    )
+    assert payload["title"] == "Session complete"
+    assert payload["body"] == "12 of 13 orders packed, 1 skipped, 66 items, in 1h 48m."
+
+
+def test_nothing_skipped_says_nothing_about_skipping():
+    body = session_end_payload(13, 13, 0, 66, 6480)["body"]
+    assert "skipped" not in body
+    assert body == "13 of 13 orders packed, 66 items, in 1h 48m."
+
+
+def test_a_short_session_drops_the_hours_and_one_item_is_singular():
+    assert session_end_payload(1, 1, 0, 1, 95)["body"] == (
+        "1 of 1 orders packed, 1 item, in 1m."
+    )
+
+
+def test_an_unknown_start_time_leaves_the_duration_out():
+    body = session_end_payload(2, 2, 0, 4, 0)["body"]
+    assert body == "2 of 2 orders packed, 4 items."
