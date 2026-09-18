@@ -88,6 +88,44 @@ function renderBanner() {
   if (b.notes) els.banner.appendChild(span("doc-banner-notes", b.notes));
 }
 
+function renderProgress() {
+  const p = state.bridge.progress || {};
+  const done = p.orders_done || 0;
+  const total = p.orders_total || 0;
+  const pct = total > 0 ? (done / total) * 100 : 0;
+  // Trailing zeroes trimmed so a whole percentage reads as "50%".
+  els.progressFill.style.width = String(Number(pct.toFixed(4))) + "%";
+  els.progressNumbers.textContent =
+    done + " / " + total + " orders · " +
+    (p.items_packed || 0) + " / " + (p.items_total || 0) + " items";
+  els.summarySkus.textContent = (p.skus_packed || 0) + " / " + (p.skus_total || 0);
+}
+
+const HISTORY_CHIP = {
+  complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
+  skipped: { text: "Skipped", cls: "chip chip--danger" },
+};
+
+function renderHistory() {
+  const rows = state.bridge.history || [];
+  els.historyRows.textContent = "";
+  if (rows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "history-row";
+    empty.appendChild(span("history-row__order", "No orders yet"));
+    els.historyRows.appendChild(empty);
+    return;
+  }
+  rows.forEach(function (r) {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    row.appendChild(span("history-row__order", "#" + r.order));
+    const chip = HISTORY_CHIP[r.status] || HISTORY_CHIP.complete;
+    row.appendChild(span(chip.cls, chip.text));
+    els.historyRows.appendChild(row);
+  });
+}
+
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
   state.bridge = bridge;
@@ -98,6 +136,10 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.feedbackRaw = document.getElementById("feedback-raw");
   els.skuList = document.getElementById("sku-list");
   els.banner = document.getElementById("banner");
+  els.progressFill = document.getElementById("progress-fill");
+  els.progressNumbers = document.getElementById("progress-numbers");
+  els.summarySkus = document.getElementById("summary-skus");
+  els.historyRows = document.getElementById("history-rows");
 
   onTheme();
   bridge.themeCssChanged.connect(onTheme);
@@ -105,6 +147,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.scanFlashed.connect(flash);
   bridge.itemsChanged.connect(renderItems);
   bridge.bannerChanged.connect(renderBanner);
+  bridge.progressChanged.connect(renderProgress);
+  bridge.historyChanged.connect(renderHistory);
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
@@ -121,6 +165,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderFeedback();
   renderItems();
   renderBanner();
+  renderProgress();
+  renderHistory();
   window.packerBridge = bridge;
   document.documentElement.dataset.bridge = "ready";
 });

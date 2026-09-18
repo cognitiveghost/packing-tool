@@ -315,3 +315,99 @@ def test_clicking_a_row_action_in_the_page_calls_its_slot(page, qtbot):
         "document.querySelector('[data-action=\"confirm\"]').click()"
     )
     qtbot.waitUntil(lambda: calls == [1], timeout=5000)
+
+
+def test_the_side_column_shows_orders_items_and_unique_skus(page, qtbot):
+    view, bridge = page
+    bridge.set_progress(
+        {
+            "orders_done": 8,
+            "orders_total": 13,
+            "items_packed": 41,
+            "items_total": 66,
+            "skus_packed": 19,
+            "skus_total": 34,
+        }
+    )
+    _until_js(
+        qtbot,
+        view,
+        "document.getElementById('progress-numbers').textContent.includes('8 / 13')",
+    )
+    assert (
+        _eval(qtbot, view, "document.getElementById('progress-numbers').textContent")
+        == "8 / 13 orders · 41 / 66 items"
+    )
+    assert (
+        _eval(qtbot, view, "document.getElementById('summary-skus').textContent")
+        == "19 / 34"
+    )
+    assert (
+        _eval(qtbot, view, "document.getElementById('progress-fill').style.width")
+        == "61.5385%"
+    )
+
+
+def test_no_orders_yet_leaves_the_bar_empty_and_says_so(page, qtbot):
+    view, bridge = page
+    bridge.set_progress({"orders_done": 0, "orders_total": 0})
+    _until_js(
+        qtbot, view, "document.getElementById('progress-fill').style.width === '0%'"
+    )
+    assert (
+        _eval(
+            qtbot, view, "document.getElementById('history-rows').textContent"
+        ).strip()
+        == "No orders yet"
+    )
+
+
+def test_history_lists_newest_first_with_a_status_chip(page, qtbot):
+    view, bridge = page
+    bridge.set_history(
+        [
+            {"order": "10429", "status": "complete"},
+            {"order": "10428", "status": "skipped"},
+        ]
+    )
+    _until_js(qtbot, view, "document.querySelectorAll('.history-row').length === 2")
+    assert _eval(
+        qtbot,
+        view,
+        "Array.from(document.querySelectorAll('.history-row__order'))"
+        ".map(e => e.textContent)",
+    ) == ["#10429", "#10428"]
+    assert (
+        _eval(
+            qtbot,
+            view,
+            "document.querySelectorAll('.history-row .chip')[1].textContent",
+        )
+        == "Skipped"
+    )
+
+
+def test_the_widget_pushes_orders_and_item_numbers_together(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    widget.update_session_progress(8, 13)
+    progress = widget.bridge.progress
+    assert (progress["orders_done"], progress["orders_total"]) == (8, 13)
+    assert (progress["items_packed"], progress["items_total"]) == (4, 11)
+    assert (progress["skus_packed"], progress["skus_total"]) == (1, 2)
+
+
+def test_a_skipped_order_is_marked_as_such_in_history(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.add_order_to_history("10428")
+    widget.add_order_to_history("10429", "[SKIPPED]")
+    assert widget.bridge.history == [
+        {"order": "10429", "status": "skipped"},
+        {"order": "10428", "status": "complete"},
+    ]

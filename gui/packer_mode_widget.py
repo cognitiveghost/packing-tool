@@ -1,11 +1,9 @@
 import logging
 import os
-from collections import defaultdict
 from functools import partial
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -13,10 +11,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
-    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -24,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.packer_bridge import banner_payload, item_rows
+from gui.packer_bridge import banner_payload, item_rows, summary_lines
 from gui.theme import current_tokens
 from shared.components.confirm_dialog import ConfirmDialog
 
@@ -49,12 +45,8 @@ class PackerModeWidget(QWidget):
         map_sku_requested (Signal[str]): Emitted with original SKU on Map SKU press.
         extra_confirmed (Signal[str]): Emitted with normalized_sku on Keep extra.
         extra_removed (Signal[str]): Emitted with normalized_sku on Remove extra.
-        session_progress_bar (QProgressBar): Shows completed/total orders for the session.
         document_view (QWebEngineView): The order document (bridge: PackerBridge).
         scanner_input (QLineEdit): Hidden line edit that captures barcode scanner input.
-        history_table (QTableWidget): History of scanned orders in this session.
-        packed_stat_label (QLabel): Glance-only tile — completed/total orders for the session.
-        items_stat_label (QLabel): Glance-only tile — packed/total items for the current order.
     """
 
     barcode_scanned = Signal(str)
@@ -65,10 +57,6 @@ class PackerModeWidget(QWidget):
     map_sku_requested = Signal(str)  # original SKU string
     extra_confirmed = Signal(str)  # normalized_sku
     extra_removed = Signal(str)  # normalized_sku
-
-    # Shared max-height for the bottom info row (history/extras) and the matching
-    # right-panel bottom section — keeps both panels' bottoms visually aligned.
-    _BOTTOM_ROW_HEIGHT = 160
 
     def __init__(self, parent: QWidget = None, sim_mode: bool = False):
         """
@@ -95,6 +83,9 @@ class PackerModeWidget(QWidget):
         self._items = []
         self._rows = []
         self._sku_map = {}
+        self._orders_done = 0
+        self._orders_total = 0
+        self._history = []
 
         from gui.packer_bridge import mount_packer_page
 
@@ -107,15 +98,6 @@ class PackerModeWidget(QWidget):
         self.bridge.forceRequested.connect(self._on_force_confirm)
         self.bridge.mapRequested.connect(self._on_map_sku_requested)
 
-        # [B] Session progress bar
-        self.session_progress_bar = QProgressBar()
-        self.session_progress_bar.setFixedHeight(18)
-        self.session_progress_bar.setTextVisible(True)
-        self.session_progress_bar.setFormat("0 / 0 orders")
-        self.session_progress_bar.setValue(0)
-        self.session_progress_bar.setMaximum(1)
-        left_layout.addWidget(self.session_progress_bar)
-
         # Scanner input — hidden line edit that captures barcode scanner keystrokes.
         self.scanner_input = QLineEdit()
         self.scanner_input.setFixedSize(1, 1)
@@ -125,36 +107,7 @@ class PackerModeWidget(QWidget):
         scan_row.addWidget(self.scanner_input, 1)
         left_layout.addLayout(scan_row)
 
-        # Bottom row: history table (left half) + extras panel (right half, hidden until needed)
-        _bottom_row = QWidget()
-        _bottom_row.setMaximumHeight(self._BOTTOM_ROW_HEIGHT)
-        _brl = QHBoxLayout(_bottom_row)
-        _brl.setContentsMargins(0, 0, 0, 0)
-        _brl.setSpacing(4)
-
-        _hist_container = QWidget()
-        _hist_vl = QVBoxLayout(_hist_container)
-        _hist_vl.setContentsMargins(0, 0, 0, 0)
-        _hist_vl.setSpacing(2)
-        _hist_title = QLabel("Scanned Orders History:")
-        _hist_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        _hf = _hist_title.font()
-        _hf.setPointSize(9)
-        _hist_title.setFont(_hf)
-        _hist_vl.addWidget(_hist_title)
-        self.history_table = QTableWidget()
-        self.history_table.setColumnCount(1)
-        self.history_table.setHorizontalHeaderLabels(["Order #"])
-        self.history_table.horizontalHeader().setStretchLastSection(True)
-        self.history_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.history_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.history_table.setFocusPolicy(Qt.NoFocus)
-        _hist_vl.addWidget(self.history_table)
-        _brl.addWidget(_hist_container, stretch=1)
-
-        # [J] Extra items panel — right half of the bottom row (hidden by default)
-        # Title label is always present (same 9pt height as history title) so that
-        # extras_table top edge aligns with history_table top edge.
+        # [J] Extra items panel (hidden by default) — Task 8 moves this into the document.
         _extras_container = QWidget()
         _ecvl = QVBoxLayout(_extras_container)
         _ecvl.setContentsMargins(0, 0, 0, 0)
@@ -187,56 +140,11 @@ class PackerModeWidget(QWidget):
         self.extras_table.setFocusPolicy(Qt.NoFocus)
         _epl.addWidget(self.extras_table)
         _ecvl.addWidget(self.extras_panel)
-        _brl.addWidget(_extras_container, stretch=1)
-
-        # [D] Summary panel — deduped SKUs with summed quantities
-        self.summary_frame = QFrame()
-        self.summary_frame.setObjectName("SummaryFrame")
-        self.summary_frame.setStyleSheet(
-            "QFrame#SummaryFrame { border: 1px solid palette(mid); border-radius: 3px; }"
-        )
-        _sfl = QVBoxLayout(self.summary_frame)
-        _sfl.setContentsMargins(4, 2, 4, 2)
-        _sfl.setSpacing(2)
-        _sh = QLabel("Summary (unique SKUs):")
-        _shf = _sh.font()
-        _shf.setPointSize(9)
-        _sh.setFont(_shf)
-        _sfl.addWidget(_sh)
-        self.summary_table = QTableWidget()
-        self.summary_table.setColumnCount(4)
-        self.summary_table.setHorizontalHeaderLabels(
-            ["SKU", "Product", "Packed/Total", "Status"]
-        )
-        _shdr = self.summary_table.horizontalHeader()
-        _shdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        _shdr.setSectionResizeMode(1, QHeaderView.Stretch)
-        _shdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        _shdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        _shdr.setStretchLastSection(False)
-        self.summary_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.summary_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.summary_table.setFocusPolicy(Qt.NoFocus)
-        _sfl.addWidget(self.summary_table)
-
-        left_layout.addWidget(self.summary_frame, 1)
-        left_layout.addWidget(_bottom_row)  # history/extras stay under the tabs
+        left_layout.addWidget(_extras_container)
 
         # ─── RIGHT PANEL ─────────────────────────────────────────────────────
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-
-        # Glance-only stat tiles: session order progress + current-order item progress.
-        # Kept in sync via update_session_progress / _update_summary_panel /
-        # _refresh_summary_from_table (same call sites that already update
-        # session_progress_bar / summary_table).
-        stats_row = QHBoxLayout()
-        self.packed_stat_label = QLabel("Packed: 0 / 0")
-        self.items_stat_label = QLabel("Items: 0 / 0")
-        for lbl in (self.packed_stat_label, self.items_stat_label):
-            lbl.setStyleSheet("font-weight: bold;")
-            stats_row.addWidget(lbl)
-        right_layout.addLayout(stats_row)
 
         # Dev mode: visible scan simulator panel (replaces physical barcode scanner).
         # Opt-in only: via the ScanSimulatorMode config setting (self._sim_mode, wired
@@ -270,23 +178,12 @@ class PackerModeWidget(QWidget):
 
         right_layout.addStretch()
 
-        # Bottom section — fixed height matching _bottom_row.maximumHeight() (160px) on
-        # the left, so the exit button's bottom edge lines up with the history/extras row.
-        _right_bottom = QWidget()
-        _right_bottom.setMaximumHeight(self._BOTTOM_ROW_HEIGHT)
-        _rbottom_layout = QVBoxLayout(_right_bottom)
-        _rbottom_layout.setContentsMargins(0, 0, 0, 0)
-        _rbottom_layout.setSpacing(0)
-        _rbottom_layout.addStretch()
-
         self.exit_button = QPushButton("<< Back to Menu")
         font = self.exit_button.font()
         font.setPointSize(14)
         self.exit_button.setFont(font)
         self.exit_button.clicked.connect(self.exit_packing_mode.emit)
-        _rbottom_layout.addWidget(self.exit_button)
-
-        right_layout.addWidget(_right_bottom)
+        right_layout.addWidget(self.exit_button)
 
         main_layout.addWidget(left_widget, stretch=3)
         main_layout.addWidget(right_widget, stretch=1)
@@ -437,7 +334,14 @@ class PackerModeWidget(QWidget):
         self._push_progress()
 
     def _push_progress(self):
-        """The side column's numbers. Task 7 fills this in."""
+        """The side column's numbers: orders from the session, items from the rows."""
+        self.bridge.set_progress(
+            {
+                "orders_done": self._orders_done,
+                "orders_total": self._orders_total,
+                **summary_lines(self._rows),
+            }
+        )
 
     def show_notification(self, text: str, role: str):
         """Show the scan outcome in the document's feedback band.
@@ -499,34 +403,33 @@ class PackerModeWidget(QWidget):
         )
 
     def add_order_to_history(self, order_number: str, status: str = ""):
-        """
-        Adds an order number to the top of the scan history table.
+        """Add an order to the top of the session's history.
 
         Args:
-            order_number: The order number that was just scanned.
-            status: Optional status suffix, e.g. "[SKIPPED]".
+            order_number: The order that was just scanned.
+            status: "[SKIPPED]" for a skipped order; empty for a completed one.
         """
-        self.history_table.insertRow(0)
-        display_text = f"{order_number} {status}".strip()
-        item = QTableWidgetItem(display_text)
-        if status == "[SKIPPED]":
-            item.setForeground(QColor(current_tokens().status_warning))
-        self.history_table.setItem(0, 0, item)
+        self._history.insert(
+            0,
+            {
+                "order": str(order_number),
+                "status": "skipped" if status == "[SKIPPED]" else "complete",
+            },
+        )
+        self.bridge.set_history(self._history)
 
     # [B] Feature B ────────────────────────────────────────────────────────────
 
     def update_session_progress(self, completed: int, total: int):
-        """
-        Updates the session progress bar at the top of the left panel.
+        """Update the session's order counts in the side column.
 
         Args:
-            completed: Number of completed orders.
-            total: Total orders in the session.
+            completed: Orders finished in this session.
+            total: Orders in the session.
         """
-        self.session_progress_bar.setMaximum(max(total, 1))
-        self.session_progress_bar.setValue(completed)
-        self.session_progress_bar.setFormat(f"{completed} / {total} orders")
-        self.packed_stat_label.setText(f"Packed: {completed} / {total}")
+        self._orders_done = completed
+        self._orders_total = total
+        self._push_progress()
 
     # [J] Feature J ────────────────────────────────────────────────────────────
 
@@ -571,106 +474,3 @@ class PackerModeWidget(QWidget):
         else:
             self._extras_section_title.setText("")
             self._extras_section_title.setStyleSheet("")
-
-    # ─── Private helpers ──────────────────────────────────────────────────────
-
-    def _update_summary_panel(
-        self,
-        items: list[dict[str, Any]],
-        order_state: list[dict[str, Any]],
-    ):
-        """
-        Deduplicates items by SKU and updates the summary table with summed quantities.
-        This handles duplicate SKU rows that can appear in Shopify exports.
-        Columns: SKU | Product | Packed/Total | Status
-        """
-        sku_totals: dict[str, int] = defaultdict(int)
-        sku_packed: dict[str, int] = defaultdict(int)
-        sku_name: dict[str, str] = {}
-
-        for item in items:
-            sku = item.get("SKU", item.get("sku", ""))
-            try:
-                qty = int(float(item.get("Quantity", item.get("quantity", 1))))
-            except (ValueError, TypeError):
-                qty = 1
-            sku_totals[sku] += qty
-            if sku not in sku_name:
-                sku_name[sku] = item.get("Product_Name", item.get("product_name", ""))
-
-        for state in order_state:
-            orig = state.get("original_sku", "")
-            sku_packed[orig] += state.get("packed", 0)
-
-        unique_skus = sorted(sku_totals.keys())
-        self.summary_table.setRowCount(len(unique_skus))
-
-        for i, sku in enumerate(unique_skus):
-            total = sku_totals[sku]
-            packed = sku_packed.get(sku, 0)
-            self.summary_table.setItem(i, 0, QTableWidgetItem(sku))
-            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, "")))
-            self.summary_table.setItem(i, 2, QTableWidgetItem(f"{packed} / {total}"))
-            status_text = "Done" if packed >= total else "Pending"
-            status_item = QTableWidgetItem(status_text)
-            if packed >= total:
-                status_item.setForeground(QColor(current_tokens().status_success))
-            self.summary_table.setItem(i, 3, status_item)
-
-        total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
-        total_qty = sum(sku_totals.values())
-        self.items_stat_label.setText(f"Items: {total_packed} / {total_qty}")
-
-    def _refresh_summary_from_table(self):
-        """
-        Rebuild the summary table by reading current row data directly from the
-        items table. Called from update_item_row() so the summary stays live.
-        Main table columns: 0=Product Name, 1=SKU, 2="packed / total", 3=Status, 4=Actions.
-        Summary columns: 0=SKU, 1=Product, 2=Packed/Total, 3=Status.
-        """
-        # summary_frame now lives inside main_tabs, so isVisible() would reflect
-        # whether "Session Summary" happens to be the active tab rather than
-        # whether an order is loaded. Use summary_table's row count instead —
-        # it's populated by _update_summary_panel whenever an order is displayed.
-        if self.summary_table.rowCount() == 0:
-            return
-
-        sku_packed: dict[str, int] = defaultdict(int)
-        sku_totals: dict[str, int] = defaultdict(int)
-        sku_name: dict[str, str] = {}
-
-        for r in range(self.table.rowCount()):
-            name_item = self.table.item(r, 0)
-            sku_item = self.table.item(r, 1)
-            qty_item = self.table.item(r, 2)
-            if sku_item is None or qty_item is None:
-                continue
-            sku = sku_item.text()
-            if sku not in sku_name:
-                sku_name[sku] = name_item.text() if name_item else ""
-            parts = qty_item.text().split(" / ")
-            try:
-                packed = int(parts[0])
-                total = int(parts[1]) if len(parts) > 1 else 1
-            except (ValueError, IndexError):
-                packed, total = 0, 1
-            sku_packed[sku] += packed
-            sku_totals[sku] += total
-
-        unique_skus = sorted(sku_totals.keys())
-        self.summary_table.setRowCount(len(unique_skus))
-        for i, sku in enumerate(unique_skus):
-            total = sku_totals[sku]
-            packed = sku_packed.get(sku, 0)
-            self.summary_table.setItem(i, 0, QTableWidgetItem(sku))
-            self.summary_table.setItem(i, 1, QTableWidgetItem(sku_name.get(sku, "")))
-            self.summary_table.setItem(i, 2, QTableWidgetItem(f"{packed} / {total}"))
-            status_text = "Done" if packed >= total else "Pending"
-            status_item = QTableWidgetItem(status_text)
-            if packed >= total:
-                status_item.setForeground(QColor(current_tokens().status_success))
-            self.summary_table.setItem(i, 3, status_item)
-
-        total_packed = sum(sku_packed.get(sku, 0) for sku in unique_skus)
-        total_qty = sum(sku_totals.values())
-        self.items_stat_label.setText(f"Items: {total_packed} / {total_qty}")
