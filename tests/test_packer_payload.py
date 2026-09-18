@@ -164,3 +164,34 @@ def test_an_unknown_flash_colour_raises_rather_than_passing_through():
 
     with pytest.raises(KeyError):
         flash_role("purple")
+
+
+def test_the_saved_state_decides_required_not_the_packing_list():
+    # PackerLogic decides completion from order_state['required']
+    # (packer_logic.py:1027, 1038, 1096). On a resumed session whose saved
+    # state disagrees with the packing list, the document has to agree with
+    # the logic or it lies about which lines are done.
+    state = _state(2, 0, 0)
+    state[0]["required"] = 2
+    rows = item_rows(ITEMS, state, {})
+    assert rows[0]["required"] == 2
+    assert rows[0]["state"] == "complete"
+
+
+def test_a_state_entry_with_no_required_falls_back_to_the_packing_list():
+    # packer_logic.py:440 writes required=0 when a restored entry has none.
+    state = _state(0, 0, 0)
+    state[0]["required"] = 0
+    rows = item_rows(ITEMS, state, {})
+    assert rows[0]["required"] == 3
+
+
+def test_multi_flags_a_line_that_needs_more_than_one_scan():
+    rows = item_rows(ITEMS, _state(0, 2, 8), {})
+    # Desk Lamp is 2/2 and Laptop Stand 8/8 -- done, so the cue is spent.
+    assert [r["multi"] for r in rows] == [True, False, False]
+
+
+def test_a_single_unit_line_is_never_multi():
+    rows = item_rows([{"SKU": "A", "Product_Name": "A", "Quantity": 1}], [], {})
+    assert rows[0]["multi"] is False

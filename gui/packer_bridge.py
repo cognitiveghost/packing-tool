@@ -42,19 +42,22 @@ def item_rows(
     sku_map: dict[str, str],
 ) -> list[dict[str, Any]]:
     """One row per order item, with its state and the actions it offers."""
-    packed_by_row = {
-        _int(s.get("row"), -1): _int(s.get("packed"), 0) for s in order_state or []
-    }
+    state_by_row = {_int(s.get("row"), -1): s for s in order_state or []}
     # A state entry with no usable row is dropped rather than mis-attributed to
     # row 0, which would credit another item's scans to the first line.
-    packed_by_row.pop(-1, None)
+    state_by_row.pop(-1, None)
     mapped = {normalize_sku(v) for v in (sku_map or {}).values()}
 
     rows = []
     for index, item in enumerate(items):
+        entry = state_by_row.get(index) or {}
         sku = str(item.get("SKU", ""))
-        required = max(_int(item.get("Quantity")), 1)
-        packed = packed_by_row.get(index, 0)
+        # PackerLogic decides completion from the state's own `required`, so
+        # the document reads it first or it disagrees with the logic on a
+        # resumed session. A restored entry can carry 0 for "not recorded"
+        # (packer_logic.py:440), which falls through to the packing list.
+        required = max(_int(entry.get("required"), 0) or _int(item.get("Quantity")), 1)
+        packed = _int(entry.get("packed"), 0)
         if packed >= required:
             state = "complete"
         elif packed > 0:
@@ -74,6 +77,8 @@ def item_rows(
                 "undo": packed > 0,
                 "force": required > FORCE_CONFIRM_MIN_QTY and packed < required,
                 "map": normalize_sku(sku) not in mapped,
+                "multi": required > 1 and packed < required,
+                "mapBarcode": False,
             }
         )
     return rows
