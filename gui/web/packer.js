@@ -177,6 +177,24 @@ function renderHistory() {
   });
 }
 
+function renderRollup() {
+  const rows = state.bridge.skuRollup || [];
+  els.rollupRows.textContent = "";
+  if (rows.length === 0) {
+    els.rollupRows.appendChild(span("rollup-row__sku", "No items yet"));
+    return;
+  }
+  rows.forEach(function (r) {
+    const row = document.createElement("div");
+    row.className = "rollup-row";
+    row.appendChild(span("rollup-row__sku", r.sku));
+    row.appendChild(span("rollup-row__qty", r.packed + " / " + r.required));
+    const chip = CHIP[r.state] || CHIP.pending;
+    row.appendChild(span(chip.cls, chip.text));
+    els.rollupRows.appendChild(row);
+  });
+}
+
 function renderSessionEnd() {
   const s = state.bridge.sessionEnd || {};
   const over = Boolean(s.title);
@@ -224,6 +242,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.progressNumbers = document.getElementById("progress-numbers");
   els.summarySkus = document.getElementById("summary-skus");
   els.historyRows = document.getElementById("history-rows");
+  els.rollupRows = document.getElementById("rollup-rows");
   els.extras = document.getElementById("extras");
   els.extrasRows = document.getElementById("extras-rows");
   els.stateTitle = document.getElementById("state-title");
@@ -237,6 +256,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.bannerChanged.connect(renderBanner);
   bridge.progressChanged.connect(renderProgress);
   bridge.historyChanged.connect(renderHistory);
+  bridge.skuRollupChanged.connect(renderRollup);
   bridge.extrasChanged.connect(renderExtras);
   bridge.sessionEndChanged.connect(renderSessionEnd);
   els.docMain.addEventListener("animationend", function () {
@@ -253,6 +273,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderBanner();
   renderProgress();
   renderHistory();
+  renderRollup();
   renderExtras();
   renderSessionEnd();
   document.documentElement.dataset.bridge = "ready";

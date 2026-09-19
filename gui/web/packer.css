@@ -260,6 +260,20 @@ html, body { height: 100%; margin: 0; }
 .history-row:last-child { border-bottom: none; }
 .history-row__order { font-family: var(--font-family-mono); }
 
+/* The roll-up sits where the history block's growth used to go (Task 3). */
+.rollup { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.rollup-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+}
+.rollup-row:last-child { border-bottom: none; }
+.rollup-row__sku { font-family: var(--font-family-mono); }
+.rollup-row__qty { color: var(--text-secondary); }
+
 .summary-line {
   display: flex;
   justify-content: space-between;

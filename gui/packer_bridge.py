@@ -161,6 +161,36 @@ def order_label(order_number: str | None) -> str:
     return text if text.startswith("#") else f"#{text}"
 
 
+def sku_rollup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per distinct SKU, summed across the order's lines.
+
+    The SKU list is per line; this is per SKU. An order that lists the same
+    SKU twice is two rows up there and one row here, which is the whole point
+    of the block.
+    """
+    totals: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sku = row.get("sku", "")
+        entry = totals.setdefault(
+            sku,
+            {"sku": sku, "product": row.get("product", ""), "packed": 0, "required": 0},
+        )
+        entry["packed"] += int(row.get("packed", 0) or 0)
+        entry["required"] += int(row.get("required", 0) or 0)
+
+    out = []
+    for sku in sorted(totals):
+        entry = totals[sku]
+        if entry["packed"] >= entry["required"]:
+            entry["state"] = "complete"
+        elif entry["packed"] > 0:
+            entry["state"] = "partial"
+        else:
+            entry["state"] = "pending"
+        out.append(entry)
+    return out
+
+
 def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
     """Unique-SKU and item totals over item_rows()' output."""
     required: dict[str, int] = {}
@@ -232,6 +262,7 @@ class PackerBridge(QObject):
     feedbackChanged = Signal()
     itemsChanged = Signal()
     extrasChanged = Signal()
+    skuRollupChanged = Signal()
     historyChanged = Signal()
     progressChanged = Signal()
     sessionEndChanged = Signal()
@@ -257,6 +288,7 @@ class PackerBridge(QObject):
         self._feedback: dict = {"text": "", "role": "", "raw": ""}
         self._items: list = []
         self._extras: list = []
+        self._sku_rollup: list = []
         self._history: list = []
         self._progress: dict = {}
         self._session_end: dict = {}
@@ -287,6 +319,11 @@ class PackerBridge(QObject):
         return self._extras
 
     extras = Property("QVariantList", _get_extras, notify=extrasChanged)
+
+    def _get_sku_rollup(self) -> list:
+        return self._sku_rollup
+
+    skuRollup = Property("QVariantList", _get_sku_rollup, notify=skuRollupChanged)
 
     def _get_history(self) -> list:
         return self._history
@@ -366,6 +403,10 @@ class PackerBridge(QObject):
     def set_extras(self, rows: list) -> None:
         self._extras = list(rows or [])
         self.extrasChanged.emit()
+
+    def set_sku_rollup(self, rows: list) -> None:
+        self._sku_rollup = list(rows or [])
+        self.skuRollupChanged.emit()
 
     def set_history(self, rows: list) -> None:
         self._history = list(rows or [])

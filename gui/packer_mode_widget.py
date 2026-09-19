@@ -20,6 +20,7 @@ from gui.packer_bridge import (
     flash_role,
     item_rows,
     order_label,
+    sku_rollup,
     summary_lines,
     unknown_rows,
 )
@@ -362,6 +363,7 @@ class PackerModeWidget(QWidget):
         the item rows alone -- an unmatched scan is not a line to pack.
         """
         self.bridge.set_items(self._rows + unknown_rows(self._unknown))
+        self.bridge.set_sku_rollup(sku_rollup(self._rows))
         self._push_progress()
 
     def _push_progress(self):
@@ -410,6 +412,7 @@ class PackerModeWidget(QWidget):
         self._sku_map = {}
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
+        self.bridge.set_sku_rollup([])
         self._order_label.setText("No order")
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)
