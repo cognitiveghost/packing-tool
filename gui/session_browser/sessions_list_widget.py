@@ -14,7 +14,7 @@ Filter / search works purely on already-loaded table data (no server I/O).
 
 import csv
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QDate, Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -95,28 +95,18 @@ STATUS_CONFIG = {
 
 _UNKNOWN_STATUS = {"role": "text_secondary", "live": False, "manual": False}
 
-# Column indices
-COL_STATUS = 0
-COL_LIST_NAME = 1
-COL_SESSION_ID = 2
-COL_WORKER = 3
-COL_PC = 4
-COL_PROGRESS = 5
-COL_STARTED = 6
-COL_DURATION = 7
-COL_ITEMS = 8
-COLUMN_COUNT = 9
+# Column indices. B1: Worker/PC/Started fold into "Last touched"; Progress
+# and Duration are dropped; Age is new.
+COL_STATUS, COL_SESSION, COL_AGE, COL_PACKING, COL_ITEMS, COL_TOUCHED = range(6)
+COLUMN_COUNT = 6
 
 COLUMN_HEADERS = [
     "Status",
-    "Packing List",
     "Session",
-    "Worker",
-    "PC",
-    "Progress",
-    "Started",
-    "Duration",
+    "Age",
+    "Packing",
     "Items",
+    "Last touched",
 ]
 
 
@@ -179,21 +169,60 @@ def _fmt_duration(seconds: float | None) -> str:
     return f"{s}s"
 
 
-def _fmt_date(ts_str: str | None) -> str:
-    if not ts_str:
-        return "—"
-    dt = parse_timestamp(ts_str)
-    if dt is None:
-        return ts_str[:10] if len(ts_str) >= 10 else ts_str
-    return dt.strftime("%Y-%m-%d %H:%M")
-
-
 def _fmt_progress(entry: dict) -> str:
     total = entry.get("total_orders", 0)
     done = entry.get("completed_orders", 0)
     if total == 0:
         return "—"
     return f"{done}/{total}"
+
+
+def _fmt_age(ts_str: str | None) -> str:
+    """How long ago the session started, in the coarsest unit that fits.
+
+    Nobody reads minutes off a wall display across a warehouse floor --
+    "13d" is legible from across the room, "18720m" is not.
+    """
+    if not ts_str:
+        return "—"
+    dt = parse_timestamp(ts_str)
+    if dt is None:
+        return "—"
+    seconds = max(
+        0.0, (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+    )
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = int(seconds // 3600)
+    if hours < 24:
+        return f"{hours}h"
+    days = int(seconds // 86400)
+    return f"{days}d"
+
+
+def _fmt_touched(entry: dict) -> str:
+    """Who last worked this session, on which PC, and when -- one cell.
+
+    B1 draws "W-004 · WH-PC-02 · 11:20"; a session nobody has touched (an
+    available packing list, never started) shows a dash rather than an
+    empty cell that reads as a loading state.
+    """
+    worker = entry.get("worker_name") or entry.get("worker_id") or ""
+    pc = entry.get("pc_name") or ""
+    ts_str = (
+        entry.get("last_updated")
+        or entry.get("started_at")
+        or entry.get("created_at")
+        or ""
+    )
+    time_part = ""
+    if ts_str:
+        dt = parse_timestamp(ts_str)
+        if dt:
+            time_part = dt.strftime("%H:%M")
+    parts = [p for p in (worker, pc, time_part) if p]
+    return " · ".join(parts) if parts else "—"
 
 
 def _status_display(status: str) -> str:
@@ -306,19 +335,16 @@ class SessionsListWidget(QWidget):
         self._table = QTableWidget(0, COLUMN_COUNT)
         self._table.setHorizontalHeaderLabels(COLUMN_HEADERS)
         self._table.horizontalHeader().setSectionResizeMode(
-            COL_LIST_NAME, QHeaderView.ResizeMode.Stretch
+            COL_PACKING, QHeaderView.ResizeMode.Stretch
         )
         self._table.horizontalHeader().setSectionResizeMode(
             COL_STATUS, QHeaderView.ResizeMode.Fixed
         )
         self._table.setColumnWidth(COL_STATUS, 115)
-        self._table.setColumnWidth(COL_SESSION_ID, 110)
-        self._table.setColumnWidth(COL_WORKER, 105)
-        self._table.setColumnWidth(COL_PC, 105)
-        self._table.setColumnWidth(COL_PROGRESS, 75)
-        self._table.setColumnWidth(COL_STARTED, 130)
-        self._table.setColumnWidth(COL_DURATION, 75)
+        self._table.setColumnWidth(COL_SESSION, 110)
+        self._table.setColumnWidth(COL_AGE, 70)
         self._table.setColumnWidth(COL_ITEMS, 55)
+        self._table.setColumnWidth(COL_TOUCHED, 200)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -515,42 +541,30 @@ class SessionsListWidget(QWidget):
         self._table.setItem(row, COL_STATUS, sort_item)
         self._table.setCellWidget(row, COL_STATUS, self._make_status_cell(status))
 
-        # Col 1: Packing List
+        # Col 1: Session
         self._table.setItem(
-            row, COL_LIST_NAME, QTableWidgetItem(entry.get("packing_list_name", "—"))
+            row, COL_SESSION, QTableWidgetItem(entry.get("session_id", "—"))
         )
 
-        # Col 2: Session ID
-        self._table.setItem(
-            row, COL_SESSION_ID, QTableWidgetItem(entry.get("session_id", "—"))
-        )
-
-        # Col 3: Worker
-        worker = entry.get("worker_name") or entry.get("worker_id") or "—"
-        self._table.setItem(row, COL_WORKER, QTableWidgetItem(worker))
-
-        # Col 4: PC
-        self._table.setItem(row, COL_PC, QTableWidgetItem(entry.get("pc_name") or "—"))
-
-        # Col 5: Progress (center-aligned)
-        prog_item = QTableWidgetItem(_fmt_progress(entry))
-        prog_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._table.setItem(row, COL_PROGRESS, prog_item)
-
-        # Col 6: Started
+        # Col 2: Age (center-aligned)
         ts = entry.get("started_at") or entry.get("created_at") or ""
-        self._table.setItem(row, COL_STARTED, QTableWidgetItem(_fmt_date(ts)))
+        age_item = QTableWidgetItem(_fmt_age(ts))
+        age_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setItem(row, COL_AGE, age_item)
 
-        # Col 7: Duration (center-aligned)
-        dur_item = QTableWidgetItem(_fmt_duration(entry.get("duration_seconds")))
-        dur_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._table.setItem(row, COL_DURATION, dur_item)
+        # Col 3: Packing (list name)
+        self._table.setItem(
+            row, COL_PACKING, QTableWidgetItem(entry.get("packing_list_name", "—"))
+        )
 
-        # Col 8: Items (center-aligned)
+        # Col 4: Items (center-aligned)
         items = entry.get("total_items", 0)
         items_item = QTableWidgetItem(str(items) if items else "—")
         items_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self._table.setItem(row, COL_ITEMS, items_item)
+
+        # Col 5: Last touched — worker, PC and time folded into one cell.
+        self._table.setItem(row, COL_TOUCHED, QTableWidgetItem(_fmt_touched(entry)))
 
     def _update_header_stats(self, entries: list):
         counts = {}
