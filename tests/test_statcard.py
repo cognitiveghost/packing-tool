@@ -5,6 +5,7 @@ session-totals card and the courier card -- which is why it is a component.
 """
 
 import pytest
+
 from shared.components.statcard import StatCard
 
 

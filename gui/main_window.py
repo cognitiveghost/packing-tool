@@ -61,6 +61,7 @@ from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
 from shared.components.card import Card
+from shared.components.state_panel import StatePanel
 from shared.components.toast import toast
 from shared.icons import icon
 from shared.navrail import NavRail
@@ -84,12 +85,14 @@ logger = logging.getLogger(__name__)
 RAIL_WIDTH = 76
 
 # (icon name, rail label, tooltip) per destination, in rail order.
-# "Packing" and "Statistics" are the existing tab titles, verbatim.
+# "Packing" is the existing tab title, verbatim. "Statistics" measures ~72px
+# at 10pt against the rail item's 56px and has no wrap point, so the rail
+# says "Stats" -- the tab title, page title and tooltip keep the full word.
 # "Browse" is not a rename -- Session Browser was a dialog title and has never
 # had a rail label to change -- so the full name lives in its tooltip.
 RAIL_ITEMS = (
     ("clipboard-list", "Packing", "Packing — the current session's orders"),
-    ("table", "Statistics", "Statistics — session totals"),
+    ("table", "Stats", "Statistics — session totals"),
     (
         "folder-open",
         "Browse",
@@ -352,6 +355,15 @@ class MainWindow(QMainWindow):
         self.order_tree_card.add_widget(self.order_tree)
         packing_layout.addWidget(self.order_tree_card)
 
+        # T2: no packing list loaded is a state panel, not an empty tree.
+        self.packing_state_panel = StatePanel(
+            "No packing list loaded",
+            "Choose a client and open a packing list to start a session.",
+            action_text="Open a packing list",
+        )
+        packing_layout.addWidget(self.packing_state_panel)
+        self.order_tree_card.setVisible(False)
+
         self.session_tabs.addTab(packing_tab, "Packing")
 
         # Tab 2: Statistics View
@@ -521,7 +533,12 @@ class MainWindow(QMainWindow):
             or self.logic.processed_df is None
         ):
             self.sb_summary_label.setText("")
+            self.order_tree_card.setVisible(False)
+            self.packing_state_panel.setVisible(True)
             return
+
+        self.order_tree_card.setVisible(True)
+        self.packing_state_panel.setVisible(False)
 
         # Group by order number
         grouped = self.logic.processed_df.groupby("Order_Number")

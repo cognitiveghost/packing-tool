@@ -224,6 +224,34 @@ def main_window(config_ini, server_root, qapp):
 
 
 @pytest.fixture
+def main_window_with_list(main_window, session_factory, packer_logic_factory):
+    """A MainWindow with a 2-order packing list already loaded and populated
+    into order_tree -- for tests of the tree's chrome, filter, and empty
+    state that need a real MainWindow rather than a StubLogic seam.
+    """
+    orders = [
+        (
+            "#10429",
+            "DHL",
+            [{"sku": "TS-4409-B", "quantity": 1, "product_name": "Widget A"}],
+        ),
+        (
+            "#10430",
+            "DHL",
+            [{"sku": "SKU-OTHER", "quantity": 1, "product_name": "Widget B"}],
+        ),
+    ]
+    _session_dir, work_dir, list_path = session_factory(
+        client_id="TESTCL", orders=orders
+    )
+    logic = packer_logic_factory("TESTCL", work_dir)
+    logic.load_packing_list_json(list_path)
+    main_window.logic = logic
+    main_window._populate_order_tree()
+    return main_window
+
+
+@pytest.fixture
 def loaded_logic(packer_logic_factory, session_factory):
     """A PackerLogic instance with a 2-order packing list already loaded."""
     orders = [

@@ -8,32 +8,6 @@ for one. The plan for this task guessed the names `order_filter` /
 that locks the existing behaviour in, not a new field.
 """
 
-import pytest
-
-
-@pytest.fixture
-def main_window_with_list(main_window, session_factory, packer_logic_factory):
-    orders = [
-        (
-            "#10429",
-            "DHL",
-            [{"sku": "TS-4409-B", "quantity": 1, "product_name": "Widget A"}],
-        ),
-        (
-            "#10430",
-            "DHL",
-            [{"sku": "SKU-OTHER", "quantity": 1, "product_name": "Widget B"}],
-        ),
-    ]
-    _session_dir, work_dir, list_path = session_factory(
-        client_id="TESTCL", orders=orders
-    )
-    logic = packer_logic_factory("TESTCL", work_dir)
-    logic.load_packing_list_json(list_path)
-    main_window.logic = logic
-    main_window._populate_order_tree()
-    return main_window
-
 
 def test_typing_an_order_number_hides_the_other_orders(main_window_with_list):
     window = main_window_with_list
