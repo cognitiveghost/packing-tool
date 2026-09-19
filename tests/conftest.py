@@ -10,6 +10,7 @@ Design notes:
   _reset_root_logger fixture is autouse there; this file doesn't need
   its own equivalent since no test here asserts on handler counts.
 """
+
 import configparser
 import json
 import logging
@@ -73,6 +74,7 @@ def _isolate_qsettings(tmp_path_factory):
     against for the env var.
     """
     from PySide6.QtCore import QSettings
+
     settings_dir = tmp_path_factory.mktemp("qsettings")
     # QSettings(org, app) uses NativeFormat; redirect both formats since
     # setPath only affects settings objects of the format it's given.
@@ -91,6 +93,7 @@ def _reset_root_logger_handlers():
     """
     yield
     from shared.logger import _active_handlers
+
     root = logging.getLogger()
     for handler in _active_handlers:
         root.removeHandler(handler)
@@ -114,7 +117,11 @@ def config_ini(tmp_path, server_root):
         "ConnectionTimeout": "5",
         "LocalCachePath": str(tmp_path / "cache"),
     }
-    config["Logging"] = {"LogLevel": "INFO", "LogRetentionDays": "30", "MaxLogSizeMB": "10"}
+    config["Logging"] = {
+        "LogLevel": "INFO",
+        "LogRetentionDays": "30",
+        "MaxLogSizeMB": "10",
+    }
     with open(path, "w", encoding="utf-8") as f:
         config.write(f)
     return path
@@ -151,7 +158,9 @@ def session_factory(server_root):
     and return (work_dir, packing_list_path) for load_packing_list_json().
     """
 
-    def _make(client_id="M", session_id="2026-01-01_1", list_name="DHL_Orders", orders=()):
+    def _make(
+        client_id="M", session_id="2026-01-01_1", list_name="DHL_Orders", orders=()
+    ):
         session_dir = server_root / "Sessions" / f"CLIENT_{client_id}" / session_id
         (session_dir / "packing_lists").mkdir(parents=True, exist_ok=True)
         work_dir = session_dir / "packing" / list_name
@@ -160,7 +169,9 @@ def session_factory(server_root):
         packing_list = make_packing_list(orders)
         packing_list["list_name"] = list_name
         list_path = session_dir / "packing_lists" / f"{list_name}.json"
-        list_path.write_text(json.dumps(packing_list, ensure_ascii=False), encoding="utf-8")
+        list_path.write_text(
+            json.dumps(packing_list, ensure_ascii=False), encoding="utf-8"
+        )
 
         return session_dir, work_dir, list_path
 
@@ -175,7 +186,9 @@ def packer_logic_factory(profile_manager):
     created = []
 
     def _make(client_id, work_dir):
-        logic = PackerLogic(client_id=client_id, profile_manager=profile_manager, work_dir=str(work_dir))
+        logic = PackerLogic(
+            client_id=client_id, profile_manager=profile_manager, work_dir=str(work_dir)
+        )
         created.append(logic)
         return logic
 
@@ -183,6 +196,31 @@ def packer_logic_factory(profile_manager):
 
     for logic in created:
         logic.close()
+
+
+@pytest.fixture
+def main_window(config_ini, server_root, qapp):
+    """A MainWindow with two clients ("TESTCL", "OTHERCL") already available.
+
+    MainWindow builds its own ProfileManager from config_path, so the client
+    profiles have to exist on disk (via a throwaway ProfileManager over the
+    same config) before the window is constructed. Client IDs are capped at
+    10 alphanumeric/underscore characters (see validate_client_id).
+
+    Two clients, not one: MainWindow auto-selects a client at startup
+    (restoring last_client, or whichever get_available_clients() lists
+    first), so a test that switches the command bar to a specific client
+    needs a second one to have actually started on -- otherwise
+    setCurrentIndex(already-current-index) fires no signal at all.
+    """
+    from gui.main_window import MainWindow
+
+    seed = ProfileManager(config_path=str(config_ini))
+    seed.create_client_profile("TESTCL", "Test Client")
+    seed.create_client_profile("OTHERCL", "Other Client")
+    window = MainWindow(config_path=str(config_ini))
+    yield window
+    window.deleteLater()
 
 
 @pytest.fixture

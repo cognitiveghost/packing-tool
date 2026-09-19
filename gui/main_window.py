@@ -357,6 +357,11 @@ class MainWindow(QMainWindow):
             self._handle_start_packing_from_browser
         )
         self.session_tabs.addTab(self.session_browser, "Session Browser")
+        # load_available_clients() ran before this widget existed, so the
+        # client it settled on (restored last_client, if any) never reached
+        # the browser -- push it now that there is somewhere to push it.
+        if self.current_client_id:
+            self.session_browser.load_client(self.current_client_id)
 
         for icon_name, label, tip in RAIL_ITEMS:
             index = self.nav_rail.add_item(icon(icon_name), label)
@@ -780,6 +785,11 @@ class MainWindow(QMainWindow):
         self.settings.setValue("last_client", client_id)
 
         logger.debug(f"Current client set to: {client_id}")
+
+        # The browser has no picker of its own (Bundle 6): the command bar's
+        # is the only one, so it has to push the change.
+        if hasattr(self, "session_browser"):
+            self.session_browser.load_client(client_id)
 
     def flash_border(self, color: str):
         """Flash the order document's edge with the scan's outcome.
