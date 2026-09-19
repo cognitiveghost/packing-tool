@@ -60,13 +60,20 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.components.card import Card
 from shared.components.toast import toast
 from shared.icons import icon
 from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from shared.theme import font_css, on_theme_changed, theme_notifier
+from shared.theme import (
+    StatusChip,
+    font_css,
+    get_density_profile,
+    on_theme_changed,
+    theme_notifier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +98,15 @@ RAIL_ITEMS = (
 )
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
+
+# T1's three order states. An order in progress is the one a packer is
+# working right now, so it carries the solid mark; the other two are the
+# system's reading of the packing list.
+ORDER_STATUS_CHIP = {
+    "in_progress": ("status_warning", "In progress", True, True),
+    "packed": ("status_success", "Packed", False, False),
+    "not_started": ("text_secondary", "Not started", False, False),
+}
 
 DEFAULT_CONFIG_PATH = "config.ini"
 
@@ -332,7 +348,9 @@ class MainWindow(QMainWindow):
         packing_layout.setContentsMargins(0, 0, 0, 0)
 
         self._setup_order_tree()
-        packing_layout.addWidget(self.order_tree)
+        self.order_tree_card = Card(margins=(0, 0, 0, 0))
+        self.order_tree_card.add_widget(self.order_tree)
+        packing_layout.addWidget(self.order_tree_card)
 
         self.session_tabs.addTab(packing_tab, "Packing")
 
@@ -475,22 +493,23 @@ class MainWindow(QMainWindow):
             1, QHeaderView.Stretch
         )  # Product stretches
 
-        # Styling
-        font = QFont()
-        font.setPointSize(11)
-        self.order_tree.setFont(font)
         self.order_tree.setAlternatingRowColors(True)
         self.order_tree.setUniformRowHeights(False)
         self.order_tree.setItemsExpandable(True)
         self.order_tree.setRootIsDecorated(True)
 
-        # Row height and styling
-        self.order_tree.setStyleSheet("""
-            QTreeWidget::item {
-                height: 30px;
-                padding: 5px;
-            }
-        """)
+        # The floor rung, not a literal: T1's row height comes off the active
+        # density profile rather than a hardcoded pixel count.
+        row_height = get_density_profile().row_height
+        self.order_tree.setStyleSheet(
+            f"QTreeWidget::item {{ height: {row_height}px; }}"
+        )
+
+    def _order_status_chip(self, status: str) -> StatusChip:
+        role, text, live, manual = ORDER_STATUS_CHIP.get(
+            status, ORDER_STATUS_CHIP["not_started"]
+        )
+        return StatusChip(role, text, current_tokens(), live=live, manual=manual)
 
     def _populate_order_tree(self):
         """Populate tree with orders and items."""
@@ -518,21 +537,13 @@ class MainWindow(QMainWindow):
             # Check order status
             is_completed = order_num in completed_orders
 
-            # Count scanned items
-            scanned_count = 0
-            if order_num in in_progress_orders:
-                order_state = in_progress_orders[order_num]
-                scanned_count = sum(
-                    1 for s in order_state if s.get("packed", 0) >= s.get("required", 1)
-                )
-            elif is_completed:
-                scanned_count = total_items
-
-            # Order status
+            # Order status -- T1's chip, not a text summary
             if is_completed:
-                status_text = "Completed"
+                chip_status = "packed"
+            elif order_num in in_progress_orders:
+                chip_status = "in_progress"
             else:
-                status_text = f"{scanned_count}/{total_items} items"
+                chip_status = "not_started"
 
             # Courier
             courier = (
@@ -541,9 +552,10 @@ class MainWindow(QMainWindow):
                 else "N/A"
             )
 
-            # Create top-level order item
+            # Create top-level order item. Column 3 (Status) is filled by a
+            # StatusChip below, once the item is in the tree.
             order_item = QTreeWidgetItem(
-                [f"{order_num}", f"{total_items} items", "", status_text, courier]
+                [f"{order_num}", f"{total_items} items", "", "", courier]
             )
 
             # Bold font for order
@@ -573,42 +585,9 @@ class MainWindow(QMainWindow):
                     else 1
                 )
 
-                # Check if scanned
-                scanned_qty = 0
-                if order_num in in_progress_orders:
-                    order_state = in_progress_orders[order_num]
-                    # Find this SKU in the order state
-                    for item_state in order_state:
-                        # CRITICAL FIX: Validate item_state is dict before calling .get()
-                        if not isinstance(item_state, dict):
-                            logger.warning(
-                                f"Skipping invalid item_state in {order_num}: {type(item_state).__name__}"
-                            )
-                            continue
-
-                        if item_state.get("original_sku") == sku:
-                            scanned_qty = item_state.get("packed", 0)
-                            break
-                elif is_completed:
-                    try:
-                        scanned_qty = int(qty)
-                    except (ValueError, TypeError):
-                        scanned_qty = 1
-
-                try:
-                    qty_int = int(qty)
-                except (ValueError, TypeError):
-                    qty_int = 1
-
-                if scanned_qty >= qty_int:
-                    item_status = "Scanned"
-                else:
-                    item_status = f"Pending ({scanned_qty}/{qty_int})"
-
-                # Create child item
-                child_item = QTreeWidgetItem(
-                    [f"  {sku}", product, str(qty), item_status, ""]
-                )
+                # Create child item. Status and Courier stay blank -- T1
+                # draws the chip on the order row only.
+                child_item = QTreeWidgetItem([f"  {sku}", product, str(qty), "", ""])
 
                 # Normal font for items
                 item_font = QFont()
@@ -619,6 +598,9 @@ class MainWindow(QMainWindow):
                 order_item.addChild(child_item)
 
             self.order_tree.addTopLevelItem(order_item)
+            self.order_tree.setItemWidget(
+                order_item, 3, self._order_status_chip(chip_status)
+            )
 
             # Expand completed orders, collapse pending
             if is_completed:
