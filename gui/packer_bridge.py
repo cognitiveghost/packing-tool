@@ -148,6 +148,19 @@ def banner_payload(
     }
 
 
+def order_label(order_number: str | None) -> str:
+    """The order number as it is shown, with exactly one leading marker.
+
+    Order numbers arrive carrying their own '#' from Shopify, but not from
+    every client, so the marker is added only when it is missing rather than
+    assumed either way.
+    """
+    if not order_number:
+        return "No order"
+    text = str(order_number)
+    return text if text.startswith("#") else f"#{text}"
+
+
 def summary_lines(rows: list[dict[str, Any]]) -> dict[str, int]:
     """Unique-SKU and item totals over item_rows()' output."""
     required: dict[str, int] = {}

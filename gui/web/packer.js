@@ -40,6 +40,11 @@ function span(cls, text) {
   return el;
 }
 
+function orderLabel(order) {
+  const text = String(order == null ? "" : order);
+  return text.startsWith("#") ? text : "#" + text;
+}
+
 function actionButton(label, action, row, sku) {
   const btn = document.createElement("button");
   btn.className = "btn btn--ghost";
@@ -105,7 +110,7 @@ function renderBanner() {
   const chips = b.chips || [];
   els.banner.textContent = "";
   els.banner.hidden = !b.order && chips.length === 0 && !b.notes;
-  if (b.order) els.banner.appendChild(span("doc-banner-order", "#" + b.order));
+  if (b.order) els.banner.appendChild(span("doc-banner-order", orderLabel(b.order)));
   chips.forEach(function (c) {
     els.banner.appendChild(span("doc-banner-tag", c));
   });
@@ -165,7 +170,7 @@ function renderHistory() {
   rows.forEach(function (r) {
     const row = document.createElement("div");
     row.className = "history-row";
-    row.appendChild(span("history-row__order", "#" + r.order));
+    row.appendChild(span("history-row__order", orderLabel(r.order)));
     const chip = HISTORY_CHIP[r.status] || HISTORY_CHIP.complete;
     row.appendChild(span(chip.cls, chip.text));
     els.historyRows.appendChild(row);

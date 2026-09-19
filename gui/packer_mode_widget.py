@@ -19,6 +19,7 @@ from gui.packer_bridge import (
     banner_payload,
     flash_role,
     item_rows,
+    order_label,
     summary_lines,
     unknown_rows,
 )
@@ -317,7 +318,7 @@ class PackerModeWidget(QWidget):
             else ""
         )
         self.bridge.set_banner(banner_payload(order_number, metadata))
-        self._order_label.setText(f"#{order_number}" if order_number else "No order")
+        self._order_label.setText(order_label(order_number))
         self._push_rows()
         self.skip_order_button.setEnabled(True)
         self.set_focus_to_scanner()
