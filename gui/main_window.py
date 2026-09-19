@@ -152,8 +152,6 @@ class MainWindow(QMainWindow):
         packer_mode_widget (PackerModeWidget): The widget for the packer mode view.
         stacked_widget (QStackedWidget): Manages switching between views.
         orders_table (QTableView): The table displaying the list of orders.
-        table_model (OrderTableModel): The model for the orders table.
-        proxy_model (CustomFilterProxyModel): The proxy model for filtering the table.
     """
 
     def __init__(
