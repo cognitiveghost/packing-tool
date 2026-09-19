@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # - Product_Name: Human-readable product description
 # - Quantity: Number of items to pack for this SKU in this order
 # - Courier: Shipping courier name (e.g., "PostOne", "Speedy", "DHL")
-REQUIRED_COLUMNS = ['Order_Number', 'SKU', 'Product_Name', 'Quantity', 'Courier']
+REQUIRED_COLUMNS = ["Order_Number", "SKU", "Product_Name", "Quantity", "Courier"]
 
 
 def normalize_sku(sku: Any) -> str:
@@ -63,7 +63,8 @@ def normalize_sku(sku: Any) -> str:
     Returns:
         str: The normalized SKU string (lowercase alphanumeric only)
     """
-    return ''.join(filter(str.isalnum, str(sku))).lower()
+    return "".join(filter(str.isalnum, str(sku))).lower()
+
 
 # Filename for session state persistence
 # This file stores packing progress and is saved after every scan
@@ -90,36 +91,43 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     Does not include orders_per_hour/items_per_hour: those depend on
     duration_seconds and a total-orders/items count that differ by caller.
     """
-    durations = [o['duration_seconds'] for o in orders_with_timing if o.get('duration_seconds')]
+    durations = [
+        o["duration_seconds"] for o in orders_with_timing if o.get("duration_seconds")
+    ]
     avg_time_per_order = round(sum(durations) / len(durations), 1) if durations else 0
     fastest_order_seconds = min(durations) if durations else 0
     slowest_order_seconds = max(durations) if durations else 0
 
     all_items = []
     for order in orders_with_timing:
-        all_items.extend(order.get('items', []))
+        all_items.extend(order.get("items", []))
     item_times = [
-        item['time_from_order_start_seconds']
+        item["time_from_order_start_seconds"]
         for item in all_items
-        if 'time_from_order_start_seconds' in item
+        if "time_from_order_start_seconds" in item
     ]
     avg_time_per_item = round(sum(item_times) / len(item_times), 1) if item_times else 0
 
     first_scan_latencies = [
-        o['time_to_first_scan_seconds']
+        o["time_to_first_scan_seconds"]
         for o in orders_with_timing
-        if o.get('time_to_first_scan_seconds') is not None
+        if o.get("time_to_first_scan_seconds") is not None
     ]
     avg_time_to_first_scan = (
         round(sum(first_scan_latencies) / len(first_scan_latencies), 1)
-        if first_scan_latencies else 0
+        if first_scan_latencies
+        else 0
     )
 
-    total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
-    total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
-    total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
+    total_corrections = sum(o.get("corrections", 0) for o in orders_with_timing)
+    total_extra_scans = sum(o.get("extra_scans_count", 0) for o in orders_with_timing)
+    total_unknown_scans = sum(
+        o.get("unknown_scans_count", 0) for o in orders_with_timing
+    )
     avg_corrections_per_order = (
-        round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
+        round(total_corrections / len(orders_with_timing), 2)
+        if orders_with_timing
+        else 0
     )
 
     return {
@@ -133,6 +141,7 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
         "total_extra_scans": total_extra_scans,
         "total_unknown_scans": total_unknown_scans,
     }
+
 
 class PackerLogic(QObject):
     """
@@ -165,6 +174,7 @@ class PackerLogic(QObject):
                                       including in-progress and completed orders.
         sku_map (Dict[str, str]): Normalized barcode-to-SKU mapping
     """
+
     item_packed = Signal(str, int, int)  # order_number, packed_count, required_count
     all_orders_complete = Signal()  # Emitted when every order in the session is packed
 
@@ -206,20 +216,22 @@ class PackerLogic(QObject):
         self.session_id = None  # Will be set when loading packing list
         self.packing_list_name = None  # Name of the packing list being packed
         self.started_at = None  # Session start timestamp
-        self.worker_pc = os.environ.get('COMPUTERNAME', 'Unknown')  # PC name
+        self.worker_pc = os.environ.get("COMPUTERNAME", "Unknown")  # PC name
 
         # Initialize session packing state with new structure
         # This will be populated when loading an existing state or starting new
         self.session_packing_state = {
-            'in_progress': {},
-            'completed_orders': [],
-            'skipped_orders': [],
-            'skipped_orders_timing': {},  # order_num -> ISO timestamp of skip
+            "in_progress": {},
+            "completed_orders": [],
+            "skipped_orders": [],
+            "skipped_orders_timing": {},  # order_num -> ISO timestamp of skip
         }
 
         # Phase 2b: Order-level timing tracking — initialized BEFORE _load_session_state()
         # so that _load_session_state() can populate them from disk without being overwritten.
-        self.current_order_start_time = None  # ISO timestamp when order scanning started
+        self.current_order_start_time = (
+            None  # ISO timestamp when order scanning started
+        )
         self.current_order_items_scanned = []  # List of items with scan timestamps
         self.completed_orders_metadata = []  # List of completed orders with timing data
 
@@ -229,9 +241,9 @@ class PackerLogic(QObject):
         self.current_extra_items: dict[str, int] = {}
 
         # Per-order counters for 1.7 metrics — reset by start_order_packing()
-        self.current_order_corrections: int = 0           # cancel_item_scan() events
-        self.current_order_extra_scan_count: int = 0      # SKU_EXTRA events
-        self.current_order_unknown_scan_count: int = 0    # SKU_NOT_FOUND events
+        self.current_order_corrections: int = 0  # cancel_item_scan() events
+        self.current_order_extra_scan_count: int = 0  # SKU_EXTRA events
+        self.current_order_unknown_scan_count: int = 0  # SKU_NOT_FOUND events
 
         # Load SKU mapping from ProfileManager
         self.sku_map = self._load_sku_mapping()
@@ -251,7 +263,9 @@ class PackerLogic(QObject):
         logger.debug(f"Barcode directory: {self.barcode_dir}")
         logger.debug(f"Reports directory: {self.reports_dir}")
         logger.debug(f"Loaded {len(self.sku_map)} SKU mappings")
-        logger.debug("Phase 2b timing variables initialized (loaded from state if available)")
+        logger.debug(
+            "Phase 2b timing variables initialized (loaded from state if available)"
+        )
 
     def _load_sku_mapping(self) -> dict[str, str]:
         """
@@ -284,7 +298,9 @@ class PackerLogic(QObject):
             # Original SKU values are preserved as-is
             normalized = {self._normalize_sku(k): v for k, v in mappings.items()}
 
-            logger.debug(f"Loaded {len(normalized)} SKU mappings for client {self.client_id}")
+            logger.debug(
+                f"Loaded {len(normalized)} SKU mappings for client {self.client_id}"
+            )
             return normalized
         except Exception:
             # Graceful degradation: if SKU mapping fails to load, continue without it
@@ -351,7 +367,12 @@ class PackerLogic(QObject):
 
         if not os.path.exists(state_file):
             logger.debug("No existing session state found, starting fresh")
-            self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+            self.session_packing_state = {
+                "in_progress": {},
+                "completed_orders": [],
+                "skipped_orders": [],
+                "skipped_orders_timing": {},
+            }
             return
 
         try:
@@ -363,13 +384,18 @@ class PackerLogic(QObject):
             if data is None:
                 # File exists but couldn't be read (invalid JSON, etc.)
                 logger.error("Could not load session state, starting fresh")
-                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+                self.session_packing_state = {
+                    "in_progress": {},
+                    "completed_orders": [],
+                    "skipped_orders": [],
+                    "skipped_orders_timing": {},
+                }
                 return
 
             # Handle both old and new format (with version)
-            if isinstance(data, dict) and 'data' in data:
+            if isinstance(data, dict) and "data" in data:
                 # Legacy format with version wrapper
-                state_data = data['data']
+                state_data = data["data"]
             else:
                 # Could be new format (with metadata) or old direct format
                 state_data = data
@@ -378,18 +404,23 @@ class PackerLogic(QObject):
                 # Valid JSON (e.g. [], null, a bare string/number) but not an object -
                 # treat as corrupt state rather than let .get()/`in` below raise.
                 logger.error("Session state root is not an object, starting fresh")
-                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+                self.session_packing_state = {
+                    "in_progress": {},
+                    "completed_orders": [],
+                    "skipped_orders": [],
+                    "skipped_orders_timing": {},
+                }
                 return
 
             # Load core packing state with validation
             # CRITICAL FIX: Validate in_progress structure to prevent AttributeError on resume
-            raw_in_progress = state_data.get('in_progress', {})
+            raw_in_progress = state_data.get("in_progress", {})
             validated_in_progress = {}
 
             if isinstance(raw_in_progress, dict):
                 for order_num, order_state in raw_in_progress.items():
                     # Skip internal metadata keys (like _timing)
-                    if order_num.startswith('_'):
+                    if order_num.startswith("_"):
                         continue
 
                     # Validate that order_state is a list
@@ -416,33 +447,59 @@ class PackerLogic(QObject):
                         # - Legacy format: 'sku' (used by old tests and early versions)
 
                         # Check if item has any form of SKU identifier
-                        has_sku = 'original_sku' in item_state or 'normalized_sku' in item_state or 'sku' in item_state
+                        has_sku = (
+                            "original_sku" in item_state
+                            or "normalized_sku" in item_state
+                            or "sku" in item_state
+                        )
 
                         if has_sku:
                             # Migrate legacy 'sku' field to new format if needed
-                            if 'sku' in item_state and 'original_sku' not in item_state:
-                                item_state['original_sku'] = item_state['sku']
-                                logger.debug(f"Migrated legacy 'sku' field to 'original_sku' in {order_num}")
+                            if "sku" in item_state and "original_sku" not in item_state:
+                                item_state["original_sku"] = item_state["sku"]
+                                logger.debug(
+                                    f"Migrated legacy 'sku' field to 'original_sku' in {order_num}"
+                                )
 
-                            if 'original_sku' in item_state and 'normalized_sku' not in item_state:
+                            if (
+                                "original_sku" in item_state
+                                and "normalized_sku" not in item_state
+                            ):
                                 # Generate normalized_sku from original_sku if missing
-                                item_state['normalized_sku'] = self._normalize_sku(item_state['original_sku'])
-                                logger.debug(f"Generated normalized_sku from original_sku in {order_num}")
-                            elif 'normalized_sku' in item_state and 'original_sku' not in item_state:
+                                item_state["normalized_sku"] = self._normalize_sku(
+                                    item_state["original_sku"]
+                                )
+                                logger.debug(
+                                    f"Generated normalized_sku from original_sku in {order_num}"
+                                )
+                            elif (
+                                "normalized_sku" in item_state
+                                and "original_sku" not in item_state
+                            ):
                                 # Use normalized_sku as original_sku if original is missing
-                                item_state['original_sku'] = item_state['normalized_sku']
-                                logger.debug(f"Used normalized_sku as original_sku in {order_num}")
+                                item_state["original_sku"] = item_state[
+                                    "normalized_sku"
+                                ]
+                                logger.debug(
+                                    f"Used normalized_sku as original_sku in {order_num}"
+                                )
 
                             # Fill in missing optional fields with defaults
-                            if 'packed' not in item_state:
-                                item_state['packed'] = 0
-                                logger.debug(f"Added default packed=0 for item in {order_num}")
-                            if 'required' not in item_state:
-                                item_state['required'] = 0
-                                logger.debug(f"Added default required=0 for item in {order_num}")
-                            if 'row' not in item_state:
-                                item_state['row'] = idx
-                                logger.debug(f"Added default row={idx} for item in {order_num}")
+                            if "packed" not in item_state:
+                                item_state["packed"] = 0
+                                logger.debug(
+                                    f"Added default packed=0 for item in {order_num}"
+                                )
+                            if "required" not in item_state:
+                                item_state["required"] = 0
+                                logger.debug(
+                                    f"Added default required=0 for item in {order_num}"
+                                )
+                            if "row" not in item_state:
+                                item_state["row"] = idx
+                                logger.debug(
+                                    f"Added default row={idx} for item in {order_num}"
+                                )
 
                             validated_items.append(item_state)
                         else:
@@ -455,76 +512,102 @@ class PackerLogic(QObject):
                     if validated_items:
                         validated_in_progress[order_num] = validated_items
                     else:
-                        logger.warning(f"Order {order_num} has no valid items after validation, skipping")
+                        logger.warning(
+                            f"Order {order_num} has no valid items after validation, skipping"
+                        )
             else:
-                logger.error(f"in_progress is not a dict: {type(raw_in_progress).__name__}, using empty state")
+                logger.error(
+                    f"in_progress is not a dict: {type(raw_in_progress).__name__}, using empty state"
+                )
 
-            self.session_packing_state['in_progress'] = validated_in_progress
-            logger.debug(f"Loaded and validated {len(validated_in_progress)} in-progress orders")
+            self.session_packing_state["in_progress"] = validated_in_progress
+            logger.debug(
+                f"Loaded and validated {len(validated_in_progress)} in-progress orders"
+            )
 
             # Handle both new format (completed: list of dicts) and old format (completed_orders: list of strings)
-            if 'completed' in state_data:
+            if "completed" in state_data:
                 # New format: list of dicts with metadata
-                completed_list = state_data.get('completed', [])
+                completed_list = state_data.get("completed", [])
                 if completed_list and isinstance(completed_list[0], dict):
                     # Extract order numbers from metadata dicts
-                    self.session_packing_state['completed_orders'] = [
-                        item['order_number'] for item in completed_list if 'order_number' in item
+                    self.session_packing_state["completed_orders"] = [
+                        item["order_number"]
+                        for item in completed_list
+                        if "order_number" in item
                     ]
 
                     # CRITICAL: Restore timing metadata for Phase 2b
                     self.completed_orders_metadata = []
                     for item in completed_list:
                         metadata = {
-                            'order_number': item['order_number'],
-                            'started_at': item.get('started_at'),
-                            'completed_at': item.get('completed_at'),
-                            'duration_seconds': item.get('duration_seconds', 0),
-                            'items_count': item.get('items_count', 0),
-                            'items': item.get('items', []),
+                            "order_number": item["order_number"],
+                            "started_at": item.get("started_at"),
+                            "completed_at": item.get("completed_at"),
+                            "duration_seconds": item.get("duration_seconds", 0),
+                            "items_count": item.get("items_count", 0),
+                            "items": item.get("items", []),
                             # Restore 1.7 quality counters so generate_session_summary()
                             # aggregates correctly across resumed sessions.
-                            'corrections': item.get('corrections', 0),
-                            'extra_scans_count': item.get('extra_scans_count', 0),
-                            'unknown_scans_count': item.get('unknown_scans_count', 0),
-                            'time_to_first_scan_seconds': item.get('time_to_first_scan_seconds'),
+                            "corrections": item.get("corrections", 0),
+                            "extra_scans_count": item.get("extra_scans_count", 0),
+                            "unknown_scans_count": item.get("unknown_scans_count", 0),
+                            "time_to_first_scan_seconds": item.get(
+                                "time_to_first_scan_seconds"
+                            ),
                         }
                         self.completed_orders_metadata.append(metadata)
 
-                    logger.info(f"Restored {len(self.completed_orders_metadata)} orders with timing metadata")
+                    logger.info(
+                        f"Restored {len(self.completed_orders_metadata)} orders with timing metadata"
+                    )
                 else:
                     # Fallback if completed is just a list of strings
-                    self.session_packing_state['completed_orders'] = completed_list
+                    self.session_packing_state["completed_orders"] = completed_list
                     self.completed_orders_metadata = []
                     logger.debug("Loaded old format state (no timing metadata)")
             else:
                 # Old format: simple list of order numbers
-                self.session_packing_state['completed_orders'] = state_data.get('completed_orders', [])
+                self.session_packing_state["completed_orders"] = state_data.get(
+                    "completed_orders", []
+                )
                 self.completed_orders_metadata = []
                 logger.debug("Old format: no timing metadata available")
 
             # Load skipped orders list (added in later versions; default to empty list)
-            self.session_packing_state['skipped_orders'] = state_data.get('skipped_orders', [])
+            self.session_packing_state["skipped_orders"] = state_data.get(
+                "skipped_orders", []
+            )
             # Load skipped orders timing (maps order_num -> ISO skip timestamp)
-            self.session_packing_state['skipped_orders_timing'] = state_data.get('skipped_orders_timing', {})
+            self.session_packing_state["skipped_orders_timing"] = state_data.get(
+                "skipped_orders_timing", {}
+            )
 
             # Load metadata if present (new format)
-            if 'session_id' in state_data:
-                self.session_id = state_data.get('session_id')
-                self.packing_list_name = state_data.get('packing_list_name')
-                self.started_at = state_data.get('started_at')
+            if "session_id" in state_data:
+                self.session_id = state_data.get("session_id")
+                self.packing_list_name = state_data.get("packing_list_name")
+                self.started_at = state_data.get("started_at")
                 # worker_pc is set from environment in __init__, but can be overridden from state
                 logger.debug(f"Loaded session metadata: {self.session_id}")
 
             # Phase 2b: Restore in-progress timing if present
-            if 'in_progress' in state_data and '_timing' in state_data['in_progress']:
-                timing_data = state_data['in_progress']['_timing']
-                self.current_order_start_time = timing_data.get('current_order_start_time')
-                self.current_order_items_scanned = timing_data.get('items_scanned', [])
-                self.current_order_corrections = timing_data.get('corrections', 0)
-                self.current_order_extra_scan_count = timing_data.get('extra_scan_count', 0)
-                self.current_order_unknown_scan_count = timing_data.get('unknown_scan_count', 0)
-                logger.debug(f"Restored in-progress timing: started_at={self.current_order_start_time}")
+            if "in_progress" in state_data and "_timing" in state_data["in_progress"]:
+                timing_data = state_data["in_progress"]["_timing"]
+                self.current_order_start_time = timing_data.get(
+                    "current_order_start_time"
+                )
+                self.current_order_items_scanned = timing_data.get("items_scanned", [])
+                self.current_order_corrections = timing_data.get("corrections", 0)
+                self.current_order_extra_scan_count = timing_data.get(
+                    "extra_scan_count", 0
+                )
+                self.current_order_unknown_scan_count = timing_data.get(
+                    "unknown_scan_count", 0
+                )
+                logger.debug(
+                    f"Restored in-progress timing: started_at={self.current_order_start_time}"
+                )
             else:
                 self.current_order_start_time = None
                 self.current_order_items_scanned = []
@@ -533,16 +616,23 @@ class PackerLogic(QObject):
                 self.current_order_unknown_scan_count = 0
 
             # Restore extra items if present (crash recovery)
-            self.current_extra_items = state_data.get('_current_extras', {})
+            self.current_extra_items = state_data.get("_current_extras", {})
 
-            in_progress_count = len(self.session_packing_state['in_progress'])
-            completed_count = len(self.session_packing_state['completed_orders'])
+            in_progress_count = len(self.session_packing_state["in_progress"])
+            completed_count = len(self.session_packing_state["completed_orders"])
 
-            logger.info(f"Session state loaded: {in_progress_count} in progress, {completed_count} completed")
+            logger.info(
+                f"Session state loaded: {in_progress_count} in progress, {completed_count} completed"
+            )
 
         except (OSError, json.JSONDecodeError):
             logger.exception("Error loading session state, starting fresh")
-            self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+            self.session_packing_state = {
+                "in_progress": {},
+                "completed_orders": [],
+                "skipped_orders": [],
+                "skipped_orders_timing": {},
+            }
 
     def _build_state_dict(self) -> dict[str, Any]:
         """
@@ -553,16 +643,20 @@ class PackerLogic(QObject):
         Returns a plain serialisable dict — safe to hand off to a background thread.
         """
         total_orders = len(self.orders_data) if self.orders_data else 0
-        completed_orders_count = len(self.session_packing_state.get('completed_orders', []))
+        completed_orders_count = len(
+            self.session_packing_state.get("completed_orders", [])
+        )
 
         total_items = self._total_items
-        packed_items = sum(o.get('items_count', 0) for o in self.completed_orders_metadata)
+        packed_items = sum(
+            o.get("items_count", 0) for o in self.completed_orders_metadata
+        )
 
-        for order_state in self.session_packing_state.get('in_progress', {}).values():
+        for order_state in self.session_packing_state.get("in_progress", {}).values():
             if isinstance(order_state, list):
                 for item in order_state:
                     if isinstance(item, dict):
-                        packed_items += item.get('packed', 0)
+                        packed_items += item.get("packed", 0)
 
         from shared.metadata_utils import get_current_timestamp
 
@@ -573,35 +667,48 @@ class PackerLogic(QObject):
             "packing_list_name": self.packing_list_name,
             "started_at": self.started_at,
             "last_updated": get_current_timestamp(),
-            "status": "completed" if completed_orders_count == total_orders and total_orders > 0 else "in_progress",
+            "status": "completed"
+            if completed_orders_count == total_orders and total_orders > 0
+            else "in_progress",
             "pc_name": self.worker_pc,
             "progress": {
                 "total_orders": total_orders,
                 "completed_orders": completed_orders_count,
                 "in_progress_order": self.current_order_number,
                 "total_items": total_items,
-                "packed_items": packed_items
+                "packed_items": packed_items,
             },
             "in_progress": {
-                **self.session_packing_state.get('in_progress', {}),
-                **({
-                    "_timing": {
-                        "current_order_start_time": self.current_order_start_time,
-                        "items_scanned": self.current_order_items_scanned,
-                        "corrections": self.current_order_corrections,
-                        "extra_scan_count": self.current_order_extra_scan_count,
-                        "unknown_scan_count": self.current_order_unknown_scan_count,
+                **self.session_packing_state.get("in_progress", {}),
+                **(
+                    {
+                        "_timing": {
+                            "current_order_start_time": self.current_order_start_time,
+                            "items_scanned": self.current_order_items_scanned,
+                            "corrections": self.current_order_corrections,
+                            "extra_scan_count": self.current_order_extra_scan_count,
+                            "unknown_scan_count": self.current_order_unknown_scan_count,
+                        }
                     }
-                } if self.current_order_number and self.current_order_start_time else {})
+                    if self.current_order_number and self.current_order_start_time
+                    else {}
+                ),
             },
-            "_current_extras": self.current_extra_items if self.current_extra_items else {},
+            "_current_extras": self.current_extra_items
+            if self.current_extra_items
+            else {},
             "completed": (
                 self.completed_orders_metadata
-                if hasattr(self, 'completed_orders_metadata') and self.completed_orders_metadata
+                if hasattr(self, "completed_orders_metadata")
+                and self.completed_orders_metadata
                 else self._build_completed_list()
             ),
-            "skipped_orders": list(self.session_packing_state.get('skipped_orders', [])),
-            "skipped_orders_timing": dict(self.session_packing_state.get('skipped_orders_timing', {})),
+            "skipped_orders": list(
+                self.session_packing_state.get("skipped_orders", [])
+            ),
+            "skipped_orders_timing": dict(
+                self.session_packing_state.get("skipped_orders_timing", {})
+            ),
         }
 
     def _do_atomic_write(self, state_data: dict[str, Any]) -> None:
@@ -615,7 +722,9 @@ class PackerLogic(QObject):
         """
         state_file = self._get_state_file_path()
         total_orders = state_data.get("progress", {}).get("total_orders", 0)
-        completed_orders_count = state_data.get("progress", {}).get("completed_orders", 0)
+        completed_orders_count = state_data.get("progress", {}).get(
+            "completed_orders", 0
+        )
         packed_items = state_data.get("progress", {}).get("packed_items", 0)
         total_items = state_data.get("progress", {}).get("total_items", 0)
 
@@ -623,7 +732,9 @@ class PackerLogic(QObject):
             atomic_write_json(state_file, state_data)
             invalidate_json_cache(state_file)
 
-            logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
+            logger.debug(
+                f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items"
+            )
 
         except Exception:
             logger.exception("CRITICAL: Failed to save session state")
@@ -679,21 +790,24 @@ class PackerLogic(QObject):
         storing start time for each order (future enhancement).
         """
         from shared.metadata_utils import get_current_timestamp
+
         # Single approximate timestamp for the whole fallback list (not per-order)
         fallback_ts = get_current_timestamp()
         completed_list = []
 
-        for order_number in self.session_packing_state.get('completed_orders', []):
+        for order_number in self.session_packing_state.get("completed_orders", []):
             items_count = 0
             if order_number in self.orders_data:
-                items_count = len(self.orders_data[order_number].get('items', []))
+                items_count = len(self.orders_data[order_number].get("items", []))
 
-            completed_list.append({
-                "order_number": order_number,
-                "completed_at": fallback_ts,  # Approximation — no per-order timestamps available
-                "items_count": items_count,
-                # duration_seconds omitted: no start time available in fallback path
-            })
+            completed_list.append(
+                {
+                    "order_number": order_number,
+                    "completed_at": fallback_ts,  # Approximation — no per-order timestamps available
+                    "items_count": items_count,
+                    # duration_seconds omitted: no start time available in fallback path
+                }
+            )
 
         return completed_list
 
@@ -717,8 +831,7 @@ class PackerLogic(QObject):
         # Calculate order duration
         if self.current_order_start_time:
             duration_seconds = calculate_duration(
-                self.current_order_start_time,
-                completed_at
+                self.current_order_start_time, completed_at
             )
         else:
             duration_seconds = 0
@@ -734,7 +847,9 @@ class PackerLogic(QObject):
         # items_count = total units packed (sum of quantities across all scan records).
         # Using sum() rather than len() correctly accounts for force-confirm records
         # that represent multiple units in a single record entry.
-        items_count = sum(r.get('quantity', 1) for r in self.current_order_items_scanned)
+        items_count = sum(
+            r.get("quantity", 1) for r in self.current_order_items_scanned
+        )
 
         # Build order metadata record with full 1.7 metrics
         order_metadata = {
@@ -767,7 +882,9 @@ class PackerLogic(QObject):
         # for legacy state management. The reset happens in clear_current_order() or
         # when starting a new order.
 
-    def _initialize_session_metadata(self, session_id: str | None = None, packing_list_name: str | None = None):
+    def _initialize_session_metadata(
+        self, session_id: str | None = None, packing_list_name: str | None = None
+    ):
         """
         Initialize session metadata for state tracking.
 
@@ -781,6 +898,7 @@ class PackerLogic(QObject):
         if not self.started_at:
             # Only set started_at if not already set (for session restoration)
             from shared.metadata_utils import get_current_timestamp
+
             self.started_at = get_current_timestamp()
 
         if session_id:
@@ -792,7 +910,9 @@ class PackerLogic(QObject):
         if packing_list_name:
             self.packing_list_name = packing_list_name
 
-        logger.info(f"Session metadata initialized: {self.session_id} / {self.packing_list_name}")
+        logger.info(
+            f"Session metadata initialized: {self.session_id} / {self.packing_list_name}"
+        )
 
     def _normalize_sku(self, sku: Any) -> str:
         """Normalize an SKU for consistent comparison. See module-level normalize_sku()."""
@@ -833,11 +953,15 @@ class PackerLogic(QObject):
             return ""
 
         # Same normalization as Shopify Tool's sanitize_order_number()
-        normalized = ''.join(c for c in str(order_number) if c.isalnum() or c in ['-', '_'])
+        normalized = "".join(
+            c for c in str(order_number) if c.isalnum() or c in ["-", "_"]
+        )
 
         # Log warning if order number becomes empty after normalization
         if not normalized:
-            logger.warning(f"Order number '{order_number}' has no valid alphanumeric characters")
+            logger.warning(
+                f"Order number '{order_number}' has no valid alphanumeric characters"
+            )
 
         return normalized
 
@@ -865,7 +989,9 @@ class PackerLogic(QObject):
         """
         # STEP 1: Find order using normalized comparison
         scanned_normalized = self._normalize_order_number(scanned_text)
-        logger.debug(f"Scanned text: '{scanned_text}' -> Normalized: '{scanned_normalized}'")
+        logger.debug(
+            f"Scanned text: '{scanned_text}' -> Normalized: '{scanned_normalized}'"
+        )
 
         # Lazy-build the lookup if orders_data was set directly (e.g. in tests)
         if not self._normalized_order_lookup and self.orders_data:
@@ -874,7 +1000,9 @@ class PackerLogic(QObject):
         # Find matching order in orders_data via pre-built normalized lookup (O(1))
         matched_order_number = self._normalized_order_lookup.get(scanned_normalized)
         if matched_order_number:
-            logger.debug(f"Match found: '{scanned_text}' matches order '{matched_order_number}'")
+            logger.debug(
+                f"Match found: '{scanned_text}' matches order '{matched_order_number}'"
+            )
 
         if not matched_order_number:
             logger.info(f"Order not found for scanned text: '{scanned_text}'")
@@ -882,37 +1010,46 @@ class PackerLogic(QObject):
 
         original_order_number = matched_order_number
 
-        if original_order_number in self.session_packing_state['completed_orders']:
+        if original_order_number in self.session_packing_state["completed_orders"]:
             return None, "ORDER_ALREADY_COMPLETED"
 
         self.current_order_number = original_order_number
         self._unskip_current_order_if_needed()
-        items = self.orders_data[original_order_number]['items']
+        items = self.orders_data[original_order_number]["items"]
 
         # Capture "is this a brand-new order?" BEFORE potentially adding it to in_progress.
-        is_new_order = original_order_number not in self.session_packing_state['in_progress']
+        is_new_order = (
+            original_order_number not in self.session_packing_state["in_progress"]
+        )
 
         if not is_new_order:
-            self.current_order_state = self.session_packing_state['in_progress'][original_order_number]
+            self.current_order_state = self.session_packing_state["in_progress"][
+                original_order_number
+            ]
         else:
             self.current_order_state = []
             for i, item in enumerate(items):
-                sku = item.get('SKU')
-                if not sku: continue
+                sku = item.get("SKU")
+                if not sku:
+                    continue
                 try:
-                    quantity = int(float(item.get('Quantity', 0)))
+                    quantity = int(float(item.get("Quantity", 0)))
                 except (ValueError, TypeError):
                     quantity = 1
 
                 normalized_sku = self._normalize_sku(sku)
-                self.current_order_state.append({
-                    'original_sku': sku,
-                    'normalized_sku': normalized_sku,
-                    'required': quantity,
-                    'packed': 0,
-                    'row': i
-                })
-            self.session_packing_state['in_progress'][original_order_number] = self.current_order_state
+                self.current_order_state.append(
+                    {
+                        "original_sku": sku,
+                        "normalized_sku": normalized_sku,
+                        "required": quantity,
+                        "packed": 0,
+                        "row": i,
+                    }
+                )
+            self.session_packing_state["in_progress"][original_order_number] = (
+                self.current_order_state
+            )
             self._save_session_state_async()
 
         # Phase 2b: Record order start time.
@@ -920,13 +1057,16 @@ class PackerLogic(QObject):
         # from a previous session), preserve the start time and scanned items list that were
         # restored by _load_session_state() so timing continuity is maintained.
         from shared.metadata_utils import get_current_timestamp
+
         if is_new_order:
             self.current_order_start_time = get_current_timestamp()
             self.current_order_items_scanned = []
             self.current_order_corrections = 0
             self.current_order_extra_scan_count = 0
             self.current_order_unknown_scan_count = 0
-            logger.info(f"Order {original_order_number} started at {self.current_order_start_time}")
+            logger.info(
+                f"Order {original_order_number} started at {self.current_order_start_time}"
+            )
         else:
             # Resumed order — all timing and per-order quality counters were restored from
             # _timing in _load_session_state(); nothing to reset here.
@@ -1024,18 +1164,21 @@ class PackerLogic(QObject):
         # - Third scan: packed=2 -> packed=3 (complete!)
         found_item = None
         for item_state in self.current_order_state:
-            if item_state['normalized_sku'] == normalized_final_sku and item_state['packed'] < item_state['required']:
+            if (
+                item_state["normalized_sku"] == normalized_final_sku
+                and item_state["packed"] < item_state["required"]
+            ):
                 found_item = item_state
                 break
 
         # === STEP 4: Process successful match ===
         if found_item:
             # Increment packed count for this item
-            found_item['packed'] += 1
+            found_item["packed"] += 1
 
             # Check if this specific item is now complete
             # (all required quantity for this SKU has been packed)
-            is_complete = found_item['packed'] == found_item['required']
+            is_complete = found_item["packed"] == found_item["required"]
 
             # Phase 2b: Record item scan with timestamp
             from shared.metadata_utils import calculate_duration, get_current_timestamp
@@ -1045,20 +1188,21 @@ class PackerLogic(QObject):
             # Calculate time from order start
             if self.current_order_start_time:
                 time_from_order_start = calculate_duration(
-                    self.current_order_start_time,
-                    scan_timestamp
+                    self.current_order_start_time, scan_timestamp
                 )
             else:
                 time_from_order_start = 0
                 logger.warning("Order start time not set, cannot calculate timing")
 
             # Get item details from orders_data
-            items_list = self.orders_data[self.current_order_number]['items']
-            item_idx = found_item['row']
+            items_list = self.orders_data[self.current_order_number]["items"]
+            item_idx = found_item["row"]
 
             # Record first-scan latency (time between order start and very first item scan)
             time_to_first_scan = (
-                time_from_order_start if len(self.current_order_items_scanned) == 0 else None
+                time_from_order_start
+                if len(self.current_order_items_scanned) == 0
+                else None
             )
 
             # Build item scan record — quantity=1: each scan packs exactly one unit.
@@ -1066,7 +1210,7 @@ class PackerLogic(QObject):
             # by row index rather than by SKU (which is ambiguous when multiple
             # rows share the same SKU, e.g. split-line orders).
             item_title = (
-                items_list[item_idx].get('Product_Name', normalized_final_sku)
+                items_list[item_idx].get("Product_Name", normalized_final_sku)
                 if item_idx < len(items_list)
                 else normalized_final_sku
             )
@@ -1085,15 +1229,21 @@ class PackerLogic(QObject):
             # Add to scanned items list
             self.current_order_items_scanned.append(item_scan_record)
 
-            logger.debug(f"Item {normalized_final_sku} scanned at +{time_from_order_start}s from order start")
+            logger.debug(
+                f"Item {normalized_final_sku} scanned at +{time_from_order_start}s from order start"
+            )
 
             # Update session state (in-memory)
-            self.session_packing_state['in_progress'][self.current_order_number] = self.current_order_state
+            self.session_packing_state["in_progress"][self.current_order_number] = (
+                self.current_order_state
+            )
 
             # === Check if ENTIRE order is complete ===
             # An order is complete when ALL items have been packed
             # (not just the current item)
-            all_items_complete = all(s['packed'] == s['required'] for s in self.current_order_state)
+            all_items_complete = all(
+                s["packed"] == s["required"] for s in self.current_order_state
+            )
 
             if all_items_complete:
                 if self.current_extra_items:
@@ -1101,8 +1251,8 @@ class PackerLogic(QObject):
                     status = "ORDER_COMPLETE_WITH_EXTRAS"
                     self._save_session_state_sync()
                     return {
-                        "row": found_item['row'],
-                        "packed": found_item['packed'],
+                        "row": found_item["row"],
+                        "packed": found_item["packed"],
                         "is_complete": is_complete,
                     }, status
                 # Order is complete!
@@ -1112,12 +1262,17 @@ class PackerLogic(QObject):
                 self._complete_current_order()
 
                 # Move order from "in_progress" to "completed_orders"
-                del self.session_packing_state['in_progress'][self.current_order_number]
+                del self.session_packing_state["in_progress"][self.current_order_number]
 
                 # Add to completed list (if not already there)
                 # This check prevents duplicates in case of rare edge cases
-                if self.current_order_number not in self.session_packing_state['completed_orders']:
-                    self.session_packing_state['completed_orders'].append(self.current_order_number)
+                if (
+                    self.current_order_number
+                    not in self.session_packing_state["completed_orders"]
+                ):
+                    self.session_packing_state["completed_orders"].append(
+                        self.current_order_number
+                    )
 
                 # Remove from skipped list if this order was previously skipped
                 self._unskip_current_order_if_needed()
@@ -1130,12 +1285,14 @@ class PackerLogic(QObject):
 
                 # Calculate overall progress for this order
                 # (total items packed vs total items required)
-                total_packed = sum(s['packed'] for s in self.current_order_state)
-                total_required = sum(s['required'] for s in self.current_order_state)
+                total_packed = sum(s["packed"] for s in self.current_order_state)
+                total_required = sum(s["required"] for s in self.current_order_state)
 
                 # Emit Qt signal to update UI progress display
                 # This allows the UI to show "5/8 items packed" in real-time
-                self.item_packed.emit(self.current_order_number, total_packed, total_required)
+                self.item_packed.emit(
+                    self.current_order_number, total_packed, total_required
+                )
 
             # === Save state to disk ===
             # ORDER_COMPLETE: flush first (checkpoint) so the completed order is persisted
@@ -1147,13 +1304,20 @@ class PackerLogic(QObject):
                 self._save_session_state_async()
 
             # Return success with detailed information
-            return {"row": found_item['row'], "packed": found_item['packed'], "is_complete": is_complete}, status
+            return {
+                "row": found_item["row"],
+                "packed": found_item["packed"],
+                "is_complete": is_complete,
+            }, status
 
         # === STEP 5: Handle error cases ===
         # If we reach here, the scanned SKU didn't match any unpacked item
 
         # Check if SKU exists in order but all items are already packed
-        is_sku_in_order = any(s['normalized_sku'] == normalized_final_sku for s in self.current_order_state)
+        is_sku_in_order = any(
+            s["normalized_sku"] == normalized_final_sku
+            for s in self.current_order_state
+        )
 
         if is_sku_in_order:
             # SKU is in order, but all required quantity already packed — track as extra
@@ -1182,19 +1346,22 @@ class PackerLogic(QObject):
         if not self.current_order_number:
             return
         from shared.metadata_utils import get_current_timestamp
+
         order_num = self.current_order_number
-        skipped = self.session_packing_state['skipped_orders']
+        skipped = self.session_packing_state["skipped_orders"]
         if order_num not in skipped:
             skipped.append(order_num)
         # Record the skip timestamp for metrics
-        self.session_packing_state.setdefault('skipped_orders_timing', {})[order_num] = get_current_timestamp()
+        self.session_packing_state.setdefault("skipped_orders_timing", {})[
+            order_num
+        ] = get_current_timestamp()
         self.clear_current_order()
         self._check_all_complete()
         self._save_session_state_async()
 
     def _unskip_current_order_if_needed(self) -> None:
         """Remove current_order_number from skipped_orders if it was previously skipped."""
-        skipped = self.session_packing_state['skipped_orders']
+        skipped = self.session_packing_state["skipped_orders"]
         if self.current_order_number in skipped:
             skipped.remove(self.current_order_number)
 
@@ -1211,12 +1378,12 @@ class PackerLogic(QObject):
         """
         if not self.current_order_number:
             return {}, "NO_ACTIVE_ORDER"
-        item = next((s for s in self.current_order_state if s.get('row') == row), None)
+        item = next((s for s in self.current_order_state if s.get("row") == row), None)
         if item is None:
             return {}, "NO_ACTIVE_ORDER"
-        if item['packed'] <= 0:
+        if item["packed"] <= 0:
             return {"row": row, "packed": 0}, "ITEM_ALREADY_ZERO"
-        item['packed'] -= 1
+        item["packed"] -= 1
         self.current_order_corrections += 1
 
         # Adjust the most recent scan record for this item so that items_count in the
@@ -1227,16 +1394,18 @@ class PackerLogic(QObject):
         # than deleted, since only one unit is being cancelled at a time.
         for i in range(len(self.current_order_items_scanned) - 1, -1, -1):
             rec = self.current_order_items_scanned[i]
-            if rec.get('row') == row:
-                if rec.get('quantity', 1) > 1:
-                    rec['quantity'] -= 1
+            if rec.get("row") == row:
+                if rec.get("quantity", 1) > 1:
+                    rec["quantity"] -= 1
                 else:
                     self.current_order_items_scanned.pop(i)
                 break
 
-        self.session_packing_state['in_progress'][self.current_order_number] = self.current_order_state
+        self.session_packing_state["in_progress"][self.current_order_number] = (
+            self.current_order_state
+        )
         self._save_session_state_async()
-        return {"row": row, "packed": item['packed']}, "ITEM_DECREMENTED"
+        return {"row": row, "packed": item["packed"]}, "ITEM_DECREMENTED"
 
     def force_confirm_item(self, row: int) -> tuple[dict, str]:
         """
@@ -1252,29 +1421,31 @@ class PackerLogic(QObject):
         """
         if not self.current_order_number:
             return {}, "NO_ACTIVE_ORDER"
-        item = next((s for s in self.current_order_state if s.get('row') == row), None)
+        item = next((s for s in self.current_order_state if s.get("row") == row), None)
         if item is None:
             return {}, "NO_ACTIVE_ORDER"
 
         # Add a scan record for the force-confirmed quantity (remaining unpacked qty).
         # This ensures _complete_current_order() sees a full items list with timestamps.
         from shared.metadata_utils import calculate_duration, get_current_timestamp
+
         force_timestamp = get_current_timestamp()
         time_from_start = (
             calculate_duration(self.current_order_start_time, force_timestamp)
-            if self.current_order_start_time else 0
+            if self.current_order_start_time
+            else 0
         )
-        items_list = self.orders_data[self.current_order_number]['items']
-        item_idx = item.get('row', 0)
+        items_list = self.orders_data[self.current_order_number]["items"]
+        item_idx = item.get("row", 0)
         item_title = (
-            items_list[item_idx].get('Product_Name', item['normalized_sku'])
+            items_list[item_idx].get("Product_Name", item["normalized_sku"])
             if 0 <= item_idx < len(items_list)
-            else item['normalized_sku']
+            else item["normalized_sku"]
         )
         # quantity = remaining units being force-confirmed (packed will jump from current to required)
-        remaining_qty = item['required'] - item['packed']
+        remaining_qty = item["required"] - item["packed"]
         force_record = {
-            "sku": item['normalized_sku'],
+            "sku": item["normalized_sku"],
             "title": item_title,
             "quantity": remaining_qty,
             "row": item_idx,
@@ -1286,14 +1457,21 @@ class PackerLogic(QObject):
         if remaining_qty > 0:
             self.current_order_items_scanned.append(force_record)
 
-        item['packed'] = item['required']
-        self.session_packing_state['in_progress'][self.current_order_number] = self.current_order_state
-        all_done = all(s['packed'] >= s['required'] for s in self.current_order_state)
+        item["packed"] = item["required"]
+        self.session_packing_state["in_progress"][self.current_order_number] = (
+            self.current_order_state
+        )
+        all_done = all(s["packed"] >= s["required"] for s in self.current_order_state)
         if all_done and not self.current_extra_items:
             self._complete_current_order()
-            del self.session_packing_state['in_progress'][self.current_order_number]
-            if self.current_order_number not in self.session_packing_state['completed_orders']:
-                self.session_packing_state['completed_orders'].append(self.current_order_number)
+            del self.session_packing_state["in_progress"][self.current_order_number]
+            if (
+                self.current_order_number
+                not in self.session_packing_state["completed_orders"]
+            ):
+                self.session_packing_state["completed_orders"].append(
+                    self.current_order_number
+                )
             self._unskip_current_order_if_needed()
             self._check_all_complete()
             self._save_session_state_sync()  # Checkpoint: order now complete
@@ -1301,7 +1479,7 @@ class PackerLogic(QObject):
             self._save_session_state_async()
         return {
             "row": row,
-            "packed": item['required'],
+            "packed": item["required"],
             "is_complete": True,
             "order_complete": all_done and not self.current_extra_items,
         }, "FORCE_CONFIRMED"
@@ -1309,19 +1487,27 @@ class PackerLogic(QObject):
     def _check_all_complete(self):
         """Emit all_orders_complete if every order in the session is packed or skipped."""
         total = len(self.orders_data)
-        done = len(self.session_packing_state['completed_orders'])
-        skipped = len(self.session_packing_state['skipped_orders'])
+        done = len(self.session_packing_state["completed_orders"])
+        skipped = len(self.session_packing_state["skipped_orders"])
         if total > 0 and (done + skipped) >= total:
             self.all_orders_complete.emit()
 
     def confirm_keep_extra(self, normalized_sku: str) -> tuple[dict, str]:
         """
-        Acknowledges an extra item as intentionally included.
-        Removes it from current_extra_items and checks if order can complete.
+        Acknowledges one unit of an extra item as intentionally included.
+        Decrements the extra count; removes the key when it reaches 0, then
+        checks whether the order can complete.
+
+        One unit per click, like remove_extra_item: a SKU scanned twice takes
+        two decisions, because each unit is its own decision.
 
         Returns: ({}, "ORDER_NOW_COMPLETE") or ({}, "EXTRA_PENDING")
         """
-        self.current_extra_items.pop(normalized_sku, None)
+        count = self.current_extra_items.get(normalized_sku, 0)
+        if count > 1:
+            self.current_extra_items[normalized_sku] = count - 1
+        else:
+            self.current_extra_items.pop(normalized_sku, None)
         return self._maybe_complete_after_extra_resolution()
 
     def remove_extra_item(self, normalized_sku: str) -> tuple[dict, str]:
@@ -1348,16 +1534,21 @@ class PackerLogic(QObject):
             return {}, "EXTRA_PENDING"
         # Extras cleared — verify all required items are actually packed
         all_items_done = all(
-            s['packed'] >= s['required'] for s in self.current_order_state
+            s["packed"] >= s["required"] for s in self.current_order_state
         )
         if not all_items_done:
             self._save_session_state_async()
             return {}, "EXTRA_CLEARED"
         # All items packed AND all extras resolved — finalize the order
         self._complete_current_order()
-        del self.session_packing_state['in_progress'][self.current_order_number]
-        if self.current_order_number not in self.session_packing_state['completed_orders']:
-            self.session_packing_state['completed_orders'].append(self.current_order_number)
+        del self.session_packing_state["in_progress"][self.current_order_number]
+        if (
+            self.current_order_number
+            not in self.session_packing_state["completed_orders"]
+        ):
+            self.session_packing_state["completed_orders"].append(
+                self.current_order_number
+            )
         self._unskip_current_order_if_needed()
         self._check_all_complete()
         self._save_session_state_sync()  # Checkpoint: order now complete
@@ -1413,10 +1604,12 @@ class PackerLogic(QObject):
 
         # Load JSON data
         try:
-            with open(packing_list_path, 'r', encoding='utf-8') as f:
+            with open(packing_list_path, "r", encoding="utf-8") as f:
                 packing_data = json.load(f)
 
-            logger.debug(f"Loaded packing list: {packing_data.get('list_name', list_name)}")
+            logger.debug(
+                f"Loaded packing list: {packing_data.get('list_name', list_name)}"
+            )
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in packing list file: {e}"
@@ -1428,13 +1621,13 @@ class PackerLogic(QObject):
             raise ValueError(error_msg)
 
         # Extract orders list
-        orders_list = packing_data.get('orders', [])
+        orders_list = packing_data.get("orders", [])
         if not orders_list:
             logger.warning(f"No orders found in packing list: {list_name}")
-            return 0, packing_data.get('list_name', list_name)
+            return 0, packing_data.get("list_name", list_name)
 
         # Build raw order lookup for metadata preservation
-        order_raw_data = {order.get('order_number', ''): order for order in orders_list}
+        order_raw_data = {order.get("order_number", ""): order for order in orders_list}
 
         # Convert to DataFrame (packing list format)
         # Each order may have multiple items, need to flatten
@@ -1443,19 +1636,19 @@ class PackerLogic(QObject):
         for order in orders_list:
             # Validate required order fields
             missing_fields = []
-            if 'order_number' not in order:
-                missing_fields.append('order_number')
-            if 'courier' not in order or not order['courier']:
-                missing_fields.append('courier')
+            if "order_number" not in order:
+                missing_fields.append("order_number")
+            if "courier" not in order or not order["courier"]:
+                missing_fields.append("courier")
 
             if missing_fields:
                 error_msg = f"Missing required fields in order data: {missing_fields}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            order_number = order['order_number']
-            courier = order['courier']
-            items = order.get('items', [])
+            order_number = order["order_number"]
+            courier = order["courier"]
+            items = order.get("items", [])
 
             if not items:
                 logger.warning(f"Order {order_number} has no items, skipping")
@@ -1463,19 +1656,21 @@ class PackerLogic(QObject):
 
             for item in items:
                 row = {
-                    'Order_Number': order_number,
-                    'SKU': item.get('sku', ''),
-                    'Product_Name': item.get('product_name', ''),
-                    'Quantity': str(item.get('quantity', 1)),  # Convert to string for consistency
-                    'Courier': courier
+                    "Order_Number": order_number,
+                    "SKU": item.get("sku", ""),
+                    "Product_Name": item.get("product_name", ""),
+                    "Quantity": str(
+                        item.get("quantity", 1)
+                    ),  # Convert to string for consistency
+                    "Courier": courier,
                 }
 
                 # Add any extra fields from order
                 # (e.g., customer name, address, tracking number, etc.)
                 for key, value in order.items():
-                    if key not in ['order_number', 'courier', 'items']:
+                    if key not in ["order_number", "courier", "items"]:
                         # Capitalize key to match packing list style
-                        formatted_key = key.replace('_', ' ').title().replace(' ', '_')
+                        formatted_key = key.replace("_", " ").title().replace(" ", "_")
                         row[formatted_key] = str(value)
 
                 rows.append(row)
@@ -1485,7 +1680,7 @@ class PackerLogic(QObject):
 
         if df.empty:
             logger.warning("No order items to process")
-            return 0, packing_data.get('list_name', list_name)
+            return 0, packing_data.get("list_name", list_name)
 
         # Validate required columns
         missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -1498,30 +1693,39 @@ class PackerLogic(QObject):
         self.packing_list_df = df
         self.processed_df = df.copy()
         try:
-            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+            self._total_items = int(
+                pd.to_numeric(df["Quantity"], errors="coerce").sum()
+            )
         except Exception as e:
             logger.warning(f"Could not compute total items from Quantity column: {e}")
             self._total_items = 0
 
-        logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
+        logger.info(
+            f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame"
+        )
 
         # Group items by order and populate orders_data
         self.orders_data = {}
-        for order_number in df['Order_Number'].unique():
-            order_df = df[df['Order_Number'] == order_number]
+        for order_number in df["Order_Number"].unique():
+            order_df = df[df["Order_Number"] == order_number]
             raw = order_raw_data.get(order_number, {})
             self.orders_data[order_number] = {
-                'items': order_df.to_dict('records'),
-                'metadata': {
-                    'order_type':               raw.get('order_type') or '',
-                    'shipping_provider':        raw.get('shipping_provider') or raw.get('courier') or '',
-                    'destination_country':      raw.get('destination_country') or raw.get('shipping_country') or '',
-                    'tags':                     list(raw.get('tags') or []),
-                    'notes':                    raw.get('notes') or '',
-                    'system_note':              raw.get('system_note') or '',
-                    'internal_tags':            list(raw.get('internal_tags') or []),
-                    'order_min_box':            raw.get('order_min_box') or '',
-                    'order_fulfillment_status': raw.get('order_fulfillment_status') or '',
+                "items": order_df.to_dict("records"),
+                "metadata": {
+                    "order_type": raw.get("order_type") or "",
+                    "shipping_provider": raw.get("shipping_provider")
+                    or raw.get("courier")
+                    or "",
+                    "destination_country": raw.get("destination_country")
+                    or raw.get("shipping_country")
+                    or "",
+                    "tags": list(raw.get("tags") or []),
+                    "notes": raw.get("notes") or "",
+                    "system_note": raw.get("system_note") or "",
+                    "internal_tags": list(raw.get("internal_tags") or []),
+                    "order_min_box": raw.get("order_min_box") or "",
+                    "order_fulfillment_status": raw.get("order_fulfillment_status")
+                    or "",
                 },
             }
 
@@ -1533,7 +1737,7 @@ class PackerLogic(QObject):
         try:
             # Try to extract session_id from path (parent directory name)
             parent_path = packing_list_path.parent
-            if parent_path.name == 'packing_lists':
+            if parent_path.name == "packing_lists":
                 # Path is .../packing_lists/list.json, go up one more level
                 session_dir = parent_path.parent
                 session_id = session_dir.name
@@ -1542,15 +1746,17 @@ class PackerLogic(QObject):
 
         self._initialize_session_metadata(
             session_id=session_id,
-            packing_list_name=packing_data.get('list_name', list_name)
+            packing_list_name=packing_data.get("list_name", list_name),
         )
 
         # Count orders (barcodes pre-generated by Shopify Tool)
         try:
             order_count = len(self.orders_data)
-            logger.info(f"Successfully loaded packing list '{list_name}': {order_count} orders")
+            logger.info(
+                f"Successfully loaded packing list '{list_name}': {order_count} orders"
+            )
 
-            return order_count, packing_data.get('list_name', list_name)
+            return order_count, packing_data.get("list_name", list_name)
 
         except Exception as e:
             error_msg = f"Error generating barcodes from packing list: {e}"
@@ -1611,10 +1817,12 @@ class PackerLogic(QObject):
 
         # Load analysis data
         try:
-            with open(analysis_file, 'r', encoding='utf-8') as f:
+            with open(analysis_file, "r", encoding="utf-8") as f:
                 analysis_data = json.load(f)
 
-            logger.debug(f"Loaded analysis data: {analysis_data.get('total_orders', 0)} orders")
+            logger.debug(
+                f"Loaded analysis data: {analysis_data.get('total_orders', 0)} orders"
+            )
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in analysis_data.json: {e}"
@@ -1626,13 +1834,15 @@ class PackerLogic(QObject):
             raise ValueError(error_msg)
 
         # Extract orders list
-        orders_list = analysis_data.get('orders', [])
+        orders_list = analysis_data.get("orders", [])
         if not orders_list:
             logger.warning("No orders found in analysis_data.json")
-            return 0, analysis_data.get('analyzed_at', 'Unknown')
+            return 0, analysis_data.get("analyzed_at", "Unknown")
 
         # Build raw order lookup for metadata preservation
-        order_raw_data_analysis = {order.get('order_number', ''): order for order in orders_list}
+        order_raw_data_analysis = {
+            order.get("order_number", ""): order for order in orders_list
+        }
 
         # Convert to DataFrame (packing list format)
         # Each order may have multiple items, need to flatten
@@ -1641,35 +1851,37 @@ class PackerLogic(QObject):
         for order in orders_list:
             # Validate required order fields
             missing_fields = []
-            if 'order_number' not in order:
-                missing_fields.append('order_number')
+            if "order_number" not in order:
+                missing_fields.append("order_number")
 
             if missing_fields:
                 error_msg = f"Missing required columns in order data: {missing_fields}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            order_number = order['order_number']
+            order_number = order["order_number"]
             # Courier is optional in analysis_data.json (contains all orders before filtering)
             # Use default value if not present
-            courier = order.get('courier', 'N/A')
-            items = order.get('items', [])
+            courier = order.get("courier", "N/A")
+            items = order.get("items", [])
 
             for item in items:
                 row = {
-                    'Order_Number': order_number,
-                    'SKU': item.get('sku', ''),
-                    'Product_Name': item.get('product_name', ''),
-                    'Quantity': str(item.get('quantity', 1)),  # Convert to string for consistency
-                    'Courier': courier
+                    "Order_Number": order_number,
+                    "SKU": item.get("sku", ""),
+                    "Product_Name": item.get("product_name", ""),
+                    "Quantity": str(
+                        item.get("quantity", 1)
+                    ),  # Convert to string for consistency
+                    "Courier": courier,
                 }
 
                 # Add any extra fields from Shopify analysis
                 # (e.g., customer name, address, etc.)
                 for key, value in order.items():
-                    if key not in ['order_number', 'courier', 'items', 'status']:
+                    if key not in ["order_number", "courier", "items", "status"]:
                         # Capitalize key to match packing list style
-                        formatted_key = key.replace('_', ' ').title().replace(' ', '_')
+                        formatted_key = key.replace("_", " ").title().replace(" ", "_")
                         row[formatted_key] = str(value)
 
                 rows.append(row)
@@ -1679,7 +1891,7 @@ class PackerLogic(QObject):
 
         if df.empty:
             logger.warning("No order items to process")
-            return 0, analysis_data.get('analyzed_at', 'Unknown')
+            return 0, analysis_data.get("analyzed_at", "Unknown")
 
         # Validate required columns
         missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -1692,30 +1904,39 @@ class PackerLogic(QObject):
         self.packing_list_df = df
         self.processed_df = df.copy()
         try:
-            self._total_items = int(pd.to_numeric(df['Quantity'], errors='coerce').sum())
+            self._total_items = int(
+                pd.to_numeric(df["Quantity"], errors="coerce").sum()
+            )
         except Exception as e:
             logger.warning(f"Could not compute total items from Quantity column: {e}")
             self._total_items = 0
 
-        logger.info(f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame")
+        logger.info(
+            f"Converted {len(df)} items from {len(orders_list)} orders to DataFrame"
+        )
 
         # Group items by order and populate orders_data
         self.orders_data = {}
-        for order_number in df['Order_Number'].unique():
-            order_df = df[df['Order_Number'] == order_number]
+        for order_number in df["Order_Number"].unique():
+            order_df = df[df["Order_Number"] == order_number]
             raw = order_raw_data_analysis.get(order_number, {})
             self.orders_data[order_number] = {
-                'items': order_df.to_dict('records'),
-                'metadata': {
-                    'order_type':               raw.get('order_type') or '',
-                    'shipping_provider':        raw.get('shipping_provider') or raw.get('courier') or '',
-                    'destination_country':      raw.get('destination_country') or raw.get('shipping_country') or '',
-                    'tags':                     list(raw.get('tags') or []),
-                    'notes':                    raw.get('notes') or '',
-                    'system_note':              raw.get('system_note') or '',
-                    'internal_tags':            list(raw.get('internal_tags') or []),
-                    'order_min_box':            raw.get('order_min_box') or '',
-                    'order_fulfillment_status': raw.get('order_fulfillment_status') or '',
+                "items": order_df.to_dict("records"),
+                "metadata": {
+                    "order_type": raw.get("order_type") or "",
+                    "shipping_provider": raw.get("shipping_provider")
+                    or raw.get("courier")
+                    or "",
+                    "destination_country": raw.get("destination_country")
+                    or raw.get("shipping_country")
+                    or "",
+                    "tags": list(raw.get("tags") or []),
+                    "notes": raw.get("notes") or "",
+                    "system_note": raw.get("system_note") or "",
+                    "internal_tags": list(raw.get("internal_tags") or []),
+                    "order_min_box": raw.get("order_min_box") or "",
+                    "order_fulfillment_status": raw.get("order_fulfillment_status")
+                    or "",
                 },
             }
 
@@ -1727,8 +1948,7 @@ class PackerLogic(QObject):
         packing_list_name = "Shopify_Full_Session"
 
         self._initialize_session_metadata(
-            session_id=session_id,
-            packing_list_name=packing_list_name
+            session_id=session_id, packing_list_name=packing_list_name
         )
 
         # Count orders (barcodes pre-generated by Shopify Tool)
@@ -1736,7 +1956,7 @@ class PackerLogic(QObject):
             order_count = len(self.orders_data)
             logger.info(f"Successfully loaded Shopify session: {order_count} orders")
 
-            return order_count, analysis_data.get('analyzed_at', 'Unknown')
+            return order_count, analysis_data.get("analyzed_at", "Unknown")
 
         except Exception as e:
             error_msg = f"Error loading Shopify data: {e}"
@@ -1747,7 +1967,7 @@ class PackerLogic(QObject):
         self,
         worker_id: str | None = None,
         worker_name: str | None = None,
-        session_type: str = "shopify"
+        session_type: str = "shopify",
     ) -> dict:
         """
         Generate comprehensive session summary upon completion.
@@ -1810,18 +2030,23 @@ class PackerLogic(QObject):
                     completed_dt = datetime.now().astimezone()
                     duration_seconds = int((completed_dt - started_dt).total_seconds())
                 except (ValueError, TypeError) as e:
-                    logger.warning(f"Could not parse started_at for duration calculation: {e}")
+                    logger.warning(
+                        f"Could not parse started_at for duration calculation: {e}"
+                    )
 
         # Calculate order and item counts
         total_orders = len(self.orders_data) if self.orders_data else 0
-        completed_orders = len(self.session_packing_state.get('completed_orders', []))
+        completed_orders = len(self.session_packing_state.get("completed_orders", []))
 
         # Calculate total items
         total_items = 0
         if self.processed_df is not None:
             try:
                 import pandas as pd
-                total_items = int(pd.to_numeric(self.processed_df['Quantity'], errors='coerce').sum())
+
+                total_items = int(
+                    pd.to_numeric(self.processed_df["Quantity"], errors="coerce").sum()
+                )
             except Exception as e:
                 logger.warning(f"Could not calculate total_items: {e}")
 
@@ -1829,7 +2054,9 @@ class PackerLogic(QObject):
         unique_skus = self._count_unique_skus()
 
         # Calculate metrics from completed_orders_metadata
-        orders_with_timing = self.completed_orders_metadata if self.completed_orders_metadata else []
+        orders_with_timing = (
+            self.completed_orders_metadata if self.completed_orders_metadata else []
+        )
         if not orders_with_timing:
             logger.warning("No timing metadata available, metrics will be zero")
 
@@ -1844,7 +2071,9 @@ class PackerLogic(QObject):
         total_extra_scans = timing_metrics["total_extra_scans"]
         total_unknown_scans = timing_metrics["total_unknown_scans"]
 
-        total_items_from_metadata = sum(o.get('items_count', 0) for o in orders_with_timing)
+        total_items_from_metadata = sum(
+            o.get("items_count", 0) for o in orders_with_timing
+        )
 
         # --- Session-level throughput ---
         orders_per_hour = 0
@@ -1853,15 +2082,23 @@ class PackerLogic(QObject):
             hours = duration_seconds / 3600.0
             if completed_orders > 0:
                 orders_per_hour = round(completed_orders / hours, 1)
-            items_for_rate = total_items_from_metadata if total_items_from_metadata > 0 else total_items
+            items_for_rate = (
+                total_items_from_metadata
+                if total_items_from_metadata > 0
+                else total_items
+            )
             if items_for_rate > 0:
                 items_per_hour = round(items_for_rate / hours, 1)
 
         # --- Skipped orders list for the summary ---
-        skipped_timing = self.session_packing_state.get('skipped_orders_timing', {})
+        skipped_timing = self.session_packing_state.get("skipped_orders_timing", {})
         skipped_orders_list = [
-            {"order_number": num, "skipped_at": skipped_timing.get(num), "status": "skipped"}
-            for num in self.session_packing_state.get('skipped_orders', [])
+            {
+                "order_number": num,
+                "skipped_at": skipped_timing.get(num),
+                "status": "skipped",
+            }
+            for num in self.session_packing_state.get("skipped_orders", [])
         ]
 
         # Build unified session summary
@@ -1872,25 +2109,23 @@ class PackerLogic(QObject):
             "session_type": session_type,
             "client_id": self.client_id,
             "packing_list_name": self.packing_list_name,
-
             # Ownership
             "worker_id": worker_id,
             "worker_name": worker_name if worker_name else "Unknown",
             "pc_name": self.worker_pc,
-
             # Timing
             "started_at": self.started_at,
             "completed_at": completed_at,
             "duration_seconds": duration_seconds,
-
             # Counts
             "total_orders": total_orders,
             "completed_orders": completed_orders,
-            "in_progress_orders": len(self.session_packing_state.get('in_progress', {})),
+            "in_progress_orders": len(
+                self.session_packing_state.get("in_progress", {})
+            ),
             "skipped_orders_count": len(skipped_orders_list),
             "total_items": total_items,
             "unique_skus": unique_skus,
-
             # Metrics
             "metrics": {
                 "avg_time_per_order": avg_time_per_order,
@@ -1906,10 +2141,8 @@ class PackerLogic(QObject):
                 "total_extra_scans": total_extra_scans,
                 "total_unknown_scans": total_unknown_scans,
             },
-
             # Completed orders with full timing data
             "orders": orders_with_timing,
-
             # Skipped orders list
             "skipped_orders": skipped_orders_list,
         }
@@ -1932,7 +2165,7 @@ class PackerLogic(QObject):
             return 0
 
         try:
-            unique_skus = self.processed_df['SKU'].nunique()
+            unique_skus = self.processed_df["SKU"].nunique()
             return int(unique_skus)
         except Exception as e:
             logger.warning(f"Could not count unique SKUs: {e}")
@@ -1943,7 +2176,7 @@ class PackerLogic(QObject):
         summary_path: str | None = None,
         worker_id: str | None = None,
         worker_name: str | None = None,
-        session_type: str = "shopify"
+        session_type: str = "shopify",
     ) -> str:
         """
         Generate and save session summary to JSON file.
@@ -1962,9 +2195,7 @@ class PackerLogic(QObject):
         """
         # Generate summary with worker info
         summary = self.generate_session_summary(
-            worker_id=worker_id,
-            worker_name=worker_name,
-            session_type=session_type
+            worker_id=worker_id, worker_name=worker_name, session_type=session_type
         )
 
         # Determine output path
