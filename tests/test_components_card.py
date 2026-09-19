@@ -69,3 +69,20 @@ def test_an_unknown_role_raises_rather_than_rendering_at_some_default():
     card = Card()
     with pytest.raises(KeyError):
         card.add_text("x", "headline")
+
+
+def test_add_row_returns_the_value_label_with_the_label_text_beside_it():
+    card = Card()
+    value = card.add_row("Session ID", "2026-09-02_0810")
+    assert isinstance(value, QLabel)
+    assert value.text() == "2026-09-02_0810"
+
+
+def test_add_row_value_is_bold_by_default_and_mono_and_regular_when_asked():
+    card = Card()
+    normal = card.add_row("Client", "Kaufland DE")
+    assert "font-weight: bold;" in normal.styleSheet()
+
+    mono = card.add_row("PC", "WH-PC-02", mono=True)
+    assert "font-weight: normal;" in mono.styleSheet()
+    assert "font-family:" in mono.styleSheet()

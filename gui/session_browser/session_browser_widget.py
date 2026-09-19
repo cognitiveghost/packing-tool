@@ -31,10 +31,12 @@ from PySide6.QtCore import QSettings, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from .session_detail_page import SessionDetailPage
 from .sessions_list_widget import SessionsListWidget
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class SessionBrowserWidget(QWidget):
 
     resume_session_requested = Signal(dict)
     start_packing_requested = Signal(dict)
+    sessions_shown = Signal(int, int)  # (shown, total) -- forwarded for the status bar
 
     def __init__(
         self,
@@ -112,13 +115,39 @@ class SessionBrowserWidget(QWidget):
             registry_manager=self.registry_manager,
             session_history_manager=self.session_history_manager,
         )
-        root.addWidget(self.sessions_list)
+        self.list_page = self.sessions_list
+        self.detail_page = None
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.list_page)
+        root.addWidget(self.stack)
+
+    def show_detail(self, session_data: dict) -> None:
+        """Show one session's detail page, replacing the list in the stack."""
+        if self.detail_page is not None:
+            self.stack.removeWidget(self.detail_page)
+            self.detail_page.deleteLater()
+
+        self.detail_page = SessionDetailPage(
+            session_data,
+            session_history_manager=self.session_history_manager,
+            parent=self,
+        )
+        self.detail_page.back_requested.connect(self.show_list)
+        self.stack.addWidget(self.detail_page)
+        self.stack.setCurrentWidget(self.detail_page)
+
+    def show_list(self) -> None:
+        """Return to the session list."""
+        self.stack.setCurrentWidget(self.list_page)
 
     def _connect_signals(self):
         self.sessions_list.resume_session_requested.connect(
             self.resume_session_requested
         )
         self.sessions_list.start_packing_requested.connect(self.start_packing_requested)
+        self.sessions_list.session_details_requested.connect(self.show_detail)
+        self.sessions_list.sessions_shown.connect(self.sessions_shown)
 
     # ------------------------------------------------------------------ #
     #  Auto-refresh                                                        #

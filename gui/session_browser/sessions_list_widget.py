@@ -261,6 +261,9 @@ class SessionsListWidget(QWidget):
     resume_session_requested = Signal(dict)
     start_packing_requested = Signal(dict)
     sessions_shown = Signal(int, int)  # (shown, total) -- for the status bar
+    session_details_requested = Signal(
+        dict
+    )  # entry data, for the browser's detail page
 
     def __init__(self, registry_manager, session_history_manager, parent=None):
         super().__init__(parent)
@@ -786,27 +789,17 @@ class SessionsListWidget(QWidget):
             self._open_details_for_entry(entry)
 
     def _open_details_for_entry(self, entry: dict):
-        """Open SessionDetailsDialog for any entry that has enough data."""
+        """Ask the browser to show the detail page for this entry."""
         if not entry.get("session_id"):
             return
-        try:
-            from .session_details_dialog import SessionDetailsDialog
-
-            session_data = {
-                "client_id": self._client_id,
-                "session_id": entry["session_id"],
-                "work_dir": entry.get("work_dir", ""),
-                "packing_list_name": entry.get("packing_list_name", ""),
-            }
-            dlg = SessionDetailsDialog(
-                session_data=session_data,
-                session_history_manager=self._history_mgr,
-                parent=self,
-            )
-            dlg.exec()
-        except Exception as e:
-            logger.exception("Failed to open session details")
-            QMessageBox.warning(self, "Error", f"Could not load session details:\n{e}")
+        session_data = {
+            "client_id": self._client_id,
+            "session_id": entry["session_id"],
+            "work_dir": entry.get("work_dir", ""),
+            "packing_list_name": entry.get("packing_list_name", ""),
+            "status": entry.get("status", ""),
+        }
+        self.session_details_requested.emit(session_data)
 
     def _emit_resume_session(self, entry: dict):
         info = {

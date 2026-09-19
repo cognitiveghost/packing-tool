@@ -356,6 +356,11 @@ class MainWindow(QMainWindow):
         self.session_browser.start_packing_requested.connect(
             self._handle_start_packing_from_browser
         )
+        self.session_browser.sessions_shown.connect(
+            lambda shown, total: self.sb_summary_label.setText(
+                f"{shown} of {total} sessions"
+            )
+        )
         self.session_tabs.addTab(self.session_browser, "Session Browser")
         # load_available_clients() ran before this widget existed, so the
         # client it settled on (restored last_client, if any) never reached
