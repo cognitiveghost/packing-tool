@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QStackedLayout,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -35,8 +36,19 @@ from PySide6.QtWidgets import (
 )
 
 from gui.theme import current_tokens
+from shared.components.card import Card
+from shared.components.state_panel import StatePanel
 from shared.metadata_utils import parse_timestamp
 from shared.theme import StatusChip
+
+_EMPTY_NO_SESSIONS = (
+    "No sessions yet",
+    "Sessions appear here once someone starts packing for this client.",
+)
+_EMPTY_NO_MATCHES = (
+    "No sessions match",
+    "Widen the dates or clear the search to see more.",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +260,7 @@ class SessionsListWidget(QWidget):
 
     resume_session_requested = Signal(dict)
     start_packing_requested = Signal(dict)
+    sessions_shown = Signal(int, int)  # (shown, total) -- for the status bar
 
     def __init__(self, registry_manager, session_history_manager, parent=None):
         super().__init__(parent)
@@ -316,12 +329,17 @@ class SessionsListWidget(QWidget):
         filter_layout.addWidget(self._date_to)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search list, session, worker…")
+        self._search_input.setPlaceholderText("Search sessions")
         self._search_input.setMinimumWidth(200)
         self._search_input.textChanged.connect(self._apply_filters)
         filter_layout.addWidget(self._search_input)
 
         filter_layout.addStretch()
+
+        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.clicked.connect(self.refresh)
+        filter_layout.addWidget(self._refresh_btn)
+
         main_layout.addLayout(filter_layout)
 
         # Progress / status bar for refresh
@@ -356,7 +374,24 @@ class SessionsListWidget(QWidget):
             lambda current, _prev: self._on_row_selected(current.row())
         )
         self._table.doubleClicked.connect(self._on_row_double_clicked)
-        main_layout.addWidget(self._table)
+
+        self.card = Card(margins=(0, 0, 0, 0))
+        self.card.add_widget(self._table)
+        main_layout.addWidget(self.card)
+
+        # Two different empty situations, one container: "no sessions" is a
+        # fact about the client, "no matches" is a fact about the filters
+        # and offers a way out of them.
+        self._state_no_sessions = StatePanel(*_EMPTY_NO_SESSIONS)
+        self._state_no_matches = StatePanel.no_results(*_EMPTY_NO_MATCHES)
+        self._state_no_matches.button.clicked.connect(self._clear_filters)
+
+        self.state_panel = QWidget()
+        self._state_stack = QStackedLayout(self.state_panel)
+        self._state_stack.addWidget(self._state_no_sessions)
+        self._state_stack.addWidget(self._state_no_matches)
+        self.state_panel.setVisible(False)
+        main_layout.addWidget(self.state_panel)
 
         # Consolidated action bar (replaces the old preview QGroupBox + separate
         # action_layout — see 2026-07-26-unified-ui-design-system-design.md)
@@ -389,10 +424,6 @@ class SessionsListWidget(QWidget):
         self._export_excel_btn = QPushButton("Export Excel")
         self._export_excel_btn.clicked.connect(self._export_excel)
         action_bar.addWidget(self._export_excel_btn)
-
-        self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.clicked.connect(self.refresh)
-        action_bar.addWidget(self._refresh_btn)
 
         main_layout.addLayout(action_bar)
 
@@ -453,8 +484,7 @@ class SessionsListWidget(QWidget):
         # Discard stale responses that arrived after the user switched clients
         if client_id != self._client_id:
             return
-        self._all_entries = entries
-        self._populate_table(entries)
+        self.show_entries(entries)
         self._update_header_stats(entries)
         self._status_bar.setText(
             f"Last refreshed: {datetime.now().astimezone().strftime('%H:%M:%S')}  "
@@ -466,6 +496,18 @@ class SessionsListWidget(QWidget):
             return
         self._status_bar.setText(f"Refresh failed: {error}")
         logger.error(f"SessionsListWidget refresh failed: {error}")
+
+    def show_entries(self, entries: list):
+        """Display these entries directly.
+
+        The registry refresh path and a test that seeds the table without a
+        registry both go through here -- it is the one place that decides
+        between the table, the "no sessions" panel and the "no matches" one.
+        """
+        self._all_entries = entries
+        self._placeholder.setVisible(False)
+        self._main_frame.setVisible(True)
+        self._populate_table(entries)
 
     def _populate_table(self, entries: list):
         self._table.setSortingEnabled(False)
@@ -633,6 +675,30 @@ class SessionsListWidget(QWidget):
                     show = False
 
             self._table.setRowHidden(row, not show)
+
+        total = self._table.rowCount()
+        shown = sum(1 for row in range(total) if not self._table.isRowHidden(row))
+        self._update_visibility(shown, total)
+        self.sessions_shown.emit(shown, total)
+
+    def _update_visibility(self, shown: int, total: int):
+        if total == 0:
+            self.card.setVisible(False)
+            self._state_stack.setCurrentWidget(self._state_no_sessions)
+            self.state_panel.setVisible(True)
+        elif shown == 0:
+            self.card.setVisible(False)
+            self._state_stack.setCurrentWidget(self._state_no_matches)
+            self.state_panel.setVisible(True)
+        else:
+            self.card.setVisible(True)
+            self.state_panel.setVisible(False)
+
+    def _clear_filters(self):
+        self._status_combo.setCurrentIndex(0)
+        self._date_from.setDate(QDate(2020, 1, 1))
+        self._date_to.setDate(QDate.currentDate())
+        self._search_input.clear()
 
     # ------------------------------------------------------------------ #
     #  Row selection / preview panel                                       #
