@@ -239,7 +239,15 @@ html, body { height: 100%; margin: 0; }
 .progress-fill { height: 100%; background: var(--accent-fill); }
 .progress-numbers { font-size: var(--type-caption-size); color: var(--text-secondary); }
 
-.history { display: flex; flex-direction: column; overflow-y: auto; }
+/* The block scrolls rather than grows: a long session would otherwise push
+   the side column past the viewport and take the roll-up below it with it.
+   No history is dropped -- every order in the session stays reachable. */
+.history {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 280px;
+}
 .history-row {
   display: flex;
   align-items: center;
