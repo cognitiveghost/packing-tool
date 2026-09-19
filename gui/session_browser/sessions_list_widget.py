@@ -14,7 +14,7 @@ Filter / search works purely on already-loaded table data (no server I/O).
 
 import csv
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QDate, Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QStackedLayout,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -35,8 +36,19 @@ from PySide6.QtWidgets import (
 )
 
 from gui.theme import current_tokens
+from shared.components.card import Card
+from shared.components.state_panel import StatePanel
 from shared.metadata_utils import parse_timestamp
-from shared.theme import StatusDot
+from shared.theme import StatusChip
+
+_EMPTY_NO_SESSIONS = (
+    "No sessions yet",
+    "Sessions appear here once someone starts packing for this client.",
+)
+_EMPTY_NO_MATCHES = (
+    "No sessions match these filters",
+    "Widen the dates or clear the search to see more.",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,39 +56,90 @@ logger = logging.getLogger(__name__)
 #  Status display configuration                                         #
 # ------------------------------------------------------------------ #
 
-# The stale/paused and abandoned/incomplete pairs render identically until
-# 8.9's StatusChip work adds a distinguishing _bg tint -- 8.3 only removes
-# the literals. Still better than today's #E74C3C vs #C0392B, which a
-# supervisor could not tell apart either.
+# F5's three channels per status. `live` tints the ground and means the
+# session can still be worked; `manual` fills the mark and means a packer
+# declared this state rather than the system inferring it -- which is true of
+# exactly two of the seven.
 STATUS_CONFIG = {
-    "not_started": {"label": "Not Started", "role": "text_secondary"},
-    "in_progress": {"label": "Active",      "role": "status_info"},
-    "paused":      {"label": "Paused",      "role": "status_warning"},
-    "stale":       {"label": "Stale",       "role": "status_warning"},
-    "completed":   {"label": "Completed",   "role": "status_success"},
-    "incomplete":  {"label": "Incomplete",  "role": "status_danger"},
-    "abandoned":   {"label": "Abandoned",   "role": "status_danger"},
+    "not_started": {
+        "label": "Not started",
+        "role": "text_secondary",
+        "live": False,
+        "manual": False,
+    },
+    "in_progress": {
+        "label": "Active",
+        "role": "status_info",
+        "live": True,
+        "manual": False,
+    },
+    "paused": {
+        "label": "Paused",
+        "role": "status_warning",
+        "live": True,
+        "manual": True,
+    },
+    "stale": {
+        "label": "Stale",
+        "role": "status_warning",
+        "live": True,
+        "manual": False,
+    },
+    "completed": {
+        "label": "Completed",
+        "role": "status_success",
+        "live": False,
+        "manual": False,
+    },
+    "incomplete": {
+        "label": "Incomplete",
+        "role": "status_danger",
+        "live": True,
+        "manual": True,
+    },
+    "abandoned": {
+        "label": "Abandoned",
+        "role": "status_danger",
+        "live": False,
+        "manual": False,
+    },
 }
 
-# Column indices
-COL_STATUS      = 0
-COL_LIST_NAME   = 1
-COL_SESSION_ID  = 2
-COL_WORKER      = 3
-COL_PC          = 4
-COL_PROGRESS    = 5
-COL_STARTED     = 6
-COL_DURATION    = 7
-COL_ITEMS       = 8
-COLUMN_COUNT    = 9
+_UNKNOWN_STATUS = {"role": "text_secondary", "live": False, "manual": False}
 
-COLUMN_HEADERS = ["Status", "Packing List", "Session", "Worker", "PC",
-                  "Progress", "Started", "Duration", "Items"]
+
+def status_chip_config(status: str) -> dict:
+    """Chip arguments for a status, including one the registry invented.
+
+    An unknown status still has to paint something: a neutral chip carrying
+    the raw status, title-cased. The detail page header reads this too --
+    a second copy is how the two screens end up disagreeing.
+    """
+    return {
+        **_UNKNOWN_STATUS,
+        "label": status.replace("_", " ").capitalize(),
+        **STATUS_CONFIG.get(status, {}),
+    }
+
+# Column indices. B1: Worker/PC/Started fold into "Last touched"; Progress
+# and Duration are dropped; Age is new.
+COL_STATUS, COL_SESSION, COL_AGE, COL_PACKING, COL_ITEMS, COL_TOUCHED = range(6)
+COLUMN_COUNT = 6
+
+COLUMN_HEADERS = [
+    "Status",
+    "Session",
+    "Age",
+    "Packing",
+    "Items",
+    "Last touched",
+]
 
 
 # ------------------------------------------------------------------ #
 #  Background refresh worker                                           #
 # ------------------------------------------------------------------ #
+
 
 class RegistryRefreshWorker(QThread):
     """
@@ -93,7 +156,7 @@ class RegistryRefreshWorker(QThread):
 
     # Carries client_id so stale responses from a previous client can be discarded
     refresh_complete = Signal(str, list)  # (client_id, entries)
-    refresh_failed   = Signal(str, str)   # (client_id, error_message)
+    refresh_failed = Signal(str, str)  # (client_id, error_message)
 
     def __init__(self, registry_manager, client_id: str, parent=None):
         super().__init__(parent)
@@ -118,6 +181,7 @@ class RegistryRefreshWorker(QThread):
 #  Helper functions                                                    #
 # ------------------------------------------------------------------ #
 
+
 def _fmt_duration(seconds: float | None) -> str:
     if not seconds:
         return "—"
@@ -131,31 +195,87 @@ def _fmt_duration(seconds: float | None) -> str:
     return f"{s}s"
 
 
-def _fmt_date(ts_str: str | None) -> str:
-    if not ts_str:
-        return "—"
-    dt = parse_timestamp(ts_str)
-    if dt is None:
-        return ts_str[:10] if len(ts_str) >= 10 else ts_str
-    return dt.strftime("%Y-%m-%d %H:%M")
-
-
 def _fmt_progress(entry: dict) -> str:
     total = entry.get("total_orders", 0)
-    done  = entry.get("completed_orders", 0)
+    done = entry.get("completed_orders", 0)
     if total == 0:
         return "—"
     return f"{done}/{total}"
 
 
-def _status_display(status: str) -> str:
-    cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title()})
-    return cfg["label"]
+def _fmt_packing(entry: dict) -> str:
+    """B1's Packing column: how far the session got, not what it is packing.
+
+    The artboard draws "9 / 14 orders" in this column on every row. The
+    packing list's *name* still reaches the operator through the preview
+    panel and both exports.
+    """
+    total = entry.get("total_orders", 0)
+    if total == 0:
+        return "—"
+    return f"{entry.get('completed_orders', 0)} / {total} orders"
+
+
+def _fmt_age(ts_str: str | None) -> str:
+    """How long ago the session started, in the coarsest unit that fits.
+
+    Nobody reads minutes off a wall display across a warehouse floor --
+    "13d" is legible from across the room, "18720m" is not.
+    """
+    if not ts_str:
+        return "—"
+    dt = parse_timestamp(ts_str)
+    if dt is None:
+        return "—"
+    seconds = max(
+        0.0, (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+    )
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = int(seconds // 3600)
+    if hours < 24:
+        return f"{hours}h"
+    days = int(seconds // 86400)
+    return f"{days}d"
+
+
+def _fmt_touched(entry: dict) -> str:
+    """Who last worked this session, on which PC, and when -- one cell.
+
+    B1 draws "W-004 · WH-PC-02 · 11:20" for a session touched today and
+    "W-001 · WH-PC-01 · 13d ago" for one touched a fortnight ago -- a bare
+    "09:40" on a thirteen-day-old row reads as "this morning" from across
+    the floor. A session nobody has touched (an available packing list,
+    never started) shows a dash rather than an empty cell that reads as a
+    loading state.
+    """
+    worker = entry.get("worker_name") or entry.get("worker_id") or ""
+    pc = entry.get("pc_name") or ""
+    ts_str = (
+        entry.get("last_updated")
+        or entry.get("started_at")
+        or entry.get("created_at")
+        or ""
+    )
+    time_part = ""
+    if ts_str:
+        dt = parse_timestamp(ts_str)
+        if dt:
+            age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+            time_part = (
+                dt.strftime("%H:%M")
+                if age.total_seconds() < 86400
+                else f"{_fmt_age(ts_str)} ago"
+            )
+    parts = [p for p in (worker, pc, time_part) if p]
+    return " · ".join(parts) if parts else "—"
 
 
 # ------------------------------------------------------------------ #
 #  Sessions List Widget                                                #
 # ------------------------------------------------------------------ #
+
 
 class SessionsListWidget(QWidget):
     """
@@ -169,7 +289,11 @@ class SessionsListWidget(QWidget):
     """
 
     resume_session_requested = Signal(dict)
-    start_packing_requested  = Signal(dict)
+    start_packing_requested = Signal(dict)
+    sessions_shown = Signal(int, int)  # (shown, total) -- for the status bar
+    session_details_requested = Signal(
+        dict
+    )  # entry data, for the browser's detail page
 
     def __init__(self, registry_manager, session_history_manager, parent=None):
         super().__init__(parent)
@@ -191,7 +315,7 @@ class SessionsListWidget(QWidget):
         root.setSpacing(4)
 
         # --- placeholder shown before client is selected ---
-        self._placeholder = QLabel("← Select a client to view sessions")
+        self._placeholder = QLabel("Select a client to view sessions")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet(f"color: {current_tokens().text_secondary};")
         root.addWidget(self._placeholder)
@@ -205,9 +329,6 @@ class SessionsListWidget(QWidget):
         root.addWidget(self._main_frame)
 
         # Header: client name + quick stats
-        self._header_label = QLabel()
-        self._header_label.setStyleSheet("font-weight: bold;")
-        main_layout.addWidget(self._header_label)
 
         # Filter bar
         filter_layout = QHBoxLayout()
@@ -238,36 +359,40 @@ class SessionsListWidget(QWidget):
         filter_layout.addWidget(self._date_to)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search list, session, worker…")
+        self._search_input.setPlaceholderText("Search sessions")
         self._search_input.setMinimumWidth(200)
         self._search_input.textChanged.connect(self._apply_filters)
         filter_layout.addWidget(self._search_input)
 
         filter_layout.addStretch()
+
+        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.clicked.connect(self.refresh)
+        filter_layout.addWidget(self._refresh_btn)
+
         main_layout.addLayout(filter_layout)
 
         # Progress / status bar for refresh
         self._status_bar = QLabel("")
-        self._status_bar.setStyleSheet(f"color: {current_tokens().text_secondary}; font-style: italic;")
+        self._status_bar.setStyleSheet(
+            f"color: {current_tokens().text_secondary}; font-style: italic;"
+        )
         main_layout.addWidget(self._status_bar)
 
         # Table
         self._table = QTableWidget(0, COLUMN_COUNT)
         self._table.setHorizontalHeaderLabels(COLUMN_HEADERS)
         self._table.horizontalHeader().setSectionResizeMode(
-            COL_LIST_NAME, QHeaderView.ResizeMode.Stretch
+            COL_PACKING, QHeaderView.ResizeMode.Stretch
         )
         self._table.horizontalHeader().setSectionResizeMode(
             COL_STATUS, QHeaderView.ResizeMode.Fixed
         )
-        self._table.setColumnWidth(COL_STATUS,    115)
-        self._table.setColumnWidth(COL_SESSION_ID, 110)
-        self._table.setColumnWidth(COL_WORKER,     105)
-        self._table.setColumnWidth(COL_PC,         105)
-        self._table.setColumnWidth(COL_PROGRESS,    75)
-        self._table.setColumnWidth(COL_STARTED,    130)
-        self._table.setColumnWidth(COL_DURATION,    75)
-        self._table.setColumnWidth(COL_ITEMS,       55)
+        self._table.setColumnWidth(COL_STATUS, 115)
+        self._table.setColumnWidth(COL_SESSION, 110)
+        self._table.setColumnWidth(COL_AGE, 70)
+        self._table.setColumnWidth(COL_ITEMS, 55)
+        self._table.setColumnWidth(COL_TOUCHED, 200)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -279,7 +404,24 @@ class SessionsListWidget(QWidget):
             lambda current, _prev: self._on_row_selected(current.row())
         )
         self._table.doubleClicked.connect(self._on_row_double_clicked)
-        main_layout.addWidget(self._table)
+
+        self.card = Card(margins=(0, 0, 0, 0))
+        self.card.add_widget(self._table)
+        main_layout.addWidget(self.card)
+
+        # Two different empty situations, one container: "no sessions" is a
+        # fact about the client, "no matches" is a fact about the filters
+        # and offers a way out of them.
+        self._state_no_sessions = StatePanel(*_EMPTY_NO_SESSIONS)
+        self._state_no_matches = StatePanel.no_results(*_EMPTY_NO_MATCHES)
+        self._state_no_matches.button.clicked.connect(self._clear_filters)
+
+        self.state_panel = QWidget()
+        self._state_stack = QStackedLayout(self.state_panel)
+        self._state_stack.addWidget(self._state_no_sessions)
+        self._state_stack.addWidget(self._state_no_matches)
+        self.state_panel.setVisible(False)
+        main_layout.addWidget(self.state_panel)
 
         # Consolidated action bar (replaces the old preview QGroupBox + separate
         # action_layout — see 2026-07-26-unified-ui-design-system-design.md)
@@ -313,10 +455,6 @@ class SessionsListWidget(QWidget):
         self._export_excel_btn.clicked.connect(self._export_excel)
         action_bar.addWidget(self._export_excel_btn)
 
-        self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.clicked.connect(self.refresh)
-        action_bar.addWidget(self._refresh_btn)
-
         main_layout.addLayout(action_bar)
 
     # ------------------------------------------------------------------ #
@@ -328,11 +466,12 @@ class SessionsListWidget(QWidget):
         self._client_id = client_id
         self._placeholder.setVisible(False)
         self._main_frame.setVisible(True)
-        self._header_label.setText(f"Client:  {client_id}")
         self._clear_table()
 
         if self._registry is None:
-            self._status_bar.setText("Session registry not available — cannot load sessions.")
+            self._status_bar.setText(
+                "Session registry not available — cannot load sessions."
+            )
             return
 
         self._status_bar.setText("Loading…")
@@ -374,9 +513,7 @@ class SessionsListWidget(QWidget):
         # Discard stale responses that arrived after the user switched clients
         if client_id != self._client_id:
             return
-        self._all_entries = entries
-        self._populate_table(entries)
-        self._update_header_stats(entries)
+        self.show_entries(entries)
         self._status_bar.setText(
             f"Last refreshed: {datetime.now().astimezone().strftime('%H:%M:%S')}  "
             f"({len(entries)} entries)"
@@ -388,20 +525,37 @@ class SessionsListWidget(QWidget):
         self._status_bar.setText(f"Refresh failed: {error}")
         logger.error(f"SessionsListWidget refresh failed: {error}")
 
+    def show_entries(self, entries: list):
+        """Display these entries directly.
+
+        The registry refresh path and a test that seeds the table without a
+        registry both go through here -- it is the one place that decides
+        between the table, the "no sessions" panel and the "no matches" one.
+        """
+        self._all_entries = entries
+        self._placeholder.setVisible(False)
+        self._main_frame.setVisible(True)
+        self._populate_table(entries)
+
     def _populate_table(self, entries: list):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
 
         # Sort: active first, then by started_at descending within each group
         _STATUS_PRIORITY = {
-            "in_progress": 0, "stale": 1, "paused": 2, "not_started": 3,
-            "incomplete": 4, "abandoned": 5, "completed": 6,
+            "in_progress": 0,
+            "stale": 1,
+            "paused": 2,
+            "not_started": 3,
+            "incomplete": 4,
+            "abandoned": 5,
+            "completed": 6,
         }
         sorted_entries = sorted(
             entries,
             key=lambda e: (
                 _STATUS_PRIORITY.get(e.get("status", ""), 9),
-                -(self._ts_to_epoch(e.get("started_at") or e.get("created_at", "")))
+                -(self._ts_to_epoch(e.get("started_at") or e.get("created_at", ""))),
             ),
         )
 
@@ -423,13 +577,19 @@ class SessionsListWidget(QWidget):
         return 0.0
 
     def _make_status_cell(self, status: str) -> QWidget:
-        cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title(), "role": "text_secondary"})
+        cfg = status_chip_config(status)
         cell = QWidget()
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(8, 0, 4, 0)
-        layout.setSpacing(6)
-        layout.addWidget(StatusDot(cfg["role"], current_tokens()))
-        layout.addWidget(QLabel(cfg["label"]))
+        layout.addWidget(
+            StatusChip(
+                cfg["role"],
+                cfg["label"],
+                current_tokens(),
+                live=cfg["live"],
+                manual=cfg["manual"],
+            )
+        )
         layout.addStretch()
         return cell
 
@@ -440,66 +600,35 @@ class SessionsListWidget(QWidget):
         # the row's entry data (read by _get_row_entry/_apply_filters); the
         # visible content is the StatusDot cell widget set alongside it.
         sort_item = QTableWidgetItem()
-        sort_item.setData(Qt.ItemDataRole.DisplayRole,
-                          STATUS_CONFIG.get(status, {}).get("label", ""))
+        sort_item.setData(
+            Qt.ItemDataRole.DisplayRole, STATUS_CONFIG.get(status, {}).get("label", "")
+        )
         sort_item.setData(Qt.ItemDataRole.UserRole, entry)
         self._table.setItem(row, COL_STATUS, sort_item)
         self._table.setCellWidget(row, COL_STATUS, self._make_status_cell(status))
 
-        # Col 1: Packing List
-        self._table.setItem(row, COL_LIST_NAME,
-                            QTableWidgetItem(entry.get("packing_list_name", "—")))
+        # Col 1: Session
+        self._table.setItem(
+            row, COL_SESSION, QTableWidgetItem(entry.get("session_id", "—"))
+        )
 
-        # Col 2: Session ID
-        self._table.setItem(row, COL_SESSION_ID,
-                            QTableWidgetItem(entry.get("session_id", "—")))
-
-        # Col 3: Worker
-        worker = entry.get("worker_name") or entry.get("worker_id") or "—"
-        self._table.setItem(row, COL_WORKER, QTableWidgetItem(worker))
-
-        # Col 4: PC
-        self._table.setItem(row, COL_PC,
-                            QTableWidgetItem(entry.get("pc_name") or "—"))
-
-        # Col 5: Progress (center-aligned)
-        prog_item = QTableWidgetItem(_fmt_progress(entry))
-        prog_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._table.setItem(row, COL_PROGRESS, prog_item)
-
-        # Col 6: Started
+        # Col 2: Age (center-aligned)
         ts = entry.get("started_at") or entry.get("created_at") or ""
-        self._table.setItem(row, COL_STARTED, QTableWidgetItem(_fmt_date(ts)))
+        age_item = QTableWidgetItem(_fmt_age(ts))
+        age_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setItem(row, COL_AGE, age_item)
 
-        # Col 7: Duration (center-aligned)
-        dur_item = QTableWidgetItem(_fmt_duration(entry.get("duration_seconds")))
-        dur_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._table.setItem(row, COL_DURATION, dur_item)
+        # Col 3: Packing — how far the session got
+        self._table.setItem(row, COL_PACKING, QTableWidgetItem(_fmt_packing(entry)))
 
-        # Col 8: Items (center-aligned)
+        # Col 4: Items (center-aligned)
         items = entry.get("total_items", 0)
         items_item = QTableWidgetItem(str(items) if items else "—")
         items_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self._table.setItem(row, COL_ITEMS, items_item)
 
-    def _update_header_stats(self, entries: list):
-        counts = {}
-        for e in entries:
-            s = e.get("status", "unknown")
-            counts[s] = counts.get(s, 0) + 1
-
-        active = counts.get("in_progress", 0)
-        stale = counts.get("stale", 0)
-        paused = counts.get("paused", 0)
-        total = len(entries)
-        parts = [f"Client: {self._client_id}", f"{total} entries"]
-        if active:
-            parts.append(f"{active} active")
-        if stale:
-            parts.append(f"⚠ {stale} stale")
-        if paused:
-            parts.append(f"{paused} paused")
-        self._header_label.setText("   ·   ".join(parts))
+        # Col 5: Last touched — worker, PC and time folded into one cell.
+        self._table.setItem(row, COL_TOUCHED, QTableWidgetItem(_fmt_touched(entry)))
 
     def _clear_table(self):
         self._table.setSortingEnabled(False)
@@ -514,7 +643,7 @@ class SessionsListWidget(QWidget):
         status_filter = self._status_combo.currentData()
         search = self._search_input.text().strip().lower()
         date_from = self._date_from.date().toPython()
-        date_to   = self._date_to.date().toPython()
+        date_to = self._date_to.date().toPython()
 
         for row in range(self._table.rowCount()):
             entry = self._table.item(row, COL_STATUS).data(Qt.ItemDataRole.UserRole)
@@ -536,17 +665,43 @@ class SessionsListWidget(QWidget):
 
             # Text search
             if show and search:
-                haystack = " ".join([
-                    entry.get("packing_list_name", ""),
-                    entry.get("session_id", ""),
-                    entry.get("worker_name", ""),
-                    entry.get("worker_id", ""),
-                    entry.get("pc_name", ""),
-                ]).lower()
+                haystack = " ".join(
+                    [
+                        entry.get("packing_list_name", ""),
+                        entry.get("session_id", ""),
+                        entry.get("worker_name", ""),
+                        entry.get("worker_id", ""),
+                        entry.get("pc_name", ""),
+                    ]
+                ).lower()
                 if search not in haystack:
                     show = False
 
             self._table.setRowHidden(row, not show)
+
+        total = self._table.rowCount()
+        shown = sum(1 for row in range(total) if not self._table.isRowHidden(row))
+        self._update_visibility(shown, total)
+        self.sessions_shown.emit(shown, total)
+
+    def _update_visibility(self, shown: int, total: int):
+        if total == 0:
+            self.card.setVisible(False)
+            self._state_stack.setCurrentWidget(self._state_no_sessions)
+            self.state_panel.setVisible(True)
+        elif shown == 0:
+            self.card.setVisible(False)
+            self._state_stack.setCurrentWidget(self._state_no_matches)
+            self.state_panel.setVisible(True)
+        else:
+            self.card.setVisible(True)
+            self.state_panel.setVisible(False)
+
+    def _clear_filters(self):
+        self._status_combo.setCurrentIndex(0)
+        self._date_from.setDate(QDate(2020, 1, 1))
+        self._date_to.setDate(QDate.currentDate())
+        self._search_input.clear()
 
     # ------------------------------------------------------------------ #
     #  Row selection / preview panel                                       #
@@ -569,15 +724,15 @@ class SessionsListWidget(QWidget):
 
         status = entry.get("status", "")
         worker = entry.get("worker_name") or entry.get("worker_id") or "—"
-        pc     = entry.get("pc_name", "—")
-        total  = entry.get("total_orders", 0)
-        done   = entry.get("completed_orders", 0)
-        skip   = entry.get("skipped_orders", 0)
-        items  = entry.get("total_items", 0)
-        dur    = _fmt_duration(entry.get("duration_seconds"))
+        pc = entry.get("pc_name", "—")
+        total = entry.get("total_orders", 0)
+        done = entry.get("completed_orders", 0)
+        skip = entry.get("skipped_orders", 0)
+        items = entry.get("total_items", 0)
+        dur = _fmt_duration(entry.get("duration_seconds"))
         metrics = entry.get("metrics") or {}
         corrections = metrics.get("total_corrections", "—")
-        unknowns    = metrics.get("total_unknown_scans", "—")
+        unknowns = metrics.get("total_unknown_scans", "—")
 
         text = (
             f"<b>{entry.get('packing_list_name', '—')}</b>  ·  "
@@ -634,43 +789,34 @@ class SessionsListWidget(QWidget):
             self._open_details_for_entry(entry)
 
     def _open_details_for_entry(self, entry: dict):
-        """Open SessionDetailsDialog for any entry that has enough data."""
+        """Ask the browser to show the detail page for this entry."""
         if not entry.get("session_id"):
             return
-        try:
-            from .session_details_dialog import SessionDetailsDialog
-            session_data = {
-                "client_id": self._client_id,
-                "session_id": entry["session_id"],
-                "work_dir": entry.get("work_dir", ""),
-                "packing_list_name": entry.get("packing_list_name", ""),
-            }
-            dlg = SessionDetailsDialog(
-                session_data=session_data,
-                session_history_manager=self._history_mgr,
-                parent=self,
-            )
-            dlg.exec()
-        except Exception as e:
-            logger.exception("Failed to open session details")
-            QMessageBox.warning(self, "Error", f"Could not load session details:\n{e}")
+        session_data = {
+            "client_id": self._client_id,
+            "session_id": entry["session_id"],
+            "work_dir": entry.get("work_dir", ""),
+            "packing_list_name": entry.get("packing_list_name", ""),
+            "status": entry.get("status", ""),
+        }
+        self.session_details_requested.emit(session_data)
 
     def _emit_resume_session(self, entry: dict):
         info = {
-            "session_path":       entry.get("session_path", ""),
-            "client_id":          self._client_id,
-            "packing_list_name":  entry.get("packing_list_name", ""),
-            "work_dir":           entry.get("work_dir", ""),
-            "session_id":         entry.get("session_id", ""),
+            "session_path": entry.get("session_path", ""),
+            "client_id": self._client_id,
+            "packing_list_name": entry.get("packing_list_name", ""),
+            "work_dir": entry.get("work_dir", ""),
+            "session_id": entry.get("session_id", ""),
         }
         self.resume_session_requested.emit(info)
 
     def _emit_start_packing(self, entry: dict):
         info = {
-            "session_path":       entry.get("session_path", ""),
-            "client_id":          self._client_id,
-            "packing_list_name":  entry.get("packing_list_name", ""),
-            "list_file":          entry.get("packing_list_path", ""),
+            "session_path": entry.get("session_path", ""),
+            "client_id": self._client_id,
+            "packing_list_name": entry.get("packing_list_name", ""),
+            "list_file": entry.get("packing_list_path", ""),
         }
         self.start_packing_requested.emit(info)
 
@@ -701,28 +847,42 @@ class SessionsListWidget(QWidget):
         try:
             with open(path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    "Status", "Packing List", "Session ID", "Worker", "PC",
-                    "Progress", "Started", "Duration (s)", "Total Items",
-                    "Total Orders", "Completed Orders", "Skipped Orders"
-                ])
+                writer.writerow(
+                    [
+                        "Status",
+                        "Packing List",
+                        "Session ID",
+                        "Worker",
+                        "PC",
+                        "Progress",
+                        "Started",
+                        "Duration (s)",
+                        "Total Items",
+                        "Total Orders",
+                        "Completed Orders",
+                        "Skipped Orders",
+                    ]
+                )
                 for e in entries:
-                    writer.writerow([
-                        e.get("status", ""),
-                        e.get("packing_list_name", ""),
-                        e.get("session_id", ""),
-                        e.get("worker_name") or e.get("worker_id", ""),
-                        e.get("pc_name", ""),
-                        _fmt_progress(e),
-                        e.get("started_at") or e.get("created_at", ""),
-                        e.get("duration_seconds", ""),
-                        e.get("total_items", ""),
-                        e.get("total_orders", ""),
-                        e.get("completed_orders", ""),
-                        e.get("skipped_orders", ""),
-                    ])
-            QMessageBox.information(self, "Export Complete",
-                                    f"Saved {len(entries)} rows to:\n{path}")
+                    writer.writerow(
+                        [
+                            e.get("status", ""),
+                            e.get("packing_list_name", ""),
+                            e.get("session_id", ""),
+                            e.get("worker_name") or e.get("worker_id", ""),
+                            e.get("pc_name", ""),
+                            _fmt_progress(e),
+                            e.get("started_at") or e.get("created_at", ""),
+                            e.get("duration_seconds", ""),
+                            e.get("total_items", ""),
+                            e.get("total_orders", ""),
+                            e.get("completed_orders", ""),
+                            e.get("skipped_orders", ""),
+                        ]
+                    )
+            QMessageBox.information(
+                self, "Export Complete", f"Saved {len(entries)} rows to:\n{path}"
+            )
         except Exception as exc:
             QMessageBox.critical(self, "Export Failed", str(exc))
 
@@ -732,37 +892,46 @@ class SessionsListWidget(QWidget):
             QMessageBox.information(self, "Export", "No rows to export.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Excel", f"sessions_{self._client_id}.xlsx",
-            "Excel files (*.xlsx)"
+            self,
+            "Save Excel",
+            f"sessions_{self._client_id}.xlsx",
+            "Excel files (*.xlsx)",
         )
         if not path:
             return
         try:
             import pandas as pd
+
             rows = []
             for e in entries:
-                rows.append({
-                    "Status":            STATUS_CONFIG.get(
-                        e.get("status", ""), {"label": e.get("status", "")}
-                    )["label"],
-                    "Packing List":      e.get("packing_list_name", ""),
-                    "Session ID":        e.get("session_id", ""),
-                    "Worker":            e.get("worker_name") or e.get("worker_id", ""),
-                    "PC":                e.get("pc_name", ""),
-                    "Progress":          _fmt_progress(e),
-                    "Started":           e.get("started_at") or e.get("created_at", ""),
-                    "Duration (s)":      e.get("duration_seconds"),
-                    "Total Items":       e.get("total_items"),
-                    "Total Orders":      e.get("total_orders"),
-                    "Completed Orders":  e.get("completed_orders"),
-                    "Skipped Orders":    e.get("skipped_orders"),
-                })
+                rows.append(
+                    {
+                        "Status": STATUS_CONFIG.get(
+                            e.get("status", ""), {"label": e.get("status", "")}
+                        )["label"],
+                        "Packing List": e.get("packing_list_name", ""),
+                        "Session ID": e.get("session_id", ""),
+                        "Worker": e.get("worker_name") or e.get("worker_id", ""),
+                        "PC": e.get("pc_name", ""),
+                        "Progress": _fmt_progress(e),
+                        "Started": e.get("started_at") or e.get("created_at", ""),
+                        "Duration (s)": e.get("duration_seconds"),
+                        "Total Items": e.get("total_items"),
+                        "Total Orders": e.get("total_orders"),
+                        "Completed Orders": e.get("completed_orders"),
+                        "Skipped Orders": e.get("skipped_orders"),
+                    }
+                )
             df = pd.DataFrame(rows)
             df.to_excel(path, index=False)
-            QMessageBox.information(self, "Export Complete",
-                                    f"Saved {len(entries)} rows to:\n{path}")
+            QMessageBox.information(
+                self, "Export Complete", f"Saved {len(entries)} rows to:\n{path}"
+            )
         except ImportError:
-            QMessageBox.critical(self, "Export Failed",
-                                 "pandas is required for Excel export. Use CSV instead.")
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                "pandas is required for Excel export. Use CSV instead.",
+            )
         except Exception as exc:
             QMessageBox.critical(self, "Export Failed", str(exc))

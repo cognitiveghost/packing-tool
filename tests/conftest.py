@@ -186,6 +186,59 @@ def packer_logic_factory(profile_manager):
 
 
 @pytest.fixture
+def main_window(config_ini, server_root, qapp):
+    """A MainWindow with two clients ("TESTCL", "OTHERCL") already available.
+
+    MainWindow builds its own ProfileManager from config_path, so the client
+    profiles have to exist on disk (via a throwaway ProfileManager over the
+    same config) before the window is constructed. Client IDs are capped at
+    10 alphanumeric/underscore characters (see validate_client_id).
+
+    Two clients, not one: MainWindow auto-selects a client at startup
+    (restoring last_client, or whichever get_available_clients() lists
+    first), so a test that switches the command bar to a specific client
+    needs a second one to have actually started on -- otherwise
+    setCurrentIndex(already-current-index) fires no signal at all.
+    """
+    from gui.main_window import MainWindow
+
+    seed = ProfileManager(config_path=str(config_ini))
+    seed.create_client_profile("TESTCL", "Test Client")
+    seed.create_client_profile("OTHERCL", "Other Client")
+    window = MainWindow(config_path=str(config_ini))
+    yield window
+    window.deleteLater()
+
+
+@pytest.fixture
+def main_window_with_list(main_window, session_factory, packer_logic_factory):
+    """A MainWindow with a 2-order packing list already loaded and populated
+    into order_tree -- for tests of the tree's chrome, filter, and empty
+    state that need a real MainWindow rather than a StubLogic seam.
+    """
+    orders = [
+        (
+            "#10429",
+            "DHL",
+            [{"sku": "TS-4409-B", "quantity": 1, "product_name": "Widget A"}],
+        ),
+        (
+            "#10430",
+            "DHL",
+            [{"sku": "SKU-OTHER", "quantity": 1, "product_name": "Widget B"}],
+        ),
+    ]
+    _session_dir, work_dir, list_path = session_factory(
+        client_id="TESTCL", orders=orders
+    )
+    logic = packer_logic_factory("TESTCL", work_dir)
+    logic.load_packing_list_json(list_path)
+    main_window.logic = logic
+    main_window._populate_order_tree()
+    return main_window
+
+
+@pytest.fixture
 def loaded_logic(packer_logic_factory, session_factory):
     """A PackerLogic instance with a 2-order packing list already loaded."""
     orders = [

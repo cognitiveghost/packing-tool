@@ -1314,22 +1314,15 @@ class PackerLogic(QObject):
         if total > 0 and (done + skipped) >= total:
             self.all_orders_complete.emit()
 
-    def confirm_keep_extra(self, normalized_sku: str) -> tuple[dict, str]:
-        """
-        Acknowledges an extra item as intentionally included.
-        Removes it from current_extra_items and checks if order can complete.
+    def _resolve_one_extra(self, normalized_sku: str) -> tuple[dict, str]:
+        """Decrement one unit of an extra SKU, dropping the key at zero.
 
-        Returns: ({}, "ORDER_NOW_COMPLETE") or ({}, "EXTRA_PENDING")
-        """
-        self.current_extra_items.pop(normalized_sku, None)
-        return self._maybe_complete_after_extra_resolution()
+        Keep and Remove differ in what the packer means, not in what the
+        session records -- nothing today stores *which* was chosen, so they
+        share this body rather than two copies of it that could drift.
 
-    def remove_extra_item(self, normalized_sku: str) -> tuple[dict, str]:
-        """
-        Marks one extra item of a SKU as removed (acknowledged as a mistake).
-        Decrements extra count; removes the key when count reaches 0.
-
-        Returns: ({}, "ORDER_NOW_COMPLETE") or ({}, "EXTRA_PENDING")
+        Returns: ({}, "ORDER_NOW_COMPLETE"), ({}, "EXTRA_CLEARED")
+        or ({}, "EXTRA_PENDING")
         """
         count = self.current_extra_items.get(normalized_sku, 0)
         if count > 1:
@@ -1337,6 +1330,19 @@ class PackerLogic(QObject):
         else:
             self.current_extra_items.pop(normalized_sku, None)
         return self._maybe_complete_after_extra_resolution()
+
+    def confirm_keep_extra(self, normalized_sku: str) -> tuple[dict, str]:
+        """
+        Acknowledges one unit of an extra item as intentionally included.
+
+        One unit per click, like remove_extra_item: a SKU scanned twice takes
+        two decisions, because each unit is its own decision.
+        """
+        return self._resolve_one_extra(normalized_sku)
+
+    def remove_extra_item(self, normalized_sku: str) -> tuple[dict, str]:
+        """Marks one extra item of a SKU as removed (acknowledged as a mistake)."""
+        return self._resolve_one_extra(normalized_sku)
 
     def _maybe_complete_after_extra_resolution(self) -> tuple[dict, str]:
         """

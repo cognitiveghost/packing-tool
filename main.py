@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication
 
 from gui.main_window import DEFAULT_CONFIG_PATH, MainWindow
 from gui.theme import load_saved_theme
+from shared.logger import install_crash_logging
 
 if __name__ == "__main__":
     import argparse
@@ -17,6 +18,8 @@ if __name__ == "__main__":
              'Use config.dev.ini for local development / mock server.'
     )
     args = parser.parse_args()
+
+    install_crash_logging()
 
     app = QApplication(sys.argv)
     load_saved_theme(app)

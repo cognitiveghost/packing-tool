@@ -19,6 +19,8 @@ from gui.packer_bridge import (
     banner_payload,
     flash_role,
     item_rows,
+    order_label,
+    sku_rollup,
     summary_lines,
     unknown_rows,
 )
@@ -317,7 +319,7 @@ class PackerModeWidget(QWidget):
             else ""
         )
         self.bridge.set_banner(banner_payload(order_number, metadata))
-        self._order_label.setText(f"#{order_number}" if order_number else "No order")
+        self._order_label.setText(order_label(order_number))
         self._push_rows()
         self.skip_order_button.setEnabled(True)
         self.set_focus_to_scanner()
@@ -361,6 +363,7 @@ class PackerModeWidget(QWidget):
         the item rows alone -- an unmatched scan is not a line to pack.
         """
         self.bridge.set_items(self._rows + unknown_rows(self._unknown))
+        self.bridge.set_sku_rollup(sku_rollup(self._rows))
         self._push_progress()
 
     def _push_progress(self):
@@ -409,6 +412,7 @@ class PackerModeWidget(QWidget):
         self._sku_map = {}
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
+        self.bridge.set_sku_rollup([])
         self._order_label.setText("No order")
         self.scanner_input.clear()
         self.scanner_input.setEnabled(True)

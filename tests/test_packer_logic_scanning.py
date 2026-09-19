@@ -355,3 +355,27 @@ def test_all_orders_complete_counts_skipped_orders_as_done(loaded_logic, qapp):
     loaded_logic.start_order_packing("ORDER-002")
     loaded_logic.process_sku_scan("SKU-CCC")
     assert received == [True]
+
+
+def test_keeping_one_unit_of_a_doubled_extra_leaves_the_other(loaded_logic):
+    """Keep and Remove resolve an extra one unit at a time, the same way.
+
+    Keep used to pop the whole count, so a SKU scanned twice beyond its
+    requirement vanished from the extras block on one click while Remove
+    needed two -- which reads as 'Keep did not update the extra'.
+
+    Note: the plan's original test scanned a SKU not present in the order at
+    all, which routes to unknown_scans/SKU_NOT_FOUND rather than
+    current_extra_items (extras require the SKU to already be in the order,
+    fully packed -- see packer_logic.py:1156-1165). Rewritten here to scan
+    SKU-BBB (required=1) twice past its requirement instead.
+    """
+    loaded_logic.start_order_packing("#ORDER-001!")
+    loaded_logic.process_sku_scan("SKU-BBB")  # SKU_OK, meets its own requirement
+    loaded_logic.process_sku_scan("SKU-BBB")  # SKU_EXTRA, extra count 1
+    loaded_logic.process_sku_scan("SKU-BBB")  # SKU_EXTRA, extra count 2
+    assert loaded_logic.current_extra_items.get("skubbb") == 2
+
+    loaded_logic.confirm_keep_extra("skubbb")
+
+    assert loaded_logic.current_extra_items.get("skubbb") == 1

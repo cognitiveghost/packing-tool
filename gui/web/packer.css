@@ -239,7 +239,15 @@ html, body { height: 100%; margin: 0; }
 .progress-fill { height: 100%; background: var(--accent-fill); }
 .progress-numbers { font-size: var(--type-caption-size); color: var(--text-secondary); }
 
-.history { display: flex; flex-direction: column; overflow-y: auto; }
+/* The block scrolls rather than grows: a long session would otherwise push
+   the side column past the viewport and take the roll-up below it with it.
+   No history is dropped -- every order in the session stays reachable. */
+.history {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 280px;
+}
 .history-row {
   display: flex;
   align-items: center;
@@ -251,6 +259,20 @@ html, body { height: 100%; margin: 0; }
 }
 .history-row:last-child { border-bottom: none; }
 .history-row__order { font-family: var(--font-family-mono); }
+
+/* The roll-up sits where the history block's growth used to go (Task 3). */
+.rollup { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.rollup-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+}
+.rollup-row:last-child { border-bottom: none; }
+.rollup-row__sku { font-family: var(--font-family-mono); }
+.rollup-row__qty { color: var(--text-secondary); }
 
 .summary-line {
   display: flex;

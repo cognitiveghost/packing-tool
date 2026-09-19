@@ -33,3 +33,13 @@
 **Floor density** — the density profile for warehouse use: 44px controls, 12pt body, 60px command bar.
 
 **Artboard** — a static HTML drawing of a screen under `docs/design/`; once the owner approves it, it is the brief the implementation follows.
+
+**Session Browser** — the screen listing a client's packing sessions, and the detail page behind a selected one. Its client picker is the command bar's; it has no picker of its own.
+
+**Session status** — one of seven states a session is in: *not started*, *active*, *paused*, *stale*, *completed*, *incomplete*, *abandoned*. A packer declares *paused* and *incomplete*; the system infers the rest.
+
+**Status chip** — the pill marking a status, carrying F5's three channels: colour is the role, a tinted ground means the thing is still live, and a solid dot means a person decided it where a hollow dot means the system did.
+
+**Stat card** — a big number over a small label in a bordered box; the unit the Statistics screen is built from.
+
+**SKU roll-up** — one order's lines consolidated to one row per distinct SKU, in the order document's side column. Not the same as the Statistics screen's **SKU summary**, which spans the whole session.

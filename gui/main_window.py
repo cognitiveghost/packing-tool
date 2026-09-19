@@ -29,17 +29,13 @@ from PySide6.QtGui import QCloseEvent, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
-    QScrollArea,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -52,6 +48,7 @@ from gui.packer_bridge import session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
+from gui.statistics_widget import StatisticsWidget
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
@@ -63,13 +60,21 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.components.card import Card
+from shared.components.state_panel import StatePanel
 from shared.components.toast import toast
 from shared.icons import icon
 from shared.navrail import NavRail
 from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
-from shared.theme import font_css, on_theme_changed, theme_notifier
+from shared.theme import (
+    StatusChip,
+    font_css,
+    get_density_profile,
+    on_theme_changed,
+    theme_notifier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +85,14 @@ logger = logging.getLogger(__name__)
 RAIL_WIDTH = 76
 
 # (icon name, rail label, tooltip) per destination, in rail order.
-# "Packing" and "Statistics" are the existing tab titles, verbatim.
+# "Packing" is the existing tab title, verbatim. "Statistics" measures ~72px
+# at 10pt against the rail item's 56px and has no wrap point, so the rail
+# says "Stats" -- the tab title, page title and tooltip keep the full word.
 # "Browse" is not a rename -- Session Browser was a dialog title and has never
 # had a rail label to change -- so the full name lives in its tooltip.
 RAIL_ITEMS = (
     ("clipboard-list", "Packing", "Packing — the current session's orders"),
-    ("table", "Statistics", "Statistics — session totals"),
+    ("table", "Stats", "Statistics — session totals"),
     (
         "folder-open",
         "Browse",
@@ -94,6 +101,18 @@ RAIL_ITEMS = (
 )
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
+
+# T1's three order states. All three are the system's reading of the packing
+# list, so none carries the solid mark -- F5's mark means a *packer declared*
+# this state. T1 draws "In progress" as chip--warning chip--tint chip--hollow,
+# and STATUS_CONFIG["in_progress"] in the session browser says the same; the
+# plan asked for a solid mark here, which would have made one state render two
+# ways on two screens.
+ORDER_STATUS_CHIP = {
+    "in_progress": ("status_warning", "In progress", True, False),
+    "packed": ("status_success", "Packed", False, False),
+    "not_started": ("text_secondary", "Not started", False, False),
+}
 
 DEFAULT_CONFIG_PATH = "config.ini"
 
@@ -155,8 +174,6 @@ class MainWindow(QMainWindow):
         packer_mode_widget (PackerModeWidget): The widget for the packer mode view.
         stacked_widget (QStackedWidget): Manages switching between views.
         orders_table (QTableView): The table displaying the list of orders.
-        table_model (OrderTableModel): The model for the orders table.
-        proxy_model (CustomFilterProxyModel): The proxy model for filtering the table.
     """
 
     def __init__(
@@ -337,16 +354,28 @@ class MainWindow(QMainWindow):
         packing_layout.setContentsMargins(0, 0, 0, 0)
 
         self._setup_order_tree()
-        packing_layout.addWidget(self.order_tree)
+        self.order_tree_card = Card(margins=(0, 0, 0, 0))
+        self.order_tree_card.add_widget(self.order_tree)
+        packing_layout.addWidget(self.order_tree_card)
+
+        # T2: no packing list loaded is a state panel, not an empty tree.
+        self.packing_state_panel = StatePanel(
+            "No session open",
+            "Open a session to see its orders here.",
+            action_text="Open session",
+        )
+        self.packing_state_panel.button.clicked.connect(self.open_session_browser)
+        packing_layout.addWidget(self.packing_state_panel)
+        self.order_tree_card.setVisible(False)
 
         self.session_tabs.addTab(packing_tab, "Packing")
 
         # Tab 2: Statistics View
-        stats_tab = QWidget()
-        stats_layout = QVBoxLayout(stats_tab)
-        stats_layout.setContentsMargins(0, 0, 0, 0)
-        self._setup_statistics_tab(stats_layout)
-        self.session_tabs.addTab(stats_tab, "Statistics")
+        self.statistics_widget = StatisticsWidget()
+        self.statistics_widget.go_to_packing_requested.connect(
+            lambda: self.session_tabs.setCurrentIndex(PAGE_PACKING)
+        )
+        self.session_tabs.addTab(self.statistics_widget, "Statistics")
 
         # Tab 3: Session Browser — a destination now, not a dialog.
         self.session_browser = SessionBrowserWidget(
@@ -362,7 +391,17 @@ class MainWindow(QMainWindow):
         self.session_browser.start_packing_requested.connect(
             self._handle_start_packing_from_browser
         )
+        self.session_browser.sessions_shown.connect(
+            lambda shown, total: self.sb_browser_label.setText(
+                f"{shown} of {total} sessions"
+            )
+        )
         self.session_tabs.addTab(self.session_browser, "Session Browser")
+        # load_available_clients() ran before this widget existed, so the
+        # client it settled on (restored last_client, if any) never reached
+        # the browser -- push it now that there is somewhere to push it.
+        if self.current_client_id:
+            self.session_browser.load_client(self.current_client_id)
 
         for icon_name, label, tip in RAIL_ITEMS:
             index = self.nav_rail.add_item(icon(icon_name), label)
@@ -374,6 +413,7 @@ class MainWindow(QMainWindow):
         # before emitting when the index is unchanged.
         self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
         self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
+        self.session_tabs.currentChanged.connect(self._sync_status_bar_to_page)
         self.session_tabs.currentChanged.connect(
             lambda index: self.command_bar.set_page(PAGES[index])
         )
@@ -441,11 +481,16 @@ class MainWindow(QMainWindow):
         self.sb_worker_label = QLabel(self.current_worker_name or "")
         self.sb_worker_label.setObjectName("worker_label")
         self.sb_summary_label = QLabel("")
+        # The browser counts sessions, the packing page counts orders. Each
+        # artboard draws only its own sentence, so only one is ever visible.
+        self.sb_browser_label = QLabel("")
+        self.sb_browser_label.setVisible(False)
 
         def style_labels(tokens):
             caption = f"{font_css('caption')} color: {tokens.text_secondary};"
             self.sb_worker_label.setStyleSheet(caption)
             self.sb_summary_label.setStyleSheet(caption)
+            self.sb_browser_label.setStyleSheet(caption)
             self.sb_session_label.setStyleSheet(
                 f"{caption} font-family: {tokens.font_family_mono};"
             )
@@ -454,6 +499,15 @@ class MainWindow(QMainWindow):
         status_bar.addWidget(self.sb_session_label)
         status_bar.addWidget(self.sb_worker_label)
         status_bar.addPermanentWidget(self.sb_summary_label)
+        status_bar.addPermanentWidget(self.sb_browser_label)
+        # The page was chosen before this bar existed, so nothing has fired
+        # currentChanged yet.
+        self._sync_status_bar_to_page(self.session_tabs.currentIndex())
+
+    def _sync_status_bar_to_page(self, index: int):
+        """Show the one status-bar sentence this page's artboard draws."""
+        self.sb_summary_label.setVisible(index == PAGE_PACKING)
+        self.sb_browser_label.setVisible(index == PAGE_BROWSER)
 
     def _setup_order_tree(self):
         """Setup expandable order tree view."""
@@ -473,22 +527,23 @@ class MainWindow(QMainWindow):
             1, QHeaderView.Stretch
         )  # Product stretches
 
-        # Styling
-        font = QFont()
-        font.setPointSize(11)
-        self.order_tree.setFont(font)
         self.order_tree.setAlternatingRowColors(True)
         self.order_tree.setUniformRowHeights(False)
         self.order_tree.setItemsExpandable(True)
         self.order_tree.setRootIsDecorated(True)
 
-        # Row height and styling
-        self.order_tree.setStyleSheet("""
-            QTreeWidget::item {
-                height: 30px;
-                padding: 5px;
-            }
-        """)
+        # The floor rung, not a literal: T1's row height comes off the active
+        # density profile rather than a hardcoded pixel count.
+        row_height = get_density_profile().row_height
+        self.order_tree.setStyleSheet(
+            f"QTreeWidget::item {{ height: {row_height}px; }}"
+        )
+
+    def _order_status_chip(self, status: str) -> StatusChip:
+        role, text, live, manual = ORDER_STATUS_CHIP.get(
+            status, ORDER_STATUS_CHIP["not_started"]
+        )
+        return StatusChip(role, text, current_tokens(), live=live, manual=manual)
 
     def _populate_order_tree(self):
         """Populate tree with orders and items."""
@@ -500,7 +555,12 @@ class MainWindow(QMainWindow):
             or self.logic.processed_df is None
         ):
             self.sb_summary_label.setText("")
+            self.order_tree_card.setVisible(False)
+            self.packing_state_panel.setVisible(True)
             return
+
+        self.order_tree_card.setVisible(True)
+        self.packing_state_panel.setVisible(False)
 
         # Group by order number
         grouped = self.logic.processed_df.groupby("Order_Number")
@@ -516,21 +576,13 @@ class MainWindow(QMainWindow):
             # Check order status
             is_completed = order_num in completed_orders
 
-            # Count scanned items
-            scanned_count = 0
-            if order_num in in_progress_orders:
-                order_state = in_progress_orders[order_num]
-                scanned_count = sum(
-                    1 for s in order_state if s.get("packed", 0) >= s.get("required", 1)
-                )
-            elif is_completed:
-                scanned_count = total_items
-
-            # Order status
+            # Order status -- T1's chip, not a text summary
             if is_completed:
-                status_text = "Completed"
+                chip_status = "packed"
+            elif order_num in in_progress_orders:
+                chip_status = "in_progress"
             else:
-                status_text = f"{scanned_count}/{total_items} items"
+                chip_status = "not_started"
 
             # Courier
             courier = (
@@ -539,9 +591,10 @@ class MainWindow(QMainWindow):
                 else "N/A"
             )
 
-            # Create top-level order item
+            # Create top-level order item. Column 3 (Status) is filled by a
+            # StatusChip below, once the item is in the tree.
             order_item = QTreeWidgetItem(
-                [f"{order_num}", f"{total_items} items", "", status_text, courier]
+                [f"{order_num}", f"{total_items} items", "", "", courier]
             )
 
             # Bold font for order
@@ -571,42 +624,9 @@ class MainWindow(QMainWindow):
                     else 1
                 )
 
-                # Check if scanned
-                scanned_qty = 0
-                if order_num in in_progress_orders:
-                    order_state = in_progress_orders[order_num]
-                    # Find this SKU in the order state
-                    for item_state in order_state:
-                        # CRITICAL FIX: Validate item_state is dict before calling .get()
-                        if not isinstance(item_state, dict):
-                            logger.warning(
-                                f"Skipping invalid item_state in {order_num}: {type(item_state).__name__}"
-                            )
-                            continue
-
-                        if item_state.get("original_sku") == sku:
-                            scanned_qty = item_state.get("packed", 0)
-                            break
-                elif is_completed:
-                    try:
-                        scanned_qty = int(qty)
-                    except (ValueError, TypeError):
-                        scanned_qty = 1
-
-                try:
-                    qty_int = int(qty)
-                except (ValueError, TypeError):
-                    qty_int = 1
-
-                if scanned_qty >= qty_int:
-                    item_status = "Scanned"
-                else:
-                    item_status = f"Pending ({scanned_qty}/{qty_int})"
-
-                # Create child item
-                child_item = QTreeWidgetItem(
-                    [f"  {sku}", product, str(qty), item_status, ""]
-                )
+                # Create child item. Status and Courier stay blank -- T1
+                # draws the chip on the order row only.
+                child_item = QTreeWidgetItem([f"  {sku}", product, str(qty), "", ""])
 
                 # Normal font for items
                 item_font = QFont()
@@ -617,6 +637,9 @@ class MainWindow(QMainWindow):
                 order_item.addChild(child_item)
 
             self.order_tree.addTopLevelItem(order_item)
+            self.order_tree.setItemWidget(
+                order_item, 3, self._order_status_chip(chip_status)
+            )
 
             # Expand completed orders, collapse pending
             if is_completed:
@@ -662,244 +685,14 @@ class MainWindow(QMainWindow):
             # Show if order or child matches
             order_item.setHidden(not (order_match or child_match))
 
-    def _setup_statistics_tab(self, layout):
-        """Create statistics overview tab."""
-
-        # Scroll area for stats
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
-
-        # --- Session Totals (horizontal compact cards) ---
-        totals_group = QGroupBox("Session Totals")
-        totals_row = QHBoxLayout()
-        totals_row.setSpacing(16)
-
-        bold_font = QFont()
-        bold_font.setPointSize(18)
-        bold_font.setBold(True)
-        label_font = QFont()
-        label_font.setPointSize(9)
-
-        def _make_stat_card(title: str) -> QLabel:
-            """Create a vertical mini-card: big value on top, small label below."""
-            card = QWidget()
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(12, 8, 12, 8)
-            card_layout.setSpacing(2)
-            card.setStyleSheet(
-                f"QWidget {{ border: 1px solid {current_tokens().border}; border-radius: 4px; }}"
-            )
-            value_lbl = QLabel("0")
-            value_lbl.setFont(bold_font)
-            value_lbl.setAlignment(Qt.AlignCenter)
-            title_lbl = QLabel(title)
-            title_lbl.setFont(label_font)
-            title_lbl.setAlignment(Qt.AlignCenter)
-            title_lbl.setStyleSheet(
-                f"color: {current_tokens().text_secondary}; border: none;"
-            )
-            card_layout.addWidget(value_lbl)
-            card_layout.addWidget(title_lbl)
-            totals_row.addWidget(card)
-            return value_lbl
-
-        self.stats_total_orders = _make_stat_card("Orders")
-        self.stats_completed_orders = _make_stat_card("Completed")
-        self.stats_total_items = _make_stat_card("Items")
-        self.stats_unique_skus = _make_stat_card("Unique SKUs")
-        self.stats_progress_pct = _make_stat_card("Progress")
-        totals_row.addStretch()
-
-        totals_group.setLayout(totals_row)
-        scroll_layout.addWidget(totals_group)
-
-        # --- By Courier ---
-        courier_group = QGroupBox("By Courier")
-        courier_layout = QHBoxLayout()
-        self.courier_stats_widget = QWidget()
-        self.courier_stats_layout = QHBoxLayout(self.courier_stats_widget)
-        self.courier_stats_layout.setSpacing(16)
-        courier_layout.addWidget(self.courier_stats_widget)
-        courier_layout.addStretch()
-        courier_group.setLayout(courier_layout)
-        scroll_layout.addWidget(courier_group)
-
-        # --- SKU Summary Table ---
-        sku_group = QGroupBox("SKU Summary")
-        sku_layout = QVBoxLayout()
-
-        self.sku_table = QTableWidget()
-        self.sku_table.setColumnCount(4)
-        self.sku_table.setHorizontalHeaderLabels(
-            ["SKU", "Product", "Total Qty", "Status"]
-        )
-        self.sku_table.horizontalHeader().setStretchLastSection(True)
-        self.sku_table.setAlternatingRowColors(True)
-        self.sku_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.sku_table.setSelectionMode(QTableWidget.NoSelection)
-
-        sku_layout.addWidget(self.sku_table)
-        sku_group.setLayout(sku_layout)
-        scroll_layout.addWidget(sku_group)
-
-        scroll.setWidget(scroll_widget)
-        layout.addWidget(scroll)
-
     def _update_statistics(self):
-        """Refresh statistics tab with current data."""
-        if (
-            not self.logic
-            or not hasattr(self.logic, "processed_df")
-            or self.logic.processed_df is None
-        ):
+        """Refresh the Statistics screen from the current session."""
+        if not self.logic or getattr(self.logic, "processed_df", None) is None:
+            self.statistics_widget.show_empty()
             return
-
-        df = self.logic.processed_df
-
-        # Session totals
-        unique_orders = df["Order_Number"].unique()
-        total_orders = len(unique_orders)
-        completed_orders_list = self.logic.session_packing_state.get(
-            "completed_orders", []
+        self.statistics_widget.update_from(
+            self.logic.processed_df, self.logic.session_packing_state
         )
-        completed_orders = len(completed_orders_list)
-        total_items = len(df)
-        unique_skus = df["SKU"].nunique()
-        progress_pct = (
-            int(completed_orders / total_orders * 100) if total_orders > 0 else 0
-        )
-
-        self.stats_total_orders.setText(str(total_orders))
-        self.stats_completed_orders.setText(str(completed_orders))
-        self.stats_total_items.setText(str(total_items))
-        self.stats_unique_skus.setText(str(unique_skus))
-        self.stats_progress_pct.setText(f"{progress_pct}%")
-
-        # By Courier
-        # Clear existing
-        for i in reversed(range(self.courier_stats_layout.count())):
-            widget = self.courier_stats_layout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
-
-        if "Courier" in df.columns:
-            courier_stats = (
-                df.groupby("Courier")
-                .agg(
-                    {
-                        "Order_Number": "nunique",
-                        "Quantity": lambda x: pd.to_numeric(x, errors="coerce").sum(),
-                    }
-                )
-                .reset_index()
-            )
-
-            # OPTIMIZED: replaced iterrows() with itertuples() for 5-10x speedup
-            card_bold_font = QFont()
-            card_bold_font.setPointSize(18)
-            card_bold_font.setBold(True)
-            card_label_font = QFont()
-            card_label_font.setPointSize(9)
-            for row_tuple in courier_stats.itertuples(index=False):
-                courier = row_tuple.Courier
-                orders = row_tuple.Order_Number
-                items = int(row_tuple.Quantity) if pd.notna(row_tuple.Quantity) else 0
-                card = QWidget()
-                card_layout = QVBoxLayout(card)
-                card_layout.setContentsMargins(12, 8, 12, 8)
-                card_layout.setSpacing(2)
-                card.setObjectName("courier_card")
-                card.setStyleSheet(
-                    f"#courier_card {{ border: 1px solid {current_tokens().border}; border-radius: 4px; }}"
-                )
-                value_lbl = QLabel(str(orders))
-                value_lbl.setFont(card_bold_font)
-                value_lbl.setAlignment(Qt.AlignCenter)
-                courier_lbl = QLabel(courier)
-                courier_lbl.setFont(card_label_font)
-                courier_lbl.setAlignment(Qt.AlignCenter)
-                courier_lbl.setStyleSheet(
-                    f"color: {current_tokens().text_secondary}; border: none;"
-                )
-                items_lbl = QLabel(f"{items} items")
-                items_lbl.setFont(card_label_font)
-                items_lbl.setAlignment(Qt.AlignCenter)
-                items_lbl.setStyleSheet(
-                    f"color: {current_tokens().text_disabled}; border: none;"
-                )
-                card_layout.addWidget(value_lbl)
-                card_layout.addWidget(courier_lbl)
-                card_layout.addWidget(items_lbl)
-                self.courier_stats_layout.addWidget(card)
-
-        # SKU Summary
-        sku_summary = (
-            df.groupby(["SKU", "Product_Name"])
-            .agg({"Quantity": lambda x: pd.to_numeric(x, errors="coerce").sum()})
-            .reset_index()
-        )
-
-        self.sku_table.setRowCount(len(sku_summary))
-
-        # Get scanned items tracking
-        in_progress_orders = self.logic.session_packing_state.get("in_progress", {})
-        scanned_by_sku = {}
-
-        # Count scanned quantities per SKU
-        for order_state in in_progress_orders.values():
-            for item_state in order_state:
-                # CRITICAL FIX: Validate item_state is dict before calling .get()
-                if not isinstance(item_state, dict):
-                    logger.warning(
-                        f"Skipping invalid item_state (not a dict): {type(item_state).__name__}"
-                    )
-                    continue
-
-                sku = item_state.get("original_sku")
-                packed = item_state.get("packed", 0)
-                if sku:
-                    scanned_by_sku[sku] = scanned_by_sku.get(sku, 0) + packed
-
-        # Add completed orders to scanned count
-        # OPTIMIZED: replaced nested loops + iterrows() with vectorized groupby
-        # This reduces O(n*m) iteration to O(n) vectorized operation
-        if completed_orders_list:
-            completed_items_df = df[df["Order_Number"].isin(completed_orders_list)]
-            if not completed_items_df.empty:
-                # Group by SKU and sum quantities (vectorized)
-                completed_by_sku = (
-                    completed_items_df.groupby("SKU")["Quantity"]
-                    .apply(lambda x: pd.to_numeric(x, errors="coerce").sum())
-                    .fillna(0)
-                    .astype(int)
-                )
-
-                # Add to scanned_by_sku dict
-                for sku, qty in completed_by_sku.items():
-                    scanned_by_sku[sku] = scanned_by_sku.get(sku, 0) + qty
-
-        # OPTIMIZED: replaced iterrows() with enumerate(itertuples()) for 5-10x speedup
-        for idx, row_tuple in enumerate(sku_summary.itertuples(index=False)):
-            sku = row_tuple.SKU
-            product = row_tuple.Product_Name
-            qty = row_tuple.Quantity
-            qty_int = int(qty) if pd.notna(qty) else 0
-
-            # Check if fully scanned
-            scanned = scanned_by_sku.get(sku, 0)
-            if scanned >= qty_int:
-                status = "Complete"
-            else:
-                status = f"{scanned}/{qty_int}"
-
-            self.sku_table.setItem(idx, 0, QTableWidgetItem(sku))
-            self.sku_table.setItem(idx, 1, QTableWidgetItem(product))
-            self.sku_table.setItem(idx, 2, QTableWidgetItem(str(qty_int)))
-            self.sku_table.setItem(idx, 3, QTableWidgetItem(status))
-
-        self.sku_table.resizeColumnsToContents()
 
     def _select_worker(self) -> bool:
         """Show worker selection dialog
@@ -1016,6 +809,11 @@ class MainWindow(QMainWindow):
         self.settings.setValue("last_client", client_id)
 
         logger.debug(f"Current client set to: {client_id}")
+
+        # The browser has no picker of its own (Bundle 6): the command bar's
+        # is the only one, so it has to push the change.
+        if hasattr(self, "session_browser"):
+            self.session_browser.load_client(client_id)
 
     def flash_border(self, color: str):
         """Flash the order document's edge with the scan's outcome.

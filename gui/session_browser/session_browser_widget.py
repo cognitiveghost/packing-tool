@@ -2,16 +2,20 @@
 Session Browser Widget — client-first session browser.
 
 Architecture (v2.0):
-    ┌────────────────┬─────────────────────────────────────────────────────┐
-    │  CLIENTS       │  Client: M  ·  12 entries  ·  3 active  ·  2 stale  │
-    │  ─────────     │  ──────────────────────────────────────────────────  │
-    │  > M           │  [Status ▾] [From] [To] [Search…]                    │
-    │    K           │  ──────────────────────────────────────────────────  │
-    │    S           │  Status | Packing List | Session | Worker | …        │
-    │                │  rows…                                               │
-    │  [↻ Refresh]   │  Preview panel (on row select)                       │
-    │                │  [Export CSV] [Export Excel] [↻ Refresh]             │
-    └────────────────┴─────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  Client: M  ·  12 entries  ·  3 active  ·  2 stale                  │
+    │  ─────────────────────────────────────────────────────────────────  │
+    │  [Status ▾] [From] [To] [Search…]                                   │
+    │  ─────────────────────────────────────────────────────────────────  │
+    │  Status | Packing List | Session | Worker | …                       │
+    │  rows…                                                              │
+    │  Preview panel (on row select)                                      │
+    │  [Export CSV] [Export Excel] [↻ Refresh]                            │
+    └─────────────────────────────────────────────────────────────────────┘
+
+The client comes from the command bar's picker (Bundle 6) -- this widget no
+longer carries a client selector of its own; `load_client` is how it learns
+which client's sessions to show.
 
 Session data is loaded from per-client registry_index.json (1 file read),
 not from scanning the directory tree.  Load time: < 1 second.
@@ -23,16 +27,16 @@ directory scan builds the registry.  Shown as "Building session index…".
 import logging
 import time
 
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QSettings, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
-    QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from .client_selector_widget import ClientSelectorWidget
+from .session_detail_page import SessionDetailPage
 from .sessions_list_widget import SessionsListWidget
 
 logger = logging.getLogger(__name__)
@@ -53,7 +57,8 @@ class SessionBrowserWidget(QWidget):
     """
 
     resume_session_requested = Signal(dict)
-    start_packing_requested  = Signal(dict)
+    start_packing_requested = Signal(dict)
+    sessions_shown = Signal(int, int)  # (shown, total) -- forwarded for the status bar
 
     def __init__(
         self,
@@ -66,11 +71,11 @@ class SessionBrowserWidget(QWidget):
     ):
         super().__init__(parent)
 
-        self.profile_manager       = profile_manager
-        self.session_lock_manager  = session_lock_manager
+        self.profile_manager = profile_manager
+        self.session_lock_manager = session_lock_manager
         self.session_history_manager = session_history_manager
-        self.worker_manager        = worker_manager
-        self.registry_manager      = registry_manager
+        self.worker_manager = worker_manager
+        self.registry_manager = registry_manager
 
         self.settings = QSettings("PackingTool", "SessionBrowser")
         self._auto_refresh_enabled = self.settings.value(
@@ -81,23 +86,17 @@ class SessionBrowserWidget(QWidget):
         self._connect_signals()
         self._setup_auto_refresh()
 
-        self._clients_loaded = False
-
         logger.info("SessionBrowserWidget (v2) initialized")
 
-    def showEvent(self, event):
-        """Load clients the first time the page is actually looked at.
+    def load_client(self, client_id: str) -> None:
+        """The only way this widget learns its client (Bundle 6): the command
+        bar's picker is the single client selector, and pushes changes here.
 
-        As a dialog this ran in __init__, immediately before exec(). As a page
-        constructed at startup it would run on every app launch -- and it does
-        not just list directories, it selects a client, which reads that
-        client's registry off the file server. On a warehouse UNC path that is
-        startup latency for a page most shifts never open.
+        The registry read behind this runs on RegistryRefreshWorker, and it
+        must keep doing so: on a warehouse UNC path a synchronous read here
+        is startup latency for a page most shifts never open.
         """
-        super().showEvent(event)
-        if not self._clients_loaded:
-            self._clients_loaded = True
-            self.client_selector.load_clients()
+        self.sessions_list.load_client(client_id)
 
     # ------------------------------------------------------------------ #
     #  UI                                                                  #
@@ -117,28 +116,42 @@ class SessionBrowserWidget(QWidget):
         top_bar.addStretch()
         root.addLayout(top_bar)
 
-        # Horizontal splitter: client list | session table
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(4)
-
-        self.client_selector = ClientSelectorWidget(self.profile_manager)
-        splitter.addWidget(self.client_selector)
-
         self.sessions_list = SessionsListWidget(
             registry_manager=self.registry_manager,
             session_history_manager=self.session_history_manager,
         )
-        splitter.addWidget(self.sessions_list)
+        self.detail_page = None
 
-        splitter.setStretchFactor(0, 0)   # client panel — fixed
-        splitter.setStretchFactor(1, 1)   # sessions panel — stretches
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.sessions_list)
+        root.addWidget(self.stack)
 
-        root.addWidget(splitter)
+    def show_detail(self, session_data: dict) -> None:
+        """Show one session's detail page, replacing the list in the stack."""
+        if self.detail_page is not None:
+            self.stack.removeWidget(self.detail_page)
+            self.detail_page.deleteLater()
+
+        self.detail_page = SessionDetailPage(
+            session_data,
+            session_history_manager=self.session_history_manager,
+            parent=self,
+        )
+        self.detail_page.back_requested.connect(self.show_list)
+        self.stack.addWidget(self.detail_page)
+        self.stack.setCurrentWidget(self.detail_page)
+
+    def show_list(self) -> None:
+        """Return to the session list."""
+        self.stack.setCurrentWidget(self.sessions_list)
 
     def _connect_signals(self):
-        self.client_selector.client_selected.connect(self.sessions_list.load_client)
-        self.sessions_list.resume_session_requested.connect(self.resume_session_requested)
+        self.sessions_list.resume_session_requested.connect(
+            self.resume_session_requested
+        )
         self.sessions_list.start_packing_requested.connect(self.start_packing_requested)
+        self.sessions_list.session_details_requested.connect(self.show_detail)
+        self.sessions_list.sessions_shown.connect(self.sessions_shown)
 
     # ------------------------------------------------------------------ #
     #  Auto-refresh                                                        #

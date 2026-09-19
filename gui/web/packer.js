@@ -40,6 +40,15 @@ function span(cls, text) {
   return el;
 }
 
+function orderLabel(order) {
+  // Same rule as packer_bridge.order_label, including the empty case --
+  // a bare "#" is not a label, and the two sides disagreeing is how one
+  // of them ships it.
+  const text = String(order == null ? "" : order);
+  if (!text) return "No order";
+  return text.startsWith("#") ? text : "#" + text;
+}
+
 function actionButton(label, action, row, sku) {
   const btn = document.createElement("button");
   btn.className = "btn btn--ghost";
@@ -105,7 +114,7 @@ function renderBanner() {
   const chips = b.chips || [];
   els.banner.textContent = "";
   els.banner.hidden = !b.order && chips.length === 0 && !b.notes;
-  if (b.order) els.banner.appendChild(span("doc-banner-order", "#" + b.order));
+  if (b.order) els.banner.appendChild(span("doc-banner-order", orderLabel(b.order)));
   chips.forEach(function (c) {
     els.banner.appendChild(span("doc-banner-tag", c));
   });
@@ -165,10 +174,28 @@ function renderHistory() {
   rows.forEach(function (r) {
     const row = document.createElement("div");
     row.className = "history-row";
-    row.appendChild(span("history-row__order", "#" + r.order));
+    row.appendChild(span("history-row__order", orderLabel(r.order)));
     const chip = HISTORY_CHIP[r.status] || HISTORY_CHIP.complete;
     row.appendChild(span(chip.cls, chip.text));
     els.historyRows.appendChild(row);
+  });
+}
+
+function renderRollup() {
+  const rows = state.bridge.skuRollup || [];
+  els.rollupRows.textContent = "";
+  if (rows.length === 0) {
+    els.rollupRows.appendChild(span("rollup-row__sku", "No items yet"));
+    return;
+  }
+  rows.forEach(function (r) {
+    const row = document.createElement("div");
+    row.className = "rollup-row";
+    row.appendChild(span("rollup-row__sku", r.sku));
+    row.appendChild(span("rollup-row__qty", r.packed + " / " + r.required));
+    const chip = CHIP[r.state] || CHIP.pending;
+    row.appendChild(span(chip.cls, chip.text));
+    els.rollupRows.appendChild(row);
   });
 }
 
@@ -219,6 +246,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   els.progressNumbers = document.getElementById("progress-numbers");
   els.summarySkus = document.getElementById("summary-skus");
   els.historyRows = document.getElementById("history-rows");
+  els.rollupRows = document.getElementById("rollup-rows");
   els.extras = document.getElementById("extras");
   els.extrasRows = document.getElementById("extras-rows");
   els.stateTitle = document.getElementById("state-title");
@@ -232,6 +260,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.bannerChanged.connect(renderBanner);
   bridge.progressChanged.connect(renderProgress);
   bridge.historyChanged.connect(renderHistory);
+  bridge.skuRollupChanged.connect(renderRollup);
   bridge.extrasChanged.connect(renderExtras);
   bridge.sessionEndChanged.connect(renderSessionEnd);
   els.docMain.addEventListener("animationend", function () {
@@ -248,6 +277,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderBanner();
   renderProgress();
   renderHistory();
+  renderRollup();
   renderExtras();
   renderSessionEnd();
   document.documentElement.dataset.bridge = "ready";
