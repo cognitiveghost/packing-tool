@@ -39,27 +39,19 @@ def session_totals(df: pd.DataFrame, completed_orders: list[str]) -> dict[str, i
 
 
 def courier_totals(df: pd.DataFrame) -> list[dict[str, Any]]:
-    """Orders and summed quantity per courier, ordered by courier name."""
+    """Orders per courier, ordered by courier name.
+
+    Orders only: S1's courier card is one number over "DPD · orders".
+    """
     if df is None or df.empty or "Courier" not in df.columns:
         return []
 
     grouped = (
-        df.groupby("Courier")
-        .agg(
-            {
-                "Order_Number": "nunique",
-                "Quantity": lambda x: pd.to_numeric(x, errors="coerce").sum(),
-            }
-        )
-        .reset_index()
+        df.groupby("Courier").agg({"Order_Number": "nunique"}).reset_index()
     )
     # itertuples, not iterrows: 5-10x faster over the same rows.
     return [
-        {
-            "courier": row.Courier,
-            "orders": int(row.Order_Number),
-            "items": int(row.Quantity) if pd.notna(row.Quantity) else 0,
-        }
+        {"courier": row.Courier, "orders": int(row.Order_Number)}
         for row in grouped.itertuples(index=False)
     ]
 

@@ -76,3 +76,23 @@ def test_loading_a_list_replaces_the_state_panel_with_the_content(screen):
     screen.update_from(_df(), {})
     assert not screen.content.isHidden()
     assert screen.state_panel.isHidden()
+
+
+def test_the_empty_state_says_what_s2_says_and_its_button_goes_somewhere(
+    qtbot, screen
+):
+    """A primary button a packer can tap that does nothing is worse than none."""
+    assert screen.state_panel.button is not None
+    with qtbot.waitSignal(screen.go_to_packing_requested):
+        screen.state_panel.button.click()
+
+
+def test_the_three_sections_carry_s1s_titles(qtbot, screen):
+    from PySide6.QtWidgets import QLabel
+
+    titles = {
+        w.text()
+        for w in screen.content.findChildren(QLabel)
+        if w.text() in {"Session totals", "By courier", "SKU summary"}
+    }
+    assert titles == {"Session totals", "By courier", "SKU summary"}

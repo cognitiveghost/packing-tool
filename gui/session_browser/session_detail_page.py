@@ -31,11 +31,9 @@ from shared.theme import StatusChip
 from .metrics_tab import MetricsTab
 from .orders_tab import OrdersTab
 from .overview_tab import OverviewTab
-from .sessions_list_widget import STATUS_CONFIG
+from .sessions_list_widget import status_chip_config
 
 logger = logging.getLogger(__name__)
-
-_UNKNOWN_STATUS_CFG = {"role": "text_secondary", "live": False, "manual": False}
 
 
 class SessionDetailPage(QWidget):
@@ -79,10 +77,7 @@ class SessionDetailPage(QWidget):
         header.addWidget(self.title_label)
 
         status = self.session_data.get("status", "")
-        cfg = STATUS_CONFIG.get(
-            status,
-            {**_UNKNOWN_STATUS_CFG, "label": status.replace("_", " ").capitalize()},
-        )
+        cfg = status_chip_config(status)
         self.status_chip = StatusChip(
             cfg["role"],
             cfg["label"],
@@ -332,9 +327,15 @@ class SessionDetailPage(QWidget):
         }
 
     def _is_standardized_data(self, data: dict) -> bool:
-        """Check if session_data is in standardized format (has all required fields)."""
-        required_fields = ["session_id", "client_id", "packing_list_name", "status"]
-        return all(field in data for field in required_fields)
+        """Check if session_data carries the pre-built totals this page can use directly.
+
+        Sniff a field only that producer emits. Identity fields like
+        ``status`` or ``packing_list_name`` are also present on a plain
+        registry entry, which has none of the totals below -- gating on
+        those routes a registry entry into the wrong loader and renders
+        the session as Unknown/0.
+        """
+        return "orders_total" in data
 
     def _build_details_from_standardized_data(self):
         """Build self.details from standardized session_data format."""

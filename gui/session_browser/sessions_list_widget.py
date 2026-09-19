@@ -46,7 +46,7 @@ _EMPTY_NO_SESSIONS = (
     "Sessions appear here once someone starts packing for this client.",
 )
 _EMPTY_NO_MATCHES = (
-    "No sessions match",
+    "No sessions match these filters",
     "Widen the dates or clear the search to see more.",
 )
 
@@ -106,6 +106,20 @@ STATUS_CONFIG = {
 }
 
 _UNKNOWN_STATUS = {"role": "text_secondary", "live": False, "manual": False}
+
+
+def status_chip_config(status: str) -> dict:
+    """Chip arguments for a status, including one the registry invented.
+
+    An unknown status still has to paint something: a neutral chip carrying
+    the raw status, title-cased. The detail page header reads this too --
+    a second copy is how the two screens end up disagreeing.
+    """
+    return {
+        **_UNKNOWN_STATUS,
+        "label": status.replace("_", " ").capitalize(),
+        **STATUS_CONFIG.get(status, {}),
+    }
 
 # Column indices. B1: Worker/PC/Started fold into "Last touched"; Progress
 # and Duration are dropped; Age is new.
@@ -189,6 +203,19 @@ def _fmt_progress(entry: dict) -> str:
     return f"{done}/{total}"
 
 
+def _fmt_packing(entry: dict) -> str:
+    """B1's Packing column: how far the session got, not what it is packing.
+
+    The artboard draws "9 / 14 orders" in this column on every row. The
+    packing list's *name* still reaches the operator through the preview
+    panel and both exports.
+    """
+    total = entry.get("total_orders", 0)
+    if total == 0:
+        return "—"
+    return f"{entry.get('completed_orders', 0)} / {total} orders"
+
+
 def _fmt_age(ts_str: str | None) -> str:
     """How long ago the session started, in the coarsest unit that fits.
 
@@ -216,9 +243,12 @@ def _fmt_age(ts_str: str | None) -> str:
 def _fmt_touched(entry: dict) -> str:
     """Who last worked this session, on which PC, and when -- one cell.
 
-    B1 draws "W-004 · WH-PC-02 · 11:20"; a session nobody has touched (an
-    available packing list, never started) shows a dash rather than an
-    empty cell that reads as a loading state.
+    B1 draws "W-004 · WH-PC-02 · 11:20" for a session touched today and
+    "W-001 · WH-PC-01 · 13d ago" for one touched a fortnight ago -- a bare
+    "09:40" on a thirteen-day-old row reads as "this morning" from across
+    the floor. A session nobody has touched (an available packing list,
+    never started) shows a dash rather than an empty cell that reads as a
+    loading state.
     """
     worker = entry.get("worker_name") or entry.get("worker_id") or ""
     pc = entry.get("pc_name") or ""
@@ -232,14 +262,14 @@ def _fmt_touched(entry: dict) -> str:
     if ts_str:
         dt = parse_timestamp(ts_str)
         if dt:
-            time_part = dt.strftime("%H:%M")
+            age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+            time_part = (
+                dt.strftime("%H:%M")
+                if age.total_seconds() < 86400
+                else f"{_fmt_age(ts_str)} ago"
+            )
     parts = [p for p in (worker, pc, time_part) if p]
     return " · ".join(parts) if parts else "—"
-
-
-def _status_display(status: str) -> str:
-    cfg = STATUS_CONFIG.get(status, {"label": status.replace("_", " ").title()})
-    return cfg["label"]
 
 
 # ------------------------------------------------------------------ #
@@ -285,7 +315,7 @@ class SessionsListWidget(QWidget):
         root.setSpacing(4)
 
         # --- placeholder shown before client is selected ---
-        self._placeholder = QLabel("← Select a client to view sessions")
+        self._placeholder = QLabel("Select a client to view sessions")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet(f"color: {current_tokens().text_secondary};")
         root.addWidget(self._placeholder)
@@ -299,9 +329,6 @@ class SessionsListWidget(QWidget):
         root.addWidget(self._main_frame)
 
         # Header: client name + quick stats
-        self._header_label = QLabel()
-        self._header_label.setStyleSheet("font-weight: bold;")
-        main_layout.addWidget(self._header_label)
 
         # Filter bar
         filter_layout = QHBoxLayout()
@@ -439,7 +466,6 @@ class SessionsListWidget(QWidget):
         self._client_id = client_id
         self._placeholder.setVisible(False)
         self._main_frame.setVisible(True)
-        self._header_label.setText(f"Client:  {client_id}")
         self._clear_table()
 
         if self._registry is None:
@@ -488,7 +514,6 @@ class SessionsListWidget(QWidget):
         if client_id != self._client_id:
             return
         self.show_entries(entries)
-        self._update_header_stats(entries)
         self._status_bar.setText(
             f"Last refreshed: {datetime.now().astimezone().strftime('%H:%M:%S')}  "
             f"({len(entries)} entries)"
@@ -552,11 +577,7 @@ class SessionsListWidget(QWidget):
         return 0.0
 
     def _make_status_cell(self, status: str) -> QWidget:
-        cfg = {
-            **_UNKNOWN_STATUS,
-            "label": status.replace("_", " ").capitalize(),
-            **STATUS_CONFIG.get(status, {}),
-        }
+        cfg = status_chip_config(status)
         cell = QWidget()
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(8, 0, 4, 0)
@@ -597,10 +618,8 @@ class SessionsListWidget(QWidget):
         age_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self._table.setItem(row, COL_AGE, age_item)
 
-        # Col 3: Packing (list name)
-        self._table.setItem(
-            row, COL_PACKING, QTableWidgetItem(entry.get("packing_list_name", "—"))
-        )
+        # Col 3: Packing — how far the session got
+        self._table.setItem(row, COL_PACKING, QTableWidgetItem(_fmt_packing(entry)))
 
         # Col 4: Items (center-aligned)
         items = entry.get("total_items", 0)
@@ -610,25 +629,6 @@ class SessionsListWidget(QWidget):
 
         # Col 5: Last touched — worker, PC and time folded into one cell.
         self._table.setItem(row, COL_TOUCHED, QTableWidgetItem(_fmt_touched(entry)))
-
-    def _update_header_stats(self, entries: list):
-        counts = {}
-        for e in entries:
-            s = e.get("status", "unknown")
-            counts[s] = counts.get(s, 0) + 1
-
-        active = counts.get("in_progress", 0)
-        stale = counts.get("stale", 0)
-        paused = counts.get("paused", 0)
-        total = len(entries)
-        parts = [f"Client: {self._client_id}", f"{total} entries"]
-        if active:
-            parts.append(f"{active} active")
-        if stale:
-            parts.append(f"⚠ {stale} stale")
-        if paused:
-            parts.append(f"{paused} paused")
-        self._header_label.setText("   ·   ".join(parts))
 
     def _clear_table(self):
         self._table.setSortingEnabled(False)

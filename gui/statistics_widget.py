@@ -4,8 +4,10 @@ Draws what packing_tool.session_stats computes; carries no aggregation of its
 own (see that module's docstring for why it isn't shared/stats_manager.py).
 """
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QScrollArea,
     QStackedWidget,
     QTableWidget,
@@ -17,7 +19,7 @@ from PySide6.QtWidgets import (
 from gui.theme import current_tokens
 from packing_tool.session_stats import courier_totals, session_totals, sku_summary
 from shared.components import Card, StatCard, StatePanel
-from shared.theme import StatusChip
+from shared.theme import StatusChip, font_css
 
 _SKU_CHIP = {
     "packed": ("status_success", "Packed", False, False),
@@ -37,6 +39,9 @@ _TOTALS_CARDS = (
 class StatisticsWidget(QWidget):
     """The Statistics screen. `update_from` fills it; `show_empty` clears it.
 
+    Signals:
+        go_to_packing_requested: the empty state's action was clicked.
+
     Attributes:
         cards: the session-totals StatCards, keyed by session_stats' field names.
         courier_layout: the row the by-courier StatCards are added to.
@@ -44,6 +49,8 @@ class StatisticsWidget(QWidget):
         state_panel: shown instead of `content` when there is no session.
         content: the scrollable totals/courier/SKU sections.
     """
+
+    go_to_packing_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -59,7 +66,10 @@ class StatisticsWidget(QWidget):
         scroll_layout = QVBoxLayout(scroll_widget)
 
         # --- Session totals ---
-        totals_card = Card(margins=(12, 12, 12, 12), spacing=8)
+        # S1 puts each section under a bare sec-title, with the stat cards
+        # sitting straight on the page. Only the SKU table gets a Card --
+        # wrapping the grids too would nest cards inside a card.
+        scroll_layout.addWidget(_section_title("Session totals"))
         totals_row = QHBoxLayout()
         totals_row.setSpacing(16)
         self.cards = {}
@@ -68,17 +78,16 @@ class StatisticsWidget(QWidget):
             self.cards[key] = card
             totals_row.addWidget(card)
         totals_row.addStretch()
-        totals_card.add_widget(_wrap(totals_row))
-        scroll_layout.addWidget(totals_card)
+        scroll_layout.addWidget(_wrap(totals_row))
 
         # --- By courier ---
-        self._courier_card = Card(margins=(12, 12, 12, 12), spacing=8)
+        scroll_layout.addWidget(_section_title("By courier"))
         self.courier_layout = QHBoxLayout()
         self.courier_layout.setSpacing(16)
-        self._courier_card.add_widget(_wrap(self.courier_layout))
-        scroll_layout.addWidget(self._courier_card)
+        scroll_layout.addWidget(_wrap(self.courier_layout))
 
         # --- SKU summary ---
+        scroll_layout.addWidget(_section_title("SKU summary"))
         sku_card = Card(margins=(12, 12, 12, 12), spacing=8)
         self.sku_table = QTableWidget()
         self.sku_table.setColumnCount(4)
@@ -96,10 +105,11 @@ class StatisticsWidget(QWidget):
         content_layout.addWidget(scroll)
 
         self.state_panel = StatePanel(
-            "No session open",
-            "Load a packing list to see this session's totals.",
-            action_text="Open a packing list",
+            "No packing data yet",
+            "Start a session from the Packing tab to see numbers here.",
+            action_text="Go to Packing",
         )
+        self.state_panel.button.clicked.connect(self.go_to_packing_requested)
 
         self.stack.addWidget(self.content)
         self.stack.addWidget(self.state_panel)
@@ -150,8 +160,15 @@ class StatisticsWidget(QWidget):
         self.stack.setCurrentWidget(self.state_panel)
 
 
+def _section_title(text: str) -> QLabel:
+    """S1's sec-title: the label rung, which is 12pt bold at every density."""
+    label = QLabel(text)
+    label.setStyleSheet(font_css("label"))
+    return label
+
+
 def _wrap(layout) -> QWidget:
-    """A plain QWidget holding a pre-built layout, for Card.add_widget."""
+    """A plain QWidget holding a pre-built layout, for addWidget."""
     widget = QWidget()
     widget.setLayout(layout)
     return widget

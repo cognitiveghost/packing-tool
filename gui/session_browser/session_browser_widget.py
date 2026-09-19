@@ -90,7 +90,12 @@ class SessionBrowserWidget(QWidget):
 
     def load_client(self, client_id: str) -> None:
         """The only way this widget learns its client (Bundle 6): the command
-        bar's picker is the single client selector, and pushes changes here."""
+        bar's picker is the single client selector, and pushes changes here.
+
+        The registry read behind this runs on RegistryRefreshWorker, and it
+        must keep doing so: on a warehouse UNC path a synchronous read here
+        is startup latency for a page most shifts never open.
+        """
         self.sessions_list.load_client(client_id)
 
     # ------------------------------------------------------------------ #
@@ -115,11 +120,10 @@ class SessionBrowserWidget(QWidget):
             registry_manager=self.registry_manager,
             session_history_manager=self.session_history_manager,
         )
-        self.list_page = self.sessions_list
         self.detail_page = None
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(self.list_page)
+        self.stack.addWidget(self.sessions_list)
         root.addWidget(self.stack)
 
     def show_detail(self, session_data: dict) -> None:
@@ -139,7 +143,7 @@ class SessionBrowserWidget(QWidget):
 
     def show_list(self) -> None:
         """Return to the session list."""
-        self.stack.setCurrentWidget(self.list_page)
+        self.stack.setCurrentWidget(self.sessions_list)
 
     def _connect_signals(self):
         self.sessions_list.resume_session_requested.connect(

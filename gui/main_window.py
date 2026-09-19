@@ -102,11 +102,14 @@ RAIL_ITEMS = (
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
 
-# T1's three order states. An order in progress is the one a packer is
-# working right now, so it carries the solid mark; the other two are the
-# system's reading of the packing list.
+# T1's three order states. All three are the system's reading of the packing
+# list, so none carries the solid mark -- F5's mark means a *packer declared*
+# this state. T1 draws "In progress" as chip--warning chip--tint chip--hollow,
+# and STATUS_CONFIG["in_progress"] in the session browser says the same; the
+# plan asked for a solid mark here, which would have made one state render two
+# ways on two screens.
 ORDER_STATUS_CHIP = {
-    "in_progress": ("status_warning", "In progress", True, True),
+    "in_progress": ("status_warning", "In progress", True, False),
     "packed": ("status_success", "Packed", False, False),
     "not_started": ("text_secondary", "Not started", False, False),
 }
@@ -357,10 +360,11 @@ class MainWindow(QMainWindow):
 
         # T2: no packing list loaded is a state panel, not an empty tree.
         self.packing_state_panel = StatePanel(
-            "No packing list loaded",
-            "Choose a client and open a packing list to start a session.",
-            action_text="Open a packing list",
+            "No session open",
+            "Open a session to see its orders here.",
+            action_text="Open session",
         )
+        self.packing_state_panel.button.clicked.connect(self.open_session_browser)
         packing_layout.addWidget(self.packing_state_panel)
         self.order_tree_card.setVisible(False)
 
@@ -368,6 +372,9 @@ class MainWindow(QMainWindow):
 
         # Tab 2: Statistics View
         self.statistics_widget = StatisticsWidget()
+        self.statistics_widget.go_to_packing_requested.connect(
+            lambda: self.session_tabs.setCurrentIndex(PAGE_PACKING)
+        )
         self.session_tabs.addTab(self.statistics_widget, "Statistics")
 
         # Tab 3: Session Browser — a destination now, not a dialog.
@@ -385,7 +392,7 @@ class MainWindow(QMainWindow):
             self._handle_start_packing_from_browser
         )
         self.session_browser.sessions_shown.connect(
-            lambda shown, total: self.sb_summary_label.setText(
+            lambda shown, total: self.sb_browser_label.setText(
                 f"{shown} of {total} sessions"
             )
         )
@@ -406,6 +413,7 @@ class MainWindow(QMainWindow):
         # before emitting when the index is unchanged.
         self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
         self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
+        self.session_tabs.currentChanged.connect(self._sync_status_bar_to_page)
         self.session_tabs.currentChanged.connect(
             lambda index: self.command_bar.set_page(PAGES[index])
         )
@@ -473,11 +481,16 @@ class MainWindow(QMainWindow):
         self.sb_worker_label = QLabel(self.current_worker_name or "")
         self.sb_worker_label.setObjectName("worker_label")
         self.sb_summary_label = QLabel("")
+        # The browser counts sessions, the packing page counts orders. Each
+        # artboard draws only its own sentence, so only one is ever visible.
+        self.sb_browser_label = QLabel("")
+        self.sb_browser_label.setVisible(False)
 
         def style_labels(tokens):
             caption = f"{font_css('caption')} color: {tokens.text_secondary};"
             self.sb_worker_label.setStyleSheet(caption)
             self.sb_summary_label.setStyleSheet(caption)
+            self.sb_browser_label.setStyleSheet(caption)
             self.sb_session_label.setStyleSheet(
                 f"{caption} font-family: {tokens.font_family_mono};"
             )
@@ -486,6 +499,15 @@ class MainWindow(QMainWindow):
         status_bar.addWidget(self.sb_session_label)
         status_bar.addWidget(self.sb_worker_label)
         status_bar.addPermanentWidget(self.sb_summary_label)
+        status_bar.addPermanentWidget(self.sb_browser_label)
+        # The page was chosen before this bar existed, so nothing has fired
+        # currentChanged yet.
+        self._sync_status_bar_to_page(self.session_tabs.currentIndex())
+
+    def _sync_status_bar_to_page(self, index: int):
+        """Show the one status-bar sentence this page's artboard draws."""
+        self.sb_summary_label.setVisible(index == PAGE_PACKING)
+        self.sb_browser_label.setVisible(index == PAGE_BROWSER)
 
     def _setup_order_tree(self):
         """Setup expandable order tree view."""

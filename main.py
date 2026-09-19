@@ -1,5 +1,4 @@
 """Packer's Assistant — entry point."""
-
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -10,14 +9,13 @@ from shared.logger import install_crash_logging
 
 if __name__ == "__main__":
     import argparse
-
     parser = argparse.ArgumentParser(description="Packer's Assistant")
     parser.add_argument(
-        "--config",
+        '--config',
         default=DEFAULT_CONFIG_PATH,
-        metavar="PATH",
-        help=f"Path to config file (default: {DEFAULT_CONFIG_PATH}). "
-        "Use config.dev.ini for local development / mock server.",
+        metavar='PATH',
+        help=f'Path to config file (default: {DEFAULT_CONFIG_PATH}). '
+             'Use config.dev.ini for local development / mock server.'
     )
     args = parser.parse_args()
 

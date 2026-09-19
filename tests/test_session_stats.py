@@ -63,10 +63,10 @@ def test_an_empty_session_does_not_divide_by_zero():
     }
 
 
-def test_courier_totals_count_orders_and_summed_quantity():
+def test_courier_totals_count_orders_per_courier():
     assert courier_totals(_df()) == [
-        {"courier": "DPD", "orders": 1, "items": 3},
-        {"courier": "GLS", "orders": 1, "items": 3},
+        {"courier": "DPD", "orders": 1},
+        {"courier": "GLS", "orders": 1},
     ]
 
 

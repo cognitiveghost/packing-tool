@@ -41,7 +41,11 @@ function span(cls, text) {
 }
 
 function orderLabel(order) {
+  // Same rule as packer_bridge.order_label, including the empty case --
+  // a bare "#" is not a label, and the two sides disagreeing is how one
+  // of them ships it.
   const text = String(order == null ? "" : order);
+  if (!text) return "No order";
   return text.startsWith("#") ? text : "#" + text;
 }
 

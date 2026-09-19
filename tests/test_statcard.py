@@ -18,7 +18,7 @@ def card(qtbot):
 
 def test_the_card_shows_its_value_and_its_label(card):
     assert card.value_label.text() == "14"
-    assert card.label_label.text() == "Orders"
+    assert card.caption_label.text() == "Orders"
 
 
 def test_the_value_can_be_replaced_without_rebuilding_the_card(card):

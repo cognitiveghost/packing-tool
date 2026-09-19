@@ -75,9 +75,20 @@ class OverviewTab(QWidget):
         card.add_row("Started", self._format_datetime(record.get("start_time")))
         card.add_row("Completed", self._format_datetime(record.get("end_time")))
 
-        duration_seconds = record.get("duration_seconds")
+        # B2 draws Duration on an Active session as "3h 12m so far" -- a live
+        # session has no duration_seconds yet, and dropping the row is how the
+        # one number a supervisor came for goes missing.
+        end_time = record.get("end_time")
+        duration_seconds = record.get("duration_seconds") or _elapsed_seconds(
+            record.get("start_time")
+        )
         if duration_seconds:
-            card.add_row("Duration", self._format_duration(duration_seconds))
+            suffix = "" if end_time else " so far"
+            card.add_row(
+                "Duration", f"{self._format_duration(duration_seconds)}{suffix}"
+            )
+        else:
+            card.add_row("Duration", "—")
 
         total_orders = record.get("total_orders", 0)
         completed_orders = record.get("completed_orders", 0)
@@ -110,3 +121,19 @@ class OverviewTab(QWidget):
             return f"{minutes}m {secs}s"
         else:
             return f"{secs}s"
+
+
+def _elapsed_seconds(start) -> int:
+    """Seconds since `start`, which may be a datetime or an ISO string."""
+    if not start:
+        return 0
+    if isinstance(start, str):
+        try:
+            start = datetime.fromisoformat(start)
+        except ValueError:
+            return 0
+    if not isinstance(start, datetime):
+        return 0
+    # tzinfo of None gives a naive now, which is what a naive start needs.
+    now = datetime.now(start.tzinfo)
+    return max(0, int((now - start).total_seconds()))
