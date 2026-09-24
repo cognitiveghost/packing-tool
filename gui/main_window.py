@@ -52,7 +52,11 @@ from gui.statistics_widget import StatisticsWidget
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
-from packing_tool.exceptions import SessionLockedError, StaleLockError
+from packing_tool.exceptions import (
+    PackingStateUnreadableError,
+    SessionLockedError,
+    StaleLockError,
+)
 from packing_tool.packer_logic import PackerLogic
 from packing_tool.profile_manager import NetworkError, ProfileManager
 from packing_tool.session_history_manager import SessionHistoryManager
@@ -1296,6 +1300,18 @@ class MainWindow(QMainWindow):
 
             logger.info("Shopify packing session started successfully")
             return True
+
+        except PackingStateUnreadableError:
+            logger.exception("Packing state unreadable; session not opened")
+            self._cleanup_failed_session_start()
+            QMessageBox.critical(
+                self,
+                "Could not read saved progress",
+                f"The saved progress for {packing_list_name} could not be read, "
+                "so the list was not opened. Nothing was changed. Check the "
+                "connection to the server and open it again.",
+            )
+            return False
 
         except FileNotFoundError as e:
             logger.exception("Packing list file not found")

@@ -238,3 +238,11 @@ class StaleLockError(SessionLockedError):
             f"The application may have crashed on that PC.\n\n"
             f"You can force-release the lock to open this session."
         )
+
+
+class PackingStateUnreadableError(PackingToolError):
+    """
+    Raised when a packing list's packing_state.json exists but cannot be
+    read. The session must not open: starting fresh would let the first
+    scan overwrite every order already packed (Phase 12 Bundle 2, A1).
+    """
