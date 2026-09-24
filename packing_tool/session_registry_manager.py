@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
-from shared.file_lock import locked_file
+from shared.file_lock import FileLockError, locked_file
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
 logger = logging.getLogger(__name__)
@@ -760,15 +760,19 @@ class SessionRegistryManager:
             return 0
 
         new_count = 0
-        with self._locked(client_id):
-            current = self.read_registry(client_id)
-            for section in ("sessions", "available_lists"):
-                for key, entry in found[section].items():
-                    if key in current["sessions"] or key in current["available_lists"]:
-                        continue  # another PC registered it while we scanned
-                    current[section][key] = entry
-                    new_count += 1
-            if new_count:
-                self.write_registry(client_id, current)
+        try:
+            with self._locked(client_id):
+                current = self.read_registry(client_id)
+                for section in ("sessions", "available_lists"):
+                    for key, entry in found[section].items():
+                        if key in current["sessions"] or key in current["available_lists"]:
+                            continue  # another PC registered it while we scanned
+                        current[section][key] = entry
+                        new_count += 1
+                if new_count:
+                    self.write_registry(client_id, current)
+        except FileLockError:
+            logger.warning("Registry busy; new lists will merge on the next refresh")
+            return 0
 
         return new_count

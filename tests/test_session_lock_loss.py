@@ -49,3 +49,17 @@ def test_a_lost_lock_stops_writing_and_tears_down_without_ending(main_window, tm
     assert shown[0][0] == "This list is open on another PC"
     assert "PC-2 has taken over DHL_Orders." in shown[0][1]
     assert (work_dir / SessionLockManager.LOCK_FILENAME).exists()  # not ours to delete
+
+
+def test_an_unreachable_share_at_a_heartbeat_keeps_the_session(main_window, tmp_path, monkeypatch):
+    # The share drops mid-session: the lock reads as missing. That is an outage,
+    # not another PC's takeover, so the pending save must still get its retry.
+    logic = LockLossLogic()
+    main_window.logic = logic
+    main_window.current_work_dir = str(tmp_path / "unreachable" / "DHL_Orders")
+    monkeypatch.setattr("gui.main_window.QMessageBox.critical", lambda *a: None)
+
+    main_window._update_session_heartbeat()
+
+    assert main_window.logic is logic
+    assert not logic.stopped

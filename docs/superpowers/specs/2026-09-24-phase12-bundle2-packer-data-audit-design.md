@@ -218,13 +218,17 @@ retry. The first success clears the flag.
   `is_locked()` retries an unreadable read 3 times, 0.2 s apart. If it is still unreadable,
   it returns `(True, {"unreadable": True, ...})`. `acquire_lock()` answers that with
   `(False, "The session lock could not be read. Try again in a moment.", None)`. That is
-  neither the stale-lock path nor a takeover.
+  neither the stale-lock path nor a takeover — unless the file's mtime is older than
+  `STALE_TIMEOUT`: a live owner renews it every 60 s, so an unreadable lock that old was
+  left half-written (a crash between B2's create and write) and takes the stale-lock path.
+  *(Amended at review.)*
 - *B2.* A new lock is created with `os.open(path, O_CREAT | O_EXCL | O_WRONLY)` and the
   JSON is written into that handle. `FileExistsError` means another PC won the race, and it
   is reported like an active lock. Reacquiring our own lock and the force-release path keep
   their current behaviour.
 - *B3.* New `SessionLockManager.owns_lock(session_dir) -> bool | None`: `True` for our lock,
-  `False` for another owner's lock or a missing file, `None` for an unreadable one. When
+  `False` for a readable lock naming another owner, `None` for an unreadable or missing one
+  — a share outage reads as missing, and must not end the session. *(Amended at review.)* When
   `update_heartbeat()` returns `False`, `MainWindow._update_session_heartbeat()` asks
   `owns_lock()`. `False` means the lock is lost:
   `PackerLogic.stop_writing()` (a flag `_do_atomic_write()` checks first, so neither a

@@ -1157,6 +1157,10 @@ class MainWindow(QMainWindow):
                     logger.info("Packing state saved")
                 except Exception as e:
                     logger.warning(f"Failed to save packing state: {e}")
+                try:
+                    self._close_progress_publisher()  # flush the last packed orders to the registry
+                except Exception as e:
+                    logger.warning(f"Failed to publish packing progress: {e}")
 
             # 3. Release lock on current work directory
             if hasattr(self, "current_work_dir") and self.current_work_dir:

@@ -95,7 +95,7 @@ class SessionLockManager:
             is_locked, lock_info = self.is_locked(session_dir)
 
             if is_locked:
-                if lock_info.get("unreadable"):
+                if lock_info.get("unreadable") and not self.is_lock_stale(lock_info):
                     return False, LOCK_UNREADABLE_MSG, None
 
                 # Check if it's our own lock (same PC and process)
@@ -150,8 +150,8 @@ class SessionLockManager:
             }
 
             # Exclusive create: two PCs past the check above cannot both win (spec B2).
-            if lock_path.exists():
-                lock_path.unlink()  # present but invalid -- is_locked() said free
+            if lock_path.exists() and not self.is_locked(session_dir)[0]:
+                lock_path.unlink()  # still present but invalid; a valid one fails O_EXCL below
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(lock_data, f, indent=2)
@@ -270,12 +270,18 @@ class SessionLockManager:
                 extra={"session_dir": str(session_dir)}
             )
             now = datetime.now().astimezone().isoformat()
+            try:
+                # A live owner rewrites the lock every 60 s, renewing the mtime; one left
+                # empty by a crash mid-create ages out through the stale-lock prompt.
+                heartbeat = datetime.fromtimestamp(lock_path.stat().st_mtime).astimezone().isoformat()
+            except OSError:
+                heartbeat = now
             return True, {
                 "unreadable": True,
                 "locked_by": "unknown PC",
                 "user_name": "unknown",
                 "lock_time": now,
-                "heartbeat": now,  # never stale: an unreadable lock is not abandoned
+                "heartbeat": heartbeat,
                 "process_id": None,
                 "worker_id": None,
                 "worker_name": None,
@@ -302,13 +308,12 @@ class SessionLockManager:
         """
         Whether this process holds the session's lock.
 
-        True: ours. False: another PC's, or no lock at all -- either way this
-        PC must stop writing. None: unreadable right now; decide nothing.
+        True: ours. False: a readable lock naming another PC -- this PC must
+        stop writing. None: no readable lock right now; decide nothing. A
+        share outage reads as "no lock", and must not end the session.
         """
         is_locked, info = self.is_locked(session_dir)
-        if not is_locked:
-            return False
-        if info.get("unreadable"):
+        if not is_locked or info.get("unreadable"):
             return None
         return info.get("locked_by") == self.hostname and info.get("process_id") == self.process_id
 

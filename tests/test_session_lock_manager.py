@@ -227,10 +227,29 @@ def test_the_heartbeat_rewrites_the_lock_atomically(lock_manager, session_dir, m
 
 
 def test_owns_lock_tells_ours_from_theirs_from_unreadable(lock_manager, session_dir, no_retry_delay):
-    assert lock_manager.owns_lock(session_dir) is False  # no lock at all
+    assert lock_manager.owns_lock(session_dir) is None  # no lock: an outage looks the same
     assert lock_manager.acquire_lock("M", session_dir)[0]
     assert lock_manager.owns_lock(session_dir) is True
     _write_foreign_lock(session_dir)
     assert lock_manager.owns_lock(session_dir) is False
     (session_dir / SessionLockManager.LOCK_FILENAME).write_text("{", encoding="utf-8")
     assert lock_manager.owns_lock(session_dir) is None
+
+
+def test_an_unreadable_lock_nobody_renews_goes_stale_by_its_file_age(lock_manager, session_dir, no_retry_delay):
+    # A crash between the exclusive create and the JSON write leaves an empty lock.
+    import os
+    import time
+
+    lock_path = session_dir / SessionLockManager.LOCK_FILENAME
+    lock_path.write_text("", encoding="utf-8")
+    old = time.time() - SessionLockManager.STALE_TIMEOUT - 60
+    os.utime(lock_path, (old, old))
+
+    success, message, info = lock_manager.acquire_lock("M", session_dir)
+
+    assert success is False
+    assert "stale" in message.lower()  # offers the force-release prompt
+    assert info["unreadable"] is True
+    assert lock_manager.force_release_lock(session_dir)
+    assert lock_manager.acquire_lock("M", session_dir)[0]
