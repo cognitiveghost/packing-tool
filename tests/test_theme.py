@@ -1,6 +1,8 @@
 import dataclasses
 
 import pytest
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QMainWindow
 
 from shared.theme import (
     _ACCENT_FILLS,
@@ -14,10 +16,11 @@ from shared.theme import (
     StatusChip,
     ThemeTokens,
     build_stylesheet,
-    clamp_geometry,
     contrast_ratio,
     get_theme,
     paint_status_shape,
+    restore_window_geometry,
+    save_window_geometry,
     status_style,
     themed_tokens,
     validate_theme,
@@ -231,26 +234,32 @@ def test_validate_theme_rejects_a_status_colour_that_fails_on_a_dialog():
         validate_theme(sunk)
 
 
-def test_clamp_geometry_leaves_window_untouched_when_it_fits():
-    result = clamp_geometry(100, 100, 800, 600, 0, 0, 1920, 1080)
-    assert result == (100, 100, 800, 600)
+def _geometry_settings(tmp_path):
+    return QSettings(str(tmp_path / "geometry.ini"), QSettings.Format.IniFormat)
 
 
-def test_clamp_geometry_shrinks_window_larger_than_screen():
-    result = clamp_geometry(0, 0, 3000, 2000, 0, 0, 1920, 1080)
-    assert result == (0, 0, 1920, 1080)
+def test_restore_window_geometry_leaves_qt_restored_geometry_alone(
+    qapp, tmp_path, monkeypatch
+):
+    """Qt's restoreGeometry already keeps the frame on-screen and handles
+    maximized state. A setGeometry after it re-clamps the client rect
+    without its title bar (frame under the top edge) and, on a maximized
+    window, overwrites the normal geometry (QTBUG-4397)."""
+    settings = _geometry_settings(tmp_path)
+    saved = QMainWindow()
+    saved.setGeometry(100, 120, 800, 600)
+    save_window_geometry(saved, settings)
+
+    window = QMainWindow()
+    calls = []
+    monkeypatch.setattr(window, "setGeometry", lambda *a: calls.append(a))
+
+    assert restore_window_geometry(window, settings) is True
+    assert calls == []
 
 
-def test_clamp_geometry_pulls_window_back_onto_screen():
-    # Saved on a monitor to the right that no longer exists; available
-    # screen is now just the primary 1920x1080 at origin (0,0).
-    result = clamp_geometry(2500, 100, 800, 600, 0, 0, 1920, 1080)
-    assert result == (1120, 100, 800, 600)  # 1920 - 800 = 1120
-
-
-def test_clamp_geometry_pulls_window_up_from_negative_position():
-    result = clamp_geometry(-500, -500, 800, 600, 0, 0, 1920, 1080)
-    assert result == (0, 0, 800, 600)
+def test_restore_window_geometry_reports_nothing_saved(qapp, tmp_path):
+    assert restore_window_geometry(QMainWindow(), _geometry_settings(tmp_path)) is False
 
 
 def test_contrast_ratio_extremes():
