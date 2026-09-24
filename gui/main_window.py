@@ -59,6 +59,7 @@ from packing_tool.exceptions import (
 )
 from packing_tool.packer_logic import PackerLogic
 from packing_tool.profile_manager import NetworkError, ProfileManager
+from packing_tool.progress_publisher import ProgressPublisher
 from packing_tool.session_history_manager import SessionHistoryManager
 from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
@@ -261,6 +262,7 @@ class MainWindow(QMainWindow):
         # Shopify session state (new workflow)
         self.current_session_path = None  # Path to current Shopify session
         self.current_packing_list = None  # Name of selected packing list
+        self._progress_publisher = None  # ProgressPublisher for the open Shopify session
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -1044,6 +1046,8 @@ class MainWindow(QMainWindow):
         list_name = getattr(self, "current_packing_list", None) or work_dir.name
         logger.error(f"Session lock lost to {holder}: {work_dir}")
         self.logic.stop_writing()
+        if self._progress_publisher is not None:
+            self._progress_publisher.stop()
         self._teardown_session()
         QMessageBox.critical(
             self,
@@ -1058,6 +1062,8 @@ class MainWindow(QMainWindow):
         Clean up resources after failed session start.
         Extracted to avoid code duplication in exception handlers.
         """
+        self._close_progress_publisher()
+
         # Stop heartbeat timer if running
         if hasattr(self, "heartbeat_timer") and self.heartbeat_timer:
             try:
@@ -1316,6 +1322,14 @@ class MainWindow(QMainWindow):
                 )
             except Exception as _e:
                 logger.warning(f"Registry update (session start) failed: {_e}")
+
+            self._progress_publisher = ProgressPublisher(
+                self.session_manager,
+                getattr(self, "registry_manager", None),
+                client_id,
+                str(session_path),
+                packing_list_name,
+            )
 
             # 10. Setup order table
             self.setup_order_table()
@@ -1587,6 +1601,9 @@ class MainWindow(QMainWindow):
                 # Flush any pending state write on the main thread *before*
                 # handing off to the background worker.  AsyncStateWriter's
                 # flush() must only be called from the main/UI thread.
+                # Close the progress publisher first: its last "in_progress"
+                # write must land before _do_slow_writes' final "completed".
+                self._close_progress_publisher()
                 _logic_ref._state_writer.flush()
 
                 def _do_slow_writes():
@@ -1748,6 +1765,8 @@ class MainWindow(QMainWindow):
 
         The tail of end_session(), and the whole of leaving a session whose lock was lost.
         """
+        self._close_progress_publisher()  # idempotent: end_session() already closed it
+
         # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, "heartbeat_timer"):
             self.heartbeat_timer.stop()
@@ -1989,6 +2008,21 @@ class MainWindow(QMainWindow):
             )
         self.packer_mode_widget.scanner_input.setEnabled(False)
         QTimer.singleShot(3000, self.packer_mode_widget.clear_screen)
+        self._publish_progress()
+
+    def _publish_progress(self):
+        """Hand the session's packed and skipped orders to the publisher."""
+        if self._progress_publisher is None or not self.logic:
+            return
+        state = self.logic.session_packing_state
+        self._progress_publisher.publish(
+            state.get("completed_orders", []), len(state.get("skipped_orders", []))
+        )
+
+    def _close_progress_publisher(self):
+        if self._progress_publisher is not None:
+            self._progress_publisher.close()
+            self._progress_publisher = None
 
     def _on_skip_order(self):
         """Skip the currently active order (preserves packing progress for later)."""
@@ -1996,6 +2030,7 @@ class MainWindow(QMainWindow):
             return
         skipped = self.logic.current_order_number
         self.logic.skip_order()
+        self._publish_progress()
         self.packer_mode_widget.add_order_to_history(skipped, "[SKIPPED]")
         self.packer_mode_widget.clear_screen()
         logger.info(f"Order {skipped} skipped")
