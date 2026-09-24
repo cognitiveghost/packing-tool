@@ -14,7 +14,11 @@ from datetime import datetime
 from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
-from shared.file_lock import FileLockError, locked_file
+
+LOCK_READ_ATTEMPTS = 3
+LOCK_READ_RETRY_SECONDS = 0.2
+LOCK_UNREADABLE_MSG = "The session lock could not be read. Try again in a moment."
+LOCK_RACE_MSG = "Another PC opened this session a moment ago. Try again in a moment."
 
 
 class SessionLockManager:
@@ -91,6 +95,9 @@ class SessionLockManager:
             is_locked, lock_info = self.is_locked(session_dir)
 
             if is_locked:
+                if lock_info.get("unreadable"):
+                    return False, LOCK_UNREADABLE_MSG, None
+
                 # Check if it's our own lock (same PC and process)
                 if (lock_info.get('locked_by') == self.hostname and
                     lock_info.get('process_id') == self.process_id):
@@ -142,8 +149,12 @@ class SessionLockManager:
                 "worker_name": worker_name
             }
 
-            # Write atomically using temp file
-            atomic_write_json(lock_path, lock_data, indent=2)
+            # Exclusive create: two PCs past the check above cannot both win (spec B2).
+            if lock_path.exists():
+                lock_path.unlink()  # present but invalid -- is_locked() said free
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(lock_data, f, indent=2)
 
             self.logger.info(
                 "Session lock acquired successfully",
@@ -155,6 +166,10 @@ class SessionLockManager:
                 }
             )
             return True, None, None
+
+        except FileExistsError:
+            self.logger.warning("Lost the lock-creation race", extra={"session_dir": str(session_dir)})
+            return False, LOCK_RACE_MSG, None
 
         except Exception as e:
             self.logger.exception(
@@ -232,33 +247,70 @@ class SessionLockManager:
         if not lock_path.exists():
             return False, None
 
-        try:
-            with open(lock_path, 'r', encoding='utf-8') as f:
-                lock_info = json.load(f)
+        lock_info = None
+        last_error = None
+        for attempt in range(LOCK_READ_ATTEMPTS):
+            try:
+                with open(lock_path, 'r', encoding='utf-8') as f:
+                    lock_info = json.load(f)
+                break
+            except FileNotFoundError:
+                return False, None  # released between the exists() check and the read
+            except (OSError, json.JSONDecodeError) as e:
+                last_error = e
+                if attempt < LOCK_READ_ATTEMPTS - 1:
+                    time.sleep(LOCK_READ_RETRY_SECONDS)
 
-            # Validate lock info has required fields
-            required_fields = ['locked_by', 'user_name', 'lock_time', 'heartbeat']
-            if not all(field in lock_info for field in required_fields):
-                self.logger.warning(
-                    f"Invalid lock file (missing fields): {lock_path}",
-                    extra={"session_dir": str(session_dir)}
-                )
-                return False, None
-
-            # Ensure worker fields exist (backward compatibility)
-            if 'worker_id' not in lock_info:
-                lock_info['worker_id'] = None
-            if 'worker_name' not in lock_info:
-                lock_info['worker_name'] = None
-
-            return True, lock_info
-
-        except (OSError, json.JSONDecodeError) as e:
+        if lock_info is None:
+            # A lock another PC is rewriting reads as broken for a moment. An
+            # unreadable lock is held, never free: treating it as free let two
+            # PCs open the same list (Phase 12 Bundle 2, B1).
             self.logger.warning(
-                f"Failed to read lock file: {e}",
+                f"Failed to read lock file: {last_error}",
+                extra={"session_dir": str(session_dir)}
+            )
+            now = datetime.now().astimezone().isoformat()
+            return True, {
+                "unreadable": True,
+                "locked_by": "unknown PC",
+                "user_name": "unknown",
+                "lock_time": now,
+                "heartbeat": now,  # never stale: an unreadable lock is not abandoned
+                "process_id": None,
+                "worker_id": None,
+                "worker_name": None,
+            }
+
+        # Validate lock info has required fields
+        required_fields = ['locked_by', 'user_name', 'lock_time', 'heartbeat']
+        if not isinstance(lock_info, dict) or not all(field in lock_info for field in required_fields):
+            self.logger.warning(
+                f"Invalid lock file (missing fields): {lock_path}",
                 extra={"session_dir": str(session_dir)}
             )
             return False, None
+
+        # Ensure worker fields exist (backward compatibility)
+        if 'worker_id' not in lock_info:
+            lock_info['worker_id'] = None
+        if 'worker_name' not in lock_info:
+            lock_info['worker_name'] = None
+
+        return True, lock_info
+
+    def owns_lock(self, session_dir: Path) -> bool | None:
+        """
+        Whether this process holds the session's lock.
+
+        True: ours. False: another PC's, or no lock at all -- either way this
+        PC must stop writing. None: unreadable right now; decide nothing.
+        """
+        is_locked, info = self.is_locked(session_dir)
+        if not is_locked:
+            return False
+        if info.get("unreadable"):
+            return None
+        return info.get("locked_by") == self.hostname and info.get("process_id") == self.process_id
 
     def update_heartbeat(self, session_dir: Path) -> bool:
         """
@@ -285,35 +337,29 @@ class SessionLockManager:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                with open(lock_path, 'r+', encoding='utf-8') as f, locked_file(f):
-                    # Read current data
-                    f.seek(0)
+                with open(lock_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
 
-                    # Verify it's our lock
-                    if (data.get('locked_by') != self.hostname or
-                        data.get('process_id') != self.process_id):
-                        self.logger.warning(
-                            "Attempted to update heartbeat for lock owned by another process",
-                            extra={"session_dir": str(session_dir)}
-                        )
-                        return False
-
-                    # Update heartbeat
-                    data['heartbeat'] = datetime.now().astimezone().isoformat()
-
-                    # Write back
-                    f.seek(0)
-                    f.truncate()
-                    json.dump(data, f, indent=2)
-
-                    self.logger.debug(
-                        "Heartbeat updated",
+                # Verify it's our lock
+                if (data.get('locked_by') != self.hostname or
+                    data.get('process_id') != self.process_id):
+                    self.logger.warning(
+                        "Attempted to update heartbeat for lock owned by another process",
                         extra={"session_dir": str(session_dir)}
                     )
-                    return True
+                    return False
 
-            except (OSError, FileLockError, json.JSONDecodeError) as e:
+                # Update heartbeat, rewriting atomically so a reader never sees a half-written lock
+                data['heartbeat'] = datetime.now().astimezone().isoformat()
+                atomic_write_json(lock_path, data, indent=2)
+
+                self.logger.debug(
+                    "Heartbeat updated",
+                    extra={"session_dir": str(session_dir)}
+                )
+                return True
+
+            except (OSError, json.JSONDecodeError) as e:
                 # Network issue or file error - don't crash
                 self.logger.warning(
                     f"Failed to update heartbeat (attempt {attempt + 1}/{max_retries}): {e}",
