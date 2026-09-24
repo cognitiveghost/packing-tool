@@ -181,3 +181,75 @@ def test_same_pc_different_process_is_treated_as_a_foreign_lock_until_stale(lock
     success, _error, info = lock_manager.acquire_lock("M", session_dir)
     assert success is False  # blocked from resuming its own crashed session on the same PC
     assert info["locked_by"] == "MY-PC"
+
+
+@pytest.fixture
+def no_retry_delay(monkeypatch):
+    import packing_tool.session_lock_manager as slm
+
+    monkeypatch.setattr(slm, "LOCK_READ_RETRY_SECONDS", 0)
+
+
+def test_an_unreadable_lock_counts_as_held_and_is_left_alone(lock_manager, session_dir, no_retry_delay):
+    lock_path = session_dir / SessionLockManager.LOCK_FILENAME
+    lock_path.write_text("", encoding="utf-8")  # what a reader saw mid-rewrite
+
+    success, message, _info = lock_manager.acquire_lock("M", session_dir)
+
+    assert success is False
+    assert message == "The session lock could not be read. Try again in a moment."
+    assert "stale" not in message.lower()
+    assert lock_path.read_text(encoding="utf-8") == ""
+
+
+def test_losing_the_creation_race_is_refused_not_overwritten(lock_manager, session_dir, monkeypatch):
+    import packing_tool.session_lock_manager as slm
+
+    def other_pc_won(*args, **kwargs):
+        raise FileExistsError
+
+    monkeypatch.setattr(slm.os, "open", other_pc_won)
+    success, message, _info = lock_manager.acquire_lock("M", session_dir)
+    assert success is False
+    assert message == "Another PC opened this session a moment ago. Try again in a moment."
+
+
+def test_the_heartbeat_rewrites_the_lock_atomically(lock_manager, session_dir, monkeypatch):
+    import packing_tool.session_lock_manager as slm
+
+    assert lock_manager.acquire_lock("M", session_dir)[0]
+    writes = []
+    real = slm.atomic_write_json
+    monkeypatch.setattr(slm, "atomic_write_json", lambda p, d, **kw: (writes.append(p), real(p, d, **kw)))
+
+    assert lock_manager.update_heartbeat(session_dir) is True
+    assert writes == [session_dir / SessionLockManager.LOCK_FILENAME]
+
+
+def test_owns_lock_tells_ours_from_theirs_from_unreadable(lock_manager, session_dir, no_retry_delay):
+    assert lock_manager.owns_lock(session_dir) is None  # no lock: an outage looks the same
+    assert lock_manager.acquire_lock("M", session_dir)[0]
+    assert lock_manager.owns_lock(session_dir) is True
+    _write_foreign_lock(session_dir)
+    assert lock_manager.owns_lock(session_dir) is False
+    (session_dir / SessionLockManager.LOCK_FILENAME).write_text("{", encoding="utf-8")
+    assert lock_manager.owns_lock(session_dir) is None
+
+
+def test_an_unreadable_lock_nobody_renews_goes_stale_by_its_file_age(lock_manager, session_dir, no_retry_delay):
+    # A crash between the exclusive create and the JSON write leaves an empty lock.
+    import os
+    import time
+
+    lock_path = session_dir / SessionLockManager.LOCK_FILENAME
+    lock_path.write_text("", encoding="utf-8")
+    old = time.time() - SessionLockManager.STALE_TIMEOUT - 60
+    os.utime(lock_path, (old, old))
+
+    success, message, info = lock_manager.acquire_lock("M", session_dir)
+
+    assert success is False
+    assert "stale" in message.lower()  # offers the force-release prompt
+    assert info["unreadable"] is True
+    assert lock_manager.force_release_lock(session_dir)
+    assert lock_manager.acquire_lock("M", session_dir)[0]

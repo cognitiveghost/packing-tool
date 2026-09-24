@@ -5,6 +5,7 @@ import json
 # Local imports
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +19,8 @@ import pandas as pd  # Excel file handling and data manipulation
 from PySide6.QtCore import QObject, Signal
 
 from packing_tool.async_state_writer import AsyncStateWriter
-from packing_tool.json_cache import get_cached_json, invalidate_json_cache
+from packing_tool.exceptions import PackingStateUnreadableError
+from packing_tool.json_cache import invalidate_json_cache
 from shared.atomic_write import atomic_write_json
 
 # Initialize module-level logger
@@ -69,6 +71,8 @@ def normalize_sku(sku: Any) -> str:
 # This file stores packing progress and is saved after every scan
 # to enable crash recovery and session restoration
 STATE_FILE_NAME = "packing_state.json"
+STATE_READ_ATTEMPTS = 3
+STATE_READ_RETRY_SECONDS = 0.5
 
 # Filename for session summary (created upon completion)
 # This file contains aggregated statistics and performance metrics
@@ -167,6 +171,7 @@ class PackerLogic(QObject):
     """
     item_packed = Signal(str, int, int)  # order_number, packed_count, required_count
     all_orders_complete = Signal()  # Emitted when every order in the session is packed
+    save_failed = Signal(bool)  # True: state writes started failing; False: they recovered
 
     def __init__(self, client_id: str, profile_manager, work_dir: str):
         """
@@ -244,6 +249,8 @@ class PackerLogic(QObject):
 
         # Write-behind queue: state writes happen in background to avoid UI freezes.
         # sync_mode=True is used in tests to keep writes synchronous.
+        self._last_save_ok = True
+        self._writing_stopped = False
         self._state_writer = AsyncStateWriter(self._do_atomic_write)
 
         logger.info(f"PackerLogic initialized for client {client_id}")
@@ -336,6 +343,29 @@ class PackerLogic(QObject):
         """
         return str(self.work_dir / SUMMARY_FILE_NAME)
 
+    def _read_state_file(self, state_file: str) -> dict:
+        """Read packing_state.json straight from disk, retrying transient errors.
+
+        Not through JSONCache: its get() returns the default on any error,
+        which is exactly what hid a network hiccup as "no saved progress".
+        """
+        last_error = None
+        for attempt in range(STATE_READ_ATTEMPTS):
+            try:
+                with open(state_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
+                last_error = exc
+                if attempt < STATE_READ_ATTEMPTS - 1:
+                    time.sleep(STATE_READ_RETRY_SECONDS)
+                continue
+            if not isinstance(data, dict):
+                raise PackingStateUnreadableError(
+                    f"{state_file}: root is {type(data).__name__}, not an object"
+                )
+            return data
+        raise PackingStateUnreadableError(f"{state_file}: {last_error}")
+
     def _load_session_state(self):
         """
         Load the packing state for the session from JSON file with caching.
@@ -344,8 +374,8 @@ class PackerLogic(QObject):
         - Old format: {'in_progress': {...}, 'completed_orders': [...]}
         - New format: Full state with metadata (session_id, timestamps, progress, etc.)
 
-        Note: Uses JSON cache with short TTL (30s) for state files since they change frequently.
-        Cache is invalidated after every write to ensure consistency.
+        Raises PackingStateUnreadableError if the file exists but cannot be read: a
+        session must never open empty over saved progress.
         """
         state_file = self._get_state_file_path()
 
@@ -354,33 +384,11 @@ class PackerLogic(QObject):
             self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
             return
 
+        data = self._read_state_file(state_file)
+        # Legacy format wrapped the state in {"data": {...}}
+        state_data = data["data"] if isinstance(data.get("data"), dict) else data
+
         try:
-            # OPTIMIZED: Use JSON cache for faster repeated reads
-            # This helps when multiple workers/processes access the same state file
-            # Note: Cache is invalidated after writes in _save_session_state_sync()
-            data = get_cached_json(state_file, default=None)
-
-            if data is None:
-                # File exists but couldn't be read (invalid JSON, etc.)
-                logger.error("Could not load session state, starting fresh")
-                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
-                return
-
-            # Handle both old and new format (with version)
-            if isinstance(data, dict) and 'data' in data:
-                # Legacy format with version wrapper
-                state_data = data['data']
-            else:
-                # Could be new format (with metadata) or old direct format
-                state_data = data
-
-            if not isinstance(state_data, dict):
-                # Valid JSON (e.g. [], null, a bare string/number) but not an object -
-                # treat as corrupt state rather than let .get()/`in` below raise.
-                logger.error("Session state root is not an object, starting fresh")
-                self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
-                return
-
             # Load core packing state with validation
             # CRITICAL FIX: Validate in_progress structure to prevent AttributeError on resume
             raw_in_progress = state_data.get('in_progress', {})
@@ -613,6 +621,10 @@ class PackerLogic(QObject):
         Called by AsyncStateWriter from a background thread.
         state_data must be a plain serialisable dict (no shared mutable objects).
         """
+        if self._writing_stopped:
+            logger.warning("State write dropped: this PC no longer holds the session lock")
+            return
+
         state_file = self._get_state_file_path()
         total_orders = state_data.get("progress", {}).get("total_orders", 0)
         completed_orders_count = state_data.get("progress", {}).get("completed_orders", 0)
@@ -622,11 +634,27 @@ class PackerLogic(QObject):
         try:
             atomic_write_json(state_file, state_data)
             invalidate_json_cache(state_file)
-
-            logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
-
         except Exception:
             logger.exception("CRITICAL: Failed to save session state")
+            self._set_save_ok(False)
+            return
+        self._set_save_ok(True)
+        logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
+
+    def stop_writing(self) -> None:
+        """Drop every state write from now on, pending ones included.
+
+        For a PC that lost its session lock: the new owner's packing state
+        is the live one, and ours must not overwrite it (spec B3).
+        """
+        self._writing_stopped = True
+
+    def _set_save_ok(self, ok: bool) -> None:
+        """Emit save_failed on a change only. Runs on the writer thread; Qt
+        queues the signal to the receiver's (UI) thread."""
+        if ok != self._last_save_ok:
+            self._last_save_ok = ok
+            self.save_failed.emit(not ok)
 
     def _save_session_state_async(self) -> None:
         """

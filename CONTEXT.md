@@ -43,3 +43,11 @@
 **Stat card** — a big number over a small label in a bordered box; the unit the Statistics screen is built from.
 
 **SKU roll-up** — one order's lines consolidated to one row per distinct SKU, in the order document's side column. Not the same as the Statistics screen's **SKU summary**, which spans the whole session.
+
+**Packing state** — one packing list's saved progress (`packing_state.json` in its work directory): completed, skipped and in-progress orders, with timing. The source of truth for a session's progress.
+
+**Session lock** — the file in a packing list's work directory that says which PC is packing it. One PC at a time; it is renewed by a heartbeat, and a lock whose heartbeat stopped is *stale*.
+
+**Session registry** — the per-client index the Session Browser reads: one entry per packing session with its status and counts. A summary of packing state for listing, never the source of truth.
+
+**Packed-order signal** — the order numbers Packing Tool writes into a Shopify session's `session_info.json`, which Shopify Tool reads so an order already packed is flagged as a repeat.

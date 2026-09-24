@@ -9,6 +9,8 @@ PackerLogic._do_atomic_write), not a stubbed writer.
 import copy
 import json
 
+import pytest
+
 from packing_tool.json_cache import get_cached_json
 
 
@@ -125,13 +127,49 @@ def test_missing_state_file_starts_fresh(packer_logic_factory, session_factory):
     }
 
 
-def test_corrupted_json_state_file_starts_fresh_instead_of_crashing(packer_logic_factory, session_factory):
+def test_an_unreadable_state_file_refuses_to_open_and_is_left_alone(
+    packer_logic_factory, session_factory, monkeypatch
+):
+    """Spec A1: starting fresh here meant the first scan overwrote every
+    order packed so far. The session must not open, and the file must not
+    change."""
+    import packing_tool.packer_logic as pl
+    from packing_tool.exceptions import PackingStateUnreadableError
+
+    monkeypatch.setattr(pl, "STATE_READ_RETRY_SECONDS", 0)
     orders = [("ORDER-001", "DHL", [{"sku": "SKU-1", "quantity": 1, "product_name": "A"}])]
     _session_dir, work_dir, _list_path = session_factory(client_id="M", orders=orders)
-    (work_dir / "packing_state.json").write_text("{not valid json", encoding="utf-8")
+    state_path = work_dir / "packing_state.json"
+    state_path.write_text("{not valid json", encoding="utf-8")
 
-    logic = packer_logic_factory("M", work_dir)  # must not raise
-    assert logic.session_packing_state["in_progress"] == {}
+    with pytest.raises(PackingStateUnreadableError):
+        packer_logic_factory("M", work_dir)
+    assert state_path.read_text(encoding="utf-8") == "{not valid json"
+
+
+def test_a_transient_read_error_is_retried(packer_logic_factory, session_factory, monkeypatch):
+    import builtins
+
+    import packing_tool.packer_logic as pl
+
+    monkeypatch.setattr(pl, "STATE_READ_RETRY_SECONDS", 0)
+    orders = [("ORDER-001", "DHL", [{"sku": "SKU-1", "quantity": 1, "product_name": "A"}])]
+    _session_dir, work_dir, _list_path = session_factory(client_id="M", orders=orders)
+    state_path = work_dir / "packing_state.json"
+    state_path.write_text(json.dumps({"completed_orders": ["ORDER-001"]}), encoding="utf-8")
+
+    real_open, calls = builtins.open, {"n": 0}
+
+    def flaky_open(path, *args, **kwargs):
+        if str(path) == str(state_path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("The network name is no longer available")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", flaky_open)
+    logic = packer_logic_factory("M", work_dir)
+    assert logic.session_packing_state["completed_orders"] == ["ORDER-001"]
 
 
 # ---------------------------------------------------------------------------
@@ -213,3 +251,34 @@ def test_json_cache_is_not_mutated_by_in_memory_migration(packer_logic_factory, 
         f"even though nothing was written to disk yet: {cache_after}"
     )
     assert disk_after == disk_snapshot_before  # the file on disk is untouched, as expected
+
+
+def test_a_failed_save_is_signalled_once_and_its_recovery_once(loaded_logic, monkeypatch):
+    import packing_tool.packer_logic as pl
+
+    seen = []
+    loaded_logic.save_failed.connect(seen.append)
+    real_write = pl.atomic_write_json
+
+    def failing_write(*args, **kwargs):
+        raise OSError("share unavailable")
+
+    monkeypatch.setattr(pl, "atomic_write_json", failing_write)
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+    monkeypatch.setattr(pl, "atomic_write_json", real_write)
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+
+    assert seen == [True, False]
+
+
+def test_after_stop_writing_no_state_reaches_disk(loaded_logic):
+    loaded_logic.save_state()
+    state_path = loaded_logic.work_dir / "packing_state.json"
+    before = state_path.read_text(encoding="utf-8")
+
+    loaded_logic.stop_writing()
+    loaded_logic.start_order_packing("ORDER-001")
+    loaded_logic.save_state()
+
+    assert state_path.read_text(encoding="utf-8") == before

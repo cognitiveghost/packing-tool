@@ -52,9 +52,14 @@ from gui.statistics_widget import StatisticsWidget
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
-from packing_tool.exceptions import SessionLockedError, StaleLockError
+from packing_tool.exceptions import (
+    PackingStateUnreadableError,
+    SessionLockedError,
+    StaleLockError,
+)
 from packing_tool.packer_logic import PackerLogic
 from packing_tool.profile_manager import NetworkError, ProfileManager
+from packing_tool.progress_publisher import ProgressPublisher
 from packing_tool.session_history_manager import SessionHistoryManager
 from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
@@ -138,6 +143,25 @@ def _session_seconds(started_at) -> int:
     except (TypeError, ValueError):
         return 0
     return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
+
+
+def _packing_start_time(session_info, logic_started_at):
+    """When packing started, for the duration End session records.
+
+    session_info.json carries it on the Excel path only; the Shopify path
+    never starts SessionManager, so fall back to the packing state's own
+    stamp. Naive legacy stamps are read as local time.
+    """
+    for raw in ((session_info or {}).get("started_at"), logic_started_at):
+        if not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse packing start time: {raw!r}")
+            continue
+        return parsed if parsed.tzinfo else parsed.astimezone()
+    return None
 
 
 def _unmapped_choices(order_state) -> list[tuple[str, str]]:
@@ -257,6 +281,7 @@ class MainWindow(QMainWindow):
         # Shopify session state (new workflow)
         self.current_session_path = None  # Path to current Shopify session
         self.current_packing_list = None  # Name of selected packing list
+        self._progress_publisher = None  # ProgressPublisher for the open Shopify session
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -911,6 +936,7 @@ class MainWindow(QMainWindow):
             # Connect signals
             self.logic.item_packed.connect(self._on_item_packed)
             self.logic.all_orders_complete.connect(self._on_all_orders_complete)
+            self.logic.save_failed.connect(self.packer_mode_widget.set_unsaved)
 
             # Load Shopify session data
             session_path = self.session_manager.output_dir
@@ -924,6 +950,7 @@ class MainWindow(QMainWindow):
 
             # Setup order table
             self.setup_order_table()
+            self._open_packer_document()
 
             # Update UI
             toast(self, f"Loaded {order_count} orders.")
@@ -1018,19 +1045,44 @@ class MainWindow(QMainWindow):
         logger.debug("Heartbeat timer started")
 
     def _update_session_heartbeat(self):
-        """Update heartbeat for active session lock."""
-        if self.logic and hasattr(self, "current_work_dir") and self.current_work_dir:
-            try:
-                self.lock_manager.update_heartbeat(Path(self.current_work_dir))
+        """Renew the session lock; notice if another PC has taken it (spec B3)."""
+        if not (self.logic and getattr(self, "current_work_dir", None)):
+            return
+        work_dir = Path(self.current_work_dir)
+        try:
+            if self.lock_manager.update_heartbeat(work_dir):
                 logger.debug("Lock heartbeat updated")
-            except Exception:
-                logger.exception("Failed to update heartbeat")
+                return
+            if self.lock_manager.owns_lock(work_dir) is False:
+                self._on_lock_lost(work_dir)
+        except Exception:
+            logger.exception("Failed to update heartbeat")
+
+    def _on_lock_lost(self, work_dir: Path):
+        """Another PC holds this list's lock: stop writing, then leave it."""
+        _locked, info = self.lock_manager.is_locked(work_dir)
+        holder = (info or {}).get("locked_by") or "Another PC"
+        list_name = getattr(self, "current_packing_list", None) or work_dir.name
+        logger.error(f"Session lock lost to {holder}: {work_dir}")
+        self.logic.stop_writing()
+        if self._progress_publisher is not None:
+            self._progress_publisher.stop()
+        self._teardown_session()
+        QMessageBox.critical(
+            self,
+            "This list is open on another PC",
+            f"{holder} has taken over {list_name}. This PC has stopped packing it "
+            "so the two don't overwrite each other's progress. Orders packed here "
+            "up to now are saved.",
+        )
 
     def _cleanup_failed_session_start(self):
         """
         Clean up resources after failed session start.
         Extracted to avoid code duplication in exception handlers.
         """
+        self._close_progress_publisher()
+
         # Stop heartbeat timer if running
         if hasattr(self, "heartbeat_timer") and self.heartbeat_timer:
             try:
@@ -1105,6 +1157,10 @@ class MainWindow(QMainWindow):
                     logger.info("Packing state saved")
                 except Exception as e:
                     logger.warning(f"Failed to save packing state: {e}")
+                try:
+                    self._close_progress_publisher()  # flush the last packed orders to the registry
+                except Exception as e:
+                    logger.warning(f"Failed to publish packing progress: {e}")
 
             # 3. Release lock on current work directory
             if hasattr(self, "current_work_dir") and self.current_work_dir:
@@ -1236,6 +1292,7 @@ class MainWindow(QMainWindow):
             # 6. Connect signals (must happen on main thread after moveToThread)
             self.logic.item_packed.connect(self._on_item_packed)
             self.logic.all_orders_complete.connect(self._on_all_orders_complete)
+            self.logic.save_failed.connect(self.packer_mode_widget.set_unsaved)
 
             logger.info(f"Loaded {order_count} orders from packing list")
 
@@ -1279,12 +1336,27 @@ class MainWindow(QMainWindow):
                     total_items=_reg_total_items,
                     work_dir=str(work_dir),
                     session_path=str(session_path),
+                    completed_orders=len(
+                        self.logic.session_packing_state.get("completed_orders", [])
+                    ),
+                    skipped_orders=len(
+                        self.logic.session_packing_state.get("skipped_orders", [])
+                    ),
                 )
             except Exception as _e:
                 logger.warning(f"Registry update (session start) failed: {_e}")
 
+            self._progress_publisher = ProgressPublisher(
+                self.session_manager,
+                getattr(self, "registry_manager", None),
+                client_id,
+                str(session_path),
+                packing_list_name,
+            )
+
             # 10. Setup order table
             self.setup_order_table()
+            self._open_packer_document()
 
             # 11. Update UI state
             toast(self, f"Loaded {order_count} orders from {packing_list_name}.")
@@ -1294,6 +1366,18 @@ class MainWindow(QMainWindow):
 
             logger.info("Shopify packing session started successfully")
             return True
+
+        except PackingStateUnreadableError:
+            logger.exception("Packing state unreadable; session not opened")
+            self._cleanup_failed_session_start()
+            QMessageBox.critical(
+                self,
+                "Could not read saved progress",
+                f"The saved progress for {packing_list_name} could not be read, "
+                "so the list was not opened. Nothing was changed. Check the "
+                "connection to the server and open it again.",
+            )
+            return False
 
         except FileNotFoundError as e:
             logger.exception("Packing list file not found")
@@ -1441,26 +1525,13 @@ class MainWindow(QMainWindow):
                 # --- Gather all stats data on the main thread (fast, no server I/O) ---
                 try:
                     _session_info = self.session_manager.get_session_info()
-                    _start_time = None
-                    if _session_info and "started_at" in _session_info:
-                        try:
-                            _start_time = datetime.fromisoformat(
-                                _session_info["started_at"]
-                            )
-                            if _start_time.tzinfo is None:
-                                # Legacy session_info.json from before timestamps were
-                                # made timezone-aware; interpret as local time so the
-                                # subtraction against tz-aware _end_time below doesn't
-                                # raise TypeError.
-                                _start_time = _start_time.astimezone()
-                        except (ValueError, TypeError):
-                            logger.warning(
-                                "Could not parse started_at from session_info"
-                            )
+                    _start_time = _packing_start_time(
+                        _session_info, self.logic.started_at
+                    )
                 except Exception as e:
                     logger.warning(f"Could not get session_info: {e}")
                     _session_info = None
-                    _start_time = None
+                    _start_time = _packing_start_time(None, self.logic.started_at)
 
                 _end_time = datetime.now().astimezone()
                 _completed_orders_list = self.logic.session_packing_state.get(
@@ -1540,6 +1611,9 @@ class MainWindow(QMainWindow):
                 # Flush any pending state write on the main thread *before*
                 # handing off to the background worker.  AsyncStateWriter's
                 # flush() must only be called from the main/UI thread.
+                # Close the progress publisher first: its last "in_progress"
+                # write must land before _do_slow_writes' final "completed".
+                self._close_progress_publisher()
                 _logic_ref._state_writer.flush()
 
                 def _do_slow_writes():
@@ -1694,6 +1768,15 @@ class MainWindow(QMainWindow):
             )
             logger.exception("Error during end_session")
 
+        self._teardown_session()
+
+    def _teardown_session(self):
+        """Stop the heartbeat, release the lock, drop the logic and return the UI to the session view.
+
+        The tail of end_session(), and the whole of leaving a session whose lock was lost.
+        """
+        self._close_progress_publisher()  # idempotent: end_session() already closed it
+
         # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, "heartbeat_timer"):
             self.heartbeat_timer.stop()
@@ -1757,6 +1840,18 @@ class MainWindow(QMainWindow):
         self._update_statistics()
 
         logger.info("Order tree and statistics updated successfully")
+
+    def _open_packer_document(self):
+        """Give Packer Mode a clean document for the session just loaded.
+
+        Runs at session start, so a session always opens clean however the
+        last one ended. A resumed list opens on its real count.
+        """
+        state = self.logic.session_packing_state
+        self.packer_mode_widget.reset_for_new_session()
+        self.packer_mode_widget.update_session_progress(
+            len(state.get("completed_orders", [])), len(self.logic.orders_data)
+        )
 
     def switch_to_packer_mode(self):
         """Switches the view to the Packer Mode widget."""
@@ -1923,6 +2018,21 @@ class MainWindow(QMainWindow):
             )
         self.packer_mode_widget.scanner_input.setEnabled(False)
         QTimer.singleShot(3000, self.packer_mode_widget.clear_screen)
+        self._publish_progress()
+
+    def _publish_progress(self):
+        """Hand the session's packed and skipped orders to the publisher."""
+        if self._progress_publisher is None or not self.logic:
+            return
+        state = self.logic.session_packing_state
+        self._progress_publisher.publish(
+            state.get("completed_orders", []), len(state.get("skipped_orders", []))
+        )
+
+    def _close_progress_publisher(self):
+        if self._progress_publisher is not None:
+            self._progress_publisher.close()
+            self._progress_publisher = None
 
     def _on_skip_order(self):
         """Skip the currently active order (preserves packing progress for later)."""
@@ -1930,6 +2040,7 @@ class MainWindow(QMainWindow):
             return
         skipped = self.logic.current_order_number
         self.logic.skip_order()
+        self._publish_progress()
         self.packer_mode_widget.add_order_to_history(skipped, "[SKIPPED]")
         self.packer_mode_widget.clear_screen()
         logger.info(f"Order {skipped} skipped")

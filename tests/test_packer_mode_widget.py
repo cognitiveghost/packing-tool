@@ -142,3 +142,37 @@ def test_a_scan_keeps_the_saved_states_required_not_the_packing_lists(widget):
 
     assert widget.row_at(0)["required"] == 2
     assert widget.row_at(0)["state"] == "complete"
+
+
+def test_a_new_session_does_not_inherit_the_last_ones_history_or_counts(widget):
+    """Phase 12 Bundle 2 item 1: the panel cleared, but the side column
+    still showed the finished session's orders and its 2 / 2."""
+    widget.add_order_to_history("1001")
+    widget.add_order_to_history("1002")
+    widget.update_session_progress(2, 2)
+    widget.show_session_complete({"title": "Session complete", "body": "done."})
+
+    widget.reset_for_new_session()
+
+    assert widget.bridge.history == []
+    assert widget.bridge.progress["orders_done"] == 0
+    assert widget.bridge.progress["orders_total"] == 0
+
+
+def test_unsaved_progress_keeps_the_band_red_and_the_outcome_readable(widget):
+    widget.set_unsaved(True)
+    widget.show_notification("Order #1001 packed. Scan the next order.", "status_success")
+    assert widget.bridge.feedback["role"] == "danger"
+    assert widget.bridge.feedback["text"] == (
+        "Progress not saved — check the network · Order #1001 packed. Scan the next order."
+    )
+
+    widget.set_unsaved(False)
+    assert widget.bridge.feedback["role"] == "success"
+    assert widget.bridge.feedback["text"] == "Order #1001 packed. Scan the next order."
+
+
+def test_a_new_session_starts_saved(widget):
+    widget.set_unsaved(True)
+    widget.reset_for_new_session()
+    assert widget.bridge.feedback["role"] == "info"
