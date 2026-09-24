@@ -436,16 +436,20 @@ class PackerModeWidget(QWidget):
         self.skip_order_button.setEnabled(False)
 
     def reset_for_new_session(self):
-        """Take the session-complete panel down and clear the document.
+        """Take the session-complete panel down and clear the whole document.
 
-        clear_screen() refuses while the panel is up, so ending the session
-        is the one place that lowers it -- and the next session then opens
-        on a document that is packing rather than finished.
+        clear_screen() resets the *order*; this also resets what belongs to
+        the *session* -- its history and order counts -- because the widget
+        outlives every session the app runs.
         """
         self._session_over = False
         self.bridge.set_session_end({})
         self.scanner_input.setPlaceholderText("Ready to scan")
-        self.clear_screen()
+        self._history = []
+        self.bridge.set_history([])
+        self._orders_done = 0
+        self._orders_total = 0
+        self.clear_screen()  # pushes progress through _push_rows()
 
     def show_unknown_scans(self, scans: list[str]):
         """Show this order's unmatched scans as rows under the item rows.

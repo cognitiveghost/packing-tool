@@ -103,3 +103,19 @@ def test_the_last_order_leaves_the_panel_up_after_its_deferred_reset(window):
 
     assert widget.bridge.sessionEnd["title"]
     assert not widget.scanner_input.isEnabled()
+
+
+def test_starting_a_session_clears_the_document_and_shows_the_resumed_count(window):
+    widget = window.packer_mode_widget
+    widget.add_order_to_history("0999")
+    widget.update_session_progress(5, 5)
+    logic = StubLogic("SKU_OK")
+    logic.orders_data = {"1001": {}, "1002": {}, "1003": {}}
+    logic.session_packing_state = {"completed_orders": ["1001"], "skipped_orders": []}
+    window.logic = logic
+
+    window._open_packer_document()
+
+    assert widget.bridge.history == []
+    assert widget.bridge.progress["orders_done"] == 1
+    assert widget.bridge.progress["orders_total"] == 3

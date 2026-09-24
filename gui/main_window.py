@@ -924,6 +924,7 @@ class MainWindow(QMainWindow):
 
             # Setup order table
             self.setup_order_table()
+            self._open_packer_document()
 
             # Update UI
             toast(self, f"Loaded {order_count} orders.")
@@ -1285,6 +1286,7 @@ class MainWindow(QMainWindow):
 
             # 10. Setup order table
             self.setup_order_table()
+            self._open_packer_document()
 
             # 11. Update UI state
             toast(self, f"Loaded {order_count} orders from {packing_list_name}.")
@@ -1757,6 +1759,18 @@ class MainWindow(QMainWindow):
         self._update_statistics()
 
         logger.info("Order tree and statistics updated successfully")
+
+    def _open_packer_document(self):
+        """Give Packer Mode a clean document for the session just loaded.
+
+        Runs at session start, so a session always opens clean however the
+        last one ended. A resumed list opens on its real count.
+        """
+        state = self.logic.session_packing_state
+        self.packer_mode_widget.reset_for_new_session()
+        self.packer_mode_widget.update_session_progress(
+            len(state.get("completed_orders", [])), len(self.logic.orders_data)
+        )
 
     def switch_to_packer_mode(self):
         """Switches the view to the Packer Mode widget."""
