@@ -1024,13 +1024,34 @@ class MainWindow(QMainWindow):
         logger.debug("Heartbeat timer started")
 
     def _update_session_heartbeat(self):
-        """Update heartbeat for active session lock."""
-        if self.logic and hasattr(self, "current_work_dir") and self.current_work_dir:
-            try:
-                self.lock_manager.update_heartbeat(Path(self.current_work_dir))
+        """Renew the session lock; notice if another PC has taken it (spec B3)."""
+        if not (self.logic and getattr(self, "current_work_dir", None)):
+            return
+        work_dir = Path(self.current_work_dir)
+        try:
+            if self.lock_manager.update_heartbeat(work_dir):
                 logger.debug("Lock heartbeat updated")
-            except Exception:
-                logger.exception("Failed to update heartbeat")
+                return
+            if self.lock_manager.owns_lock(work_dir) is False:
+                self._on_lock_lost(work_dir)
+        except Exception:
+            logger.exception("Failed to update heartbeat")
+
+    def _on_lock_lost(self, work_dir: Path):
+        """Another PC holds this list's lock: stop writing, then leave it."""
+        _locked, info = self.lock_manager.is_locked(work_dir)
+        holder = (info or {}).get("locked_by") or "Another PC"
+        list_name = getattr(self, "current_packing_list", None) or work_dir.name
+        logger.error(f"Session lock lost to {holder}: {work_dir}")
+        self.logic.stop_writing()
+        self._teardown_session()
+        QMessageBox.critical(
+            self,
+            "This list is open on another PC",
+            f"{holder} has taken over {list_name}. This PC has stopped packing it "
+            "so the two don't overwrite each other's progress. Orders packed here "
+            "up to now are saved.",
+        )
 
     def _cleanup_failed_session_start(self):
         """
@@ -1714,6 +1735,13 @@ class MainWindow(QMainWindow):
             )
             logger.exception("Error during end_session")
 
+        self._teardown_session()
+
+    def _teardown_session(self):
+        """Stop the heartbeat, release the lock, drop the logic and return the UI to the session view.
+
+        The tail of end_session(), and the whole of leaving a session whose lock was lost.
+        """
         # CRITICAL: Stop heartbeat timer and release lock
         if hasattr(self, "heartbeat_timer"):
             self.heartbeat_timer.stop()

@@ -270,3 +270,15 @@ def test_a_failed_save_is_signalled_once_and_its_recovery_once(loaded_logic, mon
     loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
 
     assert seen == [True, False]
+
+
+def test_after_stop_writing_no_state_reaches_disk(loaded_logic):
+    loaded_logic.save_state()
+    state_path = loaded_logic.work_dir / "packing_state.json"
+    before = state_path.read_text(encoding="utf-8")
+
+    loaded_logic.stop_writing()
+    loaded_logic.start_order_packing("ORDER-001")
+    loaded_logic.save_state()
+
+    assert state_path.read_text(encoding="utf-8") == before

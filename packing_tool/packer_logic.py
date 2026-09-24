@@ -250,6 +250,7 @@ class PackerLogic(QObject):
         # Write-behind queue: state writes happen in background to avoid UI freezes.
         # sync_mode=True is used in tests to keep writes synchronous.
         self._last_save_ok = True
+        self._writing_stopped = False
         self._state_writer = AsyncStateWriter(self._do_atomic_write)
 
         logger.info(f"PackerLogic initialized for client {client_id}")
@@ -620,6 +621,10 @@ class PackerLogic(QObject):
         Called by AsyncStateWriter from a background thread.
         state_data must be a plain serialisable dict (no shared mutable objects).
         """
+        if self._writing_stopped:
+            logger.warning("State write dropped: this PC no longer holds the session lock")
+            return
+
         state_file = self._get_state_file_path()
         total_orders = state_data.get("progress", {}).get("total_orders", 0)
         completed_orders_count = state_data.get("progress", {}).get("completed_orders", 0)
@@ -635,6 +640,14 @@ class PackerLogic(QObject):
             return
         self._set_save_ok(True)
         logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
+
+    def stop_writing(self) -> None:
+        """Drop every state write from now on, pending ones included.
+
+        For a PC that lost its session lock: the new owner's packing state
+        is the live one, and ours must not overwrite it (spec B3).
+        """
+        self._writing_stopped = True
 
     def _set_save_ok(self, ok: bool) -> None:
         """Emit save_failed on a change only. Runs on the writer thread; Qt
