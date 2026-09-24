@@ -145,6 +145,25 @@ def _session_seconds(started_at) -> int:
     return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
 
 
+def _packing_start_time(session_info, logic_started_at):
+    """When packing started, for the duration End session records.
+
+    session_info.json carries it on the Excel path only; the Shopify path
+    never starts SessionManager, so fall back to the packing state's own
+    stamp. Naive legacy stamps are read as local time.
+    """
+    for raw in ((session_info or {}).get("started_at"), logic_started_at):
+        if not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse packing start time: {raw!r}")
+            continue
+        return parsed if parsed.tzinfo else parsed.astimezone()
+    return None
+
+
 def _unmapped_choices(order_state) -> list[tuple[str, str]]:
     """This order's lines as (sku, label), the ones still owing scans first.
 
@@ -1502,26 +1521,13 @@ class MainWindow(QMainWindow):
                 # --- Gather all stats data on the main thread (fast, no server I/O) ---
                 try:
                     _session_info = self.session_manager.get_session_info()
-                    _start_time = None
-                    if _session_info and "started_at" in _session_info:
-                        try:
-                            _start_time = datetime.fromisoformat(
-                                _session_info["started_at"]
-                            )
-                            if _start_time.tzinfo is None:
-                                # Legacy session_info.json from before timestamps were
-                                # made timezone-aware; interpret as local time so the
-                                # subtraction against tz-aware _end_time below doesn't
-                                # raise TypeError.
-                                _start_time = _start_time.astimezone()
-                        except (ValueError, TypeError):
-                            logger.warning(
-                                "Could not parse started_at from session_info"
-                            )
+                    _start_time = _packing_start_time(
+                        _session_info, self.logic.started_at
+                    )
                 except Exception as e:
                     logger.warning(f"Could not get session_info: {e}")
                     _session_info = None
-                    _start_time = None
+                    _start_time = _packing_start_time(None, self.logic.started_at)
 
                 _end_time = datetime.now().astimezone()
                 _completed_orders_list = self.logic.session_packing_state.get(
