@@ -251,3 +251,22 @@ def test_json_cache_is_not_mutated_by_in_memory_migration(packer_logic_factory, 
         f"even though nothing was written to disk yet: {cache_after}"
     )
     assert disk_after == disk_snapshot_before  # the file on disk is untouched, as expected
+
+
+def test_a_failed_save_is_signalled_once_and_its_recovery_once(loaded_logic, monkeypatch):
+    import packing_tool.packer_logic as pl
+
+    seen = []
+    loaded_logic.save_failed.connect(seen.append)
+    real_write = pl.atomic_write_json
+
+    def failing_write(*args, **kwargs):
+        raise OSError("share unavailable")
+
+    monkeypatch.setattr(pl, "atomic_write_json", failing_write)
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+    monkeypatch.setattr(pl, "atomic_write_json", real_write)
+    loaded_logic._do_atomic_write(loaded_logic._build_state_dict())
+
+    assert seen == [True, False]

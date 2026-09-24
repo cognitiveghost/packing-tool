@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 SCANNER_WIDTH = 280
 SIM_INPUT_WIDTH = 160
+UNSAVED_TEXT = "Progress not saved — check the network"
 
 
 class PackerModeWidget(QWidget):
@@ -94,6 +95,7 @@ class PackerModeWidget(QWidget):
         self._orders_done = 0
         self._orders_total = 0
         self._history = []
+        self._unsaved = False
 
         from gui.packer_bridge import mount_packer_page
 
@@ -449,6 +451,7 @@ class PackerModeWidget(QWidget):
         self.bridge.set_history([])
         self._orders_done = 0
         self._orders_total = 0
+        self._unsaved = False
         self.clear_screen()  # pushes progress through _push_rows()
 
     def show_unknown_scans(self, scans: list[str]):
@@ -483,10 +486,21 @@ class PackerModeWidget(QWidget):
         self._raw_scan = text
         self._push_feedback()
 
+    def set_unsaved(self, unsaved: bool):
+        """Show, or clear, that the packing state is not reaching disk.
+
+        Sticky across scans: every scan rewrites the band, and the warning
+        must survive that until a save succeeds (spec Q2).
+        """
+        self._unsaved = bool(unsaved)
+        self._push_feedback()
+
     def _push_feedback(self):
-        self.bridge.set_feedback(
-            self._feedback_text, self._feedback_role, self._raw_scan
-        )
+        text, role = self._feedback_text, self._feedback_role
+        if self._unsaved:
+            text = f"{UNSAVED_TEXT} · {text}" if text else UNSAVED_TEXT
+            role = "danger"
+        self.bridge.set_feedback(text, role, self._raw_scan)
 
     def add_order_to_history(self, order_number: str, status: str = ""):
         """Add an order to the top of the session's history.

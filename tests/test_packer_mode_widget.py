@@ -157,3 +157,22 @@ def test_a_new_session_does_not_inherit_the_last_ones_history_or_counts(widget):
     assert widget.bridge.history == []
     assert widget.bridge.progress["orders_done"] == 0
     assert widget.bridge.progress["orders_total"] == 0
+
+
+def test_unsaved_progress_keeps_the_band_red_and_the_outcome_readable(widget):
+    widget.set_unsaved(True)
+    widget.show_notification("Order #1001 packed. Scan the next order.", "status_success")
+    assert widget.bridge.feedback["role"] == "danger"
+    assert widget.bridge.feedback["text"] == (
+        "Progress not saved — check the network · Order #1001 packed. Scan the next order."
+    )
+
+    widget.set_unsaved(False)
+    assert widget.bridge.feedback["role"] == "success"
+    assert widget.bridge.feedback["text"] == "Order #1001 packed. Scan the next order."
+
+
+def test_a_new_session_starts_saved(widget):
+    widget.set_unsaved(True)
+    widget.reset_for_new_session()
+    assert widget.bridge.feedback["role"] == "info"

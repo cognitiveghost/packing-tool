@@ -915,6 +915,7 @@ class MainWindow(QMainWindow):
             # Connect signals
             self.logic.item_packed.connect(self._on_item_packed)
             self.logic.all_orders_complete.connect(self._on_all_orders_complete)
+            self.logic.save_failed.connect(self.packer_mode_widget.set_unsaved)
 
             # Load Shopify session data
             session_path = self.session_manager.output_dir
@@ -1241,6 +1242,7 @@ class MainWindow(QMainWindow):
             # 6. Connect signals (must happen on main thread after moveToThread)
             self.logic.item_packed.connect(self._on_item_packed)
             self.logic.all_orders_complete.connect(self._on_all_orders_complete)
+            self.logic.save_failed.connect(self.packer_mode_widget.set_unsaved)
 
             logger.info(f"Loaded {order_count} orders from packing list")
 

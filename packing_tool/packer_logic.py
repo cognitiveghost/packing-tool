@@ -171,6 +171,7 @@ class PackerLogic(QObject):
     """
     item_packed = Signal(str, int, int)  # order_number, packed_count, required_count
     all_orders_complete = Signal()  # Emitted when every order in the session is packed
+    save_failed = Signal(bool)  # True: state writes started failing; False: they recovered
 
     def __init__(self, client_id: str, profile_manager, work_dir: str):
         """
@@ -248,6 +249,7 @@ class PackerLogic(QObject):
 
         # Write-behind queue: state writes happen in background to avoid UI freezes.
         # sync_mode=True is used in tests to keep writes synchronous.
+        self._last_save_ok = True
         self._state_writer = AsyncStateWriter(self._do_atomic_write)
 
         logger.info(f"PackerLogic initialized for client {client_id}")
@@ -627,11 +629,19 @@ class PackerLogic(QObject):
         try:
             atomic_write_json(state_file, state_data)
             invalidate_json_cache(state_file)
-
-            logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
-
         except Exception:
             logger.exception("CRITICAL: Failed to save session state")
+            self._set_save_ok(False)
+            return
+        self._set_save_ok(True)
+        logger.debug(f"Session state saved: {completed_orders_count}/{total_orders} orders, {packed_items}/{total_items} items")
+
+    def _set_save_ok(self, ok: bool) -> None:
+        """Emit save_failed on a change only. Runs on the writer thread; Qt
+        queues the signal to the receiver's (UI) thread."""
+        if ok != self._last_save_ok:
+            self._last_save_ok = ok
+            self.save_failed.emit(not ok)
 
     def _save_session_state_async(self) -> None:
         """
