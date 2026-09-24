@@ -101,7 +101,7 @@ see no lock and both proceed. The last write wins the file, and both PCs pack.
 
 **B3. Losing the lock goes unnoticed.** — *decided (Q3)*
 When `update_heartbeat()` finds another PC's lock, it returns `False`.
-`MainWindow._update_heartbeat()` (`gui/main_window.py:1021-1027`) ignores the return value.
+`MainWindow._update_session_heartbeat()` (`gui/main_window.py:1020-1027`) ignores the return value.
 After B1 or B2, both PCs keep writing the same `packing_state.json`, each overwriting the
 other's progress.
 
@@ -185,10 +185,84 @@ sides take the same `session_info.json.lock` sidecar. The date comes from `start
 
 ## Owner decisions
 
-_Filled in from the owner's answers to Q1–Q5 before the plan is written._
+Asked 2026-09-24. The owner took the recommended option on all five.
+
+**Q1 → A1: retry, then refuse.** When `packing_state.json` exists, read it directly (not
+through `JSONCache`, which hides the error): 3 attempts, 0.5 s apart. If every attempt
+raises, or the root is not a JSON object, raise `PackingStateUnreadableError` (new, in
+`packing_tool/exceptions.py`, subclass of `PackingToolError`) from `PackerLogic.__init__`.
+Raise it *before* the `AsyncStateWriter` thread is created. The file stays untouched. The
+session does not open. `start_shopify_packing_session()` catches the error in its own
+`except` clause, runs `_cleanup_failed_session_start()` (which releases the lock) and shows:
+
+> **Could not read saved progress**
+> The saved progress for {list} could not be read, so the list was not opened. Nothing
+> was changed. Check the connection to the server and open it again.
+
+A *missing* file still means "new session, start fresh", as it does today.
+
+**Q2 → A2: warn and keep going.** `PackerLogic` gains a `save_failed = Signal(bool)`. It
+emits on transitions only: `True` on the first failed write after a success, `False` on the
+first success after a failure. `_do_atomic_write()` emits it from the writer thread. Qt
+queues a cross-thread signal to the receiver's thread, so the UI slot runs on the main thread
+(CLAUDE.md: no UI calls from background threads). `MainWindow` forwards it to
+`PackerModeWidget.set_unsaved(bool)`. While the flag is set, `_push_feedback()` sends
+role `danger` and prefixes the text with `Progress not saved — check the network`. When
+there is an outcome, it is kept after ` · `, so the scan result stays readable. There is no
+retry timer: every scan, cancel or extra schedules a full snapshot, so the next action is the
+retry. The first success clears the flag.
+
+**Q3 → B1, B2, B3: fix all three.**
+- *B1.* `update_heartbeat()` writes with `atomic_write_json` after verifying ownership,
+  instead of truncating in place, so readers never see a half-written lock.
+  `is_locked()` retries an unreadable read 3 times, 0.2 s apart. If it is still unreadable,
+  it returns `(True, {"unreadable": True, ...})`. `acquire_lock()` answers that with
+  `(False, "The session lock could not be read. Try again in a moment.", None)`. That is
+  neither the stale-lock path nor a takeover.
+- *B2.* A new lock is created with `os.open(path, O_CREAT | O_EXCL | O_WRONLY)` and the
+  JSON is written into that handle. `FileExistsError` means another PC won the race, and it
+  is reported like an active lock. Reacquiring our own lock and the force-release path keep
+  their current behaviour.
+- *B3.* New `SessionLockManager.owns_lock(session_dir) -> bool | None`: `True` for our lock,
+  `False` for another owner's lock or a missing file, `None` for an unreadable one. When
+  `update_heartbeat()` returns `False`, `MainWindow._update_session_heartbeat()` asks
+  `owns_lock()`. `False` means the lock is lost:
+  `PackerLogic.stop_writing()` (a flag `_do_atomic_write()` checks first, so neither a
+  pending nor a later write reaches disk), stop the heartbeat, show a critical dialog, and
+  tear the session down *without* `end_session()`'s writes. Those writes would stamp
+  another PC's live session as ended. The teardown is `end_session()`'s existing cleanup
+  tail (lines 1697–1742), extracted into `_teardown_session()` so both callers share it.
+  Dialog copy:
+
+  > **This list is open on another PC**
+  > {locked_by} has taken over {list}. This PC has stopped packing it so the two don't
+  > overwrite each other's progress. Orders packed here up to now are saved.
+
+  The legacy Excel path runs its own heartbeat in `SessionManager` and is not changed.
+
+**Q4 → E1: publish after every order.** New module `packing_tool/progress_publisher.py`
+with class `ProgressPublisher`. Its interface is `publish(completed_orders: list[str],
+skipped_count: int)` and `close()`. It is built at session start from the session manager,
+the registry manager, client id, session path and packing list name, and it owns an
+`AsyncStateWriter`, so publishing is non-blocking and the latest snapshot wins. Its write
+calls `SessionManager.update_session_metadata(path, list, "in_progress",
+completed_orders=...)`, which already takes Shopify's `session_info.json.lock` and merges,
+and the new registry method from Q5. Failures are logged; this signal is best-effort, as it
+is on Shopify's side. `MainWindow` publishes from `_handle_order_completion()` and
+`_on_skip_order()`. `end_session()` calls `close()` (which flushes) *before* its own final
+`"completed"` write, so the final write lands last. `_teardown_session()` also closes it.
+Shopify sessions only: the Excel path has no `session_info.json` packing block.
+
+**Q5 → D4: registry progress on each order.** New
+`SessionRegistryManager.update_session_progress(client_id, session_id, list_name,
+completed_orders: int, skipped_orders: int)`. It sets both counts and `last_updated` when
+the entry exists and is not `completed`/`incomplete`, and does nothing otherwise. It is
+called from `ProgressPublisher`'s write. A moving `last_updated` also stops a live session
+from resolving as *abandoned* after 24 h.
 
 ## Out of scope
 
 - `fsync` in `shared/atomic_write.py` (A3).
 - Active-time duration (C2): follow-up task.
 - Seeding the Packer Mode history column on resume.
+- Lock-loss detection on the legacy Excel path (its heartbeat lives in `SessionManager`).
