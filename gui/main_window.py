@@ -1307,6 +1307,12 @@ class MainWindow(QMainWindow):
                     total_items=_reg_total_items,
                     work_dir=str(work_dir),
                     session_path=str(session_path),
+                    completed_orders=len(
+                        self.logic.session_packing_state.get("completed_orders", [])
+                    ),
+                    skipped_orders=len(
+                        self.logic.session_packing_state.get("skipped_orders", [])
+                    ),
                 )
             except Exception as _e:
                 logger.warning(f"Registry update (session start) failed: {_e}")

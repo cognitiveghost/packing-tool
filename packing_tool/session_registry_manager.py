@@ -27,10 +27,12 @@ Design notes:
 import json
 import logging
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
+from shared.file_lock import locked_file
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,19 @@ class SessionRegistryManager:
     def _session_key(session_id: str, packing_list_name: str) -> str:
         """Composite dict key: '{session_id}::{packing_list_name}'."""
         return f"{session_id}::{packing_list_name}"
+
+    @contextmanager
+    def _locked(self, client_id: str):
+        """Hold the registry's sidecar lock for one read-modify-write (spec D3).
+
+        Every PC writes this one file; without the lock two writers each
+        drop the other's change, and a dropped entry re-lists a finished
+        packing list as not started.
+        """
+        path = self._get_registry_path(client_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path.with_name(path.name + ".lock"), "a+") as handle, locked_file(handle):
+            yield
 
     # ------------------------------------------------------------------ #
     #  Read / Write                                                        #
@@ -156,8 +171,11 @@ class SessionRegistryManager:
             f"No registry for client {client_id} — building from directory scan..."
         )
         try:
-            registry = self.build_from_scan(client_id)
-            return self.write_registry(client_id, registry)
+            registry = self.build_from_scan(client_id)  # slow: kept outside the lock
+            with self._locked(client_id):
+                if self.registry_exists(client_id):  # another PC finished first
+                    return True
+                return self.write_registry(client_id, registry)
         except Exception:
             logger.exception(
                 f"Failed to build registry for client {client_id}"
@@ -396,41 +414,48 @@ class SessionRegistryManager:
         total_items: int,
         work_dir: str,
         session_path: str,
+        completed_orders: int = 0,
+        skipped_orders: int = 0,
     ) -> bool:
         """
         Add or overwrite a session entry as 'in_progress'.
 
+        Resuming keeps the entry's original started_at and carries the
+        orders already packed, so the Session Browser doesn't restart at 0.
+
         Also removes the packing list from available_lists (it has now been started).
         """
-        registry = self.read_registry(client_id)
-        key = self._session_key(session_id, packing_list_name)
-        now = get_current_timestamp()
+        with self._locked(client_id):
+            registry = self.read_registry(client_id)
+            key = self._session_key(session_id, packing_list_name)
+            now = get_current_timestamp()
+            existing = registry["sessions"].get(key, {})
 
-        registry["sessions"][key] = {
-            "session_id": session_id,
-            "packing_list_name": packing_list_name,
-            "status": "in_progress",
-            "worker_id": worker_id,
-            "worker_name": worker_name,
-            "pc_name": pc_name,
-            "started_at": now,
-            "last_updated": now,
-            "completed_at": None,
-            "duration_seconds": None,
-            "total_orders": total_orders,
-            "completed_orders": 0,
-            "skipped_orders": 0,
-            "total_items": total_items,
-            "work_dir": work_dir,
-            "session_path": session_path,
-            "metrics": None,
-        }
+            registry["sessions"][key] = {
+                "session_id": session_id,
+                "packing_list_name": packing_list_name,
+                "status": "in_progress",
+                "worker_id": worker_id,
+                "worker_name": worker_name,
+                "pc_name": pc_name,
+                "started_at": existing.get("started_at") or now,
+                "last_updated": now,
+                "completed_at": None,
+                "duration_seconds": None,
+                "total_orders": total_orders,
+                "completed_orders": completed_orders,
+                "skipped_orders": skipped_orders,
+                "total_items": total_items,
+                "work_dir": work_dir,
+                "session_path": session_path,
+                "metrics": None,
+            }
 
-        # Remove the matching available_list entry (same session_id + list_name)
-        al_key = self._session_key(session_id, packing_list_name)
-        registry["available_lists"].pop(al_key, None)
+            # Remove the matching available_list entry (same session_id + list_name)
+            al_key = self._session_key(session_id, packing_list_name)
+            registry["available_lists"].pop(al_key, None)
 
-        return self.write_registry(client_id, registry)
+            return self.write_registry(client_id, registry)
 
     def register_session_complete(
         self,
@@ -443,42 +468,43 @@ class SessionRegistryManager:
         Mark a session as 'completed' or 'incomplete' using data from
         session_summary.json.
         """
-        registry = self.read_registry(client_id)
-        key = self._session_key(session_id, packing_list_name)
+        with self._locked(client_id):
+            registry = self.read_registry(client_id)
+            key = self._session_key(session_id, packing_list_name)
 
-        # Create a stub entry if it somehow isn't in the registry yet
-        if key not in registry["sessions"]:
-            registry["sessions"][key] = {
-                "session_id": session_id,
-                "packing_list_name": packing_list_name,
-                "session_path": "",
-                "work_dir": "",
-                "started_at": summary.get("started_at", ""),
-            }
+            # Create a stub entry if it somehow isn't in the registry yet
+            if key not in registry["sessions"]:
+                registry["sessions"][key] = {
+                    "session_id": session_id,
+                    "packing_list_name": packing_list_name,
+                    "session_path": "",
+                    "work_dir": "",
+                    "started_at": summary.get("started_at", ""),
+                }
 
-        total_orders = summary.get("total_orders", 0)
-        completed_orders = summary.get("completed_orders", 0)
-        all_done = total_orders > 0 and completed_orders == total_orders
+            total_orders = summary.get("total_orders", 0)
+            completed_orders = summary.get("completed_orders", 0)
+            all_done = total_orders > 0 and completed_orders == total_orders
 
-        registry["sessions"][key].update(
-            {
-                "status": "completed" if all_done else "incomplete",
-                "worker_id": summary.get("worker_id"),
-                "worker_name": summary.get("worker_name"),
-                "pc_name": summary.get(
-                    "pc_name", registry["sessions"][key].get("pc_name", "")
-                ),
-                "completed_at": summary.get("completed_at", get_current_timestamp()),
-                "last_updated": get_current_timestamp(),
-                "duration_seconds": summary.get("duration_seconds"),
-                "total_orders": total_orders,
-                "completed_orders": completed_orders,
-                "skipped_orders": summary.get("skipped_orders_count", 0),
-                "total_items": summary.get("total_items", 0),
-                "metrics": summary.get("metrics"),
-            }
-        )
-        return self.write_registry(client_id, registry)
+            registry["sessions"][key].update(
+                {
+                    "status": "completed" if all_done else "incomplete",
+                    "worker_id": summary.get("worker_id"),
+                    "worker_name": summary.get("worker_name"),
+                    "pc_name": summary.get(
+                        "pc_name", registry["sessions"][key].get("pc_name", "")
+                    ),
+                    "completed_at": summary.get("completed_at", get_current_timestamp()),
+                    "last_updated": get_current_timestamp(),
+                    "duration_seconds": summary.get("duration_seconds"),
+                    "total_orders": total_orders,
+                    "completed_orders": completed_orders,
+                    "skipped_orders": summary.get("skipped_orders_count", 0),
+                    "total_items": summary.get("total_items", 0),
+                    "metrics": summary.get("metrics"),
+                }
+            )
+            return self.write_registry(client_id, registry)
 
     def register_session_paused(
         self,
@@ -490,16 +516,44 @@ class SessionRegistryManager:
         Mark a session as 'paused' (worker stepped away without completing).
         Only updates status if the entry exists and is not already completed.
         """
-        registry = self.read_registry(client_id)
-        key = self._session_key(session_id, packing_list_name)
+        with self._locked(client_id):
+            registry = self.read_registry(client_id)
+            key = self._session_key(session_id, packing_list_name)
 
-        if key in registry["sessions"]:
-            current_status = registry["sessions"][key].get("status", "")
-            if current_status not in ("completed", "incomplete"):
-                registry["sessions"][key]["status"] = "paused"
-                registry["sessions"][key]["last_updated"] = get_current_timestamp()
-                return self.write_registry(client_id, registry)
-        return False
+            if key in registry["sessions"]:
+                current_status = registry["sessions"][key].get("status", "")
+                if current_status not in ("completed", "incomplete"):
+                    registry["sessions"][key]["status"] = "paused"
+                    registry["sessions"][key]["last_updated"] = get_current_timestamp()
+                    return self.write_registry(client_id, registry)
+            return False
+
+    def update_session_progress(
+        self,
+        client_id: str,
+        session_id: str,
+        packing_list_name: str,
+        completed_orders: int,
+        skipped_orders: int,
+    ) -> bool:
+        """Move a live entry's counts and last_updated as orders finish (spec Q5).
+
+        A finished entry (completed/incomplete) is left alone: its counts
+        came from the session summary and are final.
+        """
+        with self._locked(client_id):
+            registry = self.read_registry(client_id)
+            entry = registry["sessions"].get(self._session_key(session_id, packing_list_name))
+            if entry is None or entry.get("status") in ("completed", "incomplete"):
+                return False
+            entry.update(
+                {
+                    "completed_orders": completed_orders,
+                    "skipped_orders": skipped_orders,
+                    "last_updated": get_current_timestamp(),
+                }
+            )
+            return self.write_registry(client_id, registry)
 
     def register_available_list(
         self,
@@ -516,24 +570,25 @@ class SessionRegistryManager:
         Called when the Session Browser detects a new packing list JSON on the
         server that is not yet represented in the registry.
         """
-        registry = self.read_registry(client_id)
-        key = self._session_key(session_id, packing_list_name)
+        with self._locked(client_id):
+            registry = self.read_registry(client_id)
+            key = self._session_key(session_id, packing_list_name)
 
-        # Don't add to available_lists if a session already exists for this key
-        if key in registry["sessions"]:
-            return False
+            # Don't add to available_lists if a session already exists for this key
+            if key in registry["sessions"]:
+                return False
 
-        registry["available_lists"][key] = {
-            "session_id": session_id,
-            "packing_list_name": packing_list_name,
-            "packing_list_path": packing_list_path,
-            "session_path": session_path,
-            "courier": metadata.get("courier", ""),
-            "created_at": metadata.get("created_at", ""),
-            "total_orders": metadata.get("total_orders", 0),
-            "total_items": metadata.get("total_items", 0),
-        }
-        return self.write_registry(client_id, registry)
+            registry["available_lists"][key] = {
+                "session_id": session_id,
+                "packing_list_name": packing_list_name,
+                "packing_list_path": packing_list_path,
+                "session_path": session_path,
+                "courier": metadata.get("courier", ""),
+                "created_at": metadata.get("created_at", ""),
+                "total_orders": metadata.get("total_orders", 0),
+                "total_items": metadata.get("total_items", 0),
+            }
+            return self.write_registry(client_id, registry)
 
     # ------------------------------------------------------------------ #
     #  Read accessors                                                      #
@@ -604,9 +659,10 @@ class SessionRegistryManager:
 
         if stored == "in_progress":
             # Check the lock file heartbeat to differentiate active vs stale
-            session_path = entry.get("session_path", "")
-            if session_path:
-                lock_file = Path(session_path) / ".session.lock"
+            # The Shopify path locks the work directory; Excel entries have no work_dir.
+            lock_dir = entry.get("work_dir") or entry.get("session_path", "")
+            if lock_dir:
+                lock_file = Path(lock_dir) / ".session.lock"
                 if lock_file.exists():
                     heartbeat_age = self._get_lock_heartbeat_age(lock_file)
                     if heartbeat_age is not None:
@@ -652,7 +708,8 @@ class SessionRegistryManager:
 
         Returns the number of newly registered lists.
         """
-        registry = self.read_registry(client_id)
+        registry = self.read_registry(client_id)  # snapshot, only to skip known keys
+        found = self._empty_registry(client_id)  # what the scan turns up; merged under the lock
         client_dir = self.profile_manager.get_sessions_root() / f"CLIENT_{client_id}"
         if not client_dir.exists():
             return 0
@@ -660,9 +717,6 @@ class SessionRegistryManager:
         known_keys = set(registry["sessions"].keys()) | set(
             registry["available_lists"].keys()
         )
-        new_count = 0
-        changed = False
-
         try:
             for s_entry in os.scandir(client_dir):
                 if not s_entry.is_dir():
@@ -687,24 +741,34 @@ class SessionRegistryManager:
                     if work_dir.exists():
                         # Session was started; do a full register
                         self._register_from_work_dir(
-                            registry, session_id, pl_name, work_dir, Path(s_entry.path)
+                            found, session_id, pl_name, work_dir, Path(s_entry.path)
                         )
                     else:
                         self._register_available_from_file(
-                            registry,
+                            found,
                             session_id,
                             pl_name,
                             Path(pl_entry.path),
                             Path(s_entry.path),
                         )
                     known_keys.add(key)
-                    new_count += 1
-                    changed = True
 
         except Exception:
             logger.exception("Error scanning for new available lists")
 
-        if changed:
-            self.write_registry(client_id, registry)
+        if not (found["sessions"] or found["available_lists"]):
+            return 0
+
+        new_count = 0
+        with self._locked(client_id):
+            current = self.read_registry(client_id)
+            for section in ("sessions", "available_lists"):
+                for key, entry in found[section].items():
+                    if key in current["sessions"] or key in current["available_lists"]:
+                        continue  # another PC registered it while we scanned
+                    current[section][key] = entry
+                    new_count += 1
+            if new_count:
+                self.write_registry(client_id, current)
 
         return new_count
