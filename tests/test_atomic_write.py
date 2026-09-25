@@ -26,6 +26,15 @@ from shared.stats_manager import StatsManager, StatsManagerError
 # shared.atomic_write.atomic_write_json — the reference implementation
 # ---------------------------------------------------------------------------
 
+def test_atomic_write_json_raises_the_real_error_not_ebadf(tmp_path):
+    # object() isn't JSON-serialisable: json.dump fails inside the fdopen block,
+    # which has already closed the fd. A second os.close() used to replace the
+    # TypeError with OSError(EBADF).
+    with pytest.raises(TypeError):
+        atomic_write_json(tmp_path / "x.json", {"a": object()}, retries=1)
+    assert not list(tmp_path.glob(".*_tmp_*"))
+
+
 def test_atomic_write_json_creates_valid_file_and_leaves_no_temp_files(tmp_path):
     target = tmp_path / "sub" / "data.json"
     atomic_write_json(target, {"a": 1})
