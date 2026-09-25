@@ -94,6 +94,7 @@ def test_the_banner_carries_bare_values_in_artboard_order():
     assert banner_payload("10429", META) == {
         "order": "10429",
         "chips": ["Retail", "DPD", "PL", "Box M", "repeat customer", "checked"],
+        "repeat": False,
         "notes": "Fragile -- handle with care",
     }
 
@@ -110,7 +111,7 @@ def test_pandas_nan_and_blanks_never_reach_a_chip():
             "notes": "nan",
         },
     )
-    assert payload == {"order": "1", "chips": ["Box L", "urgent"], "notes": ""}
+    assert payload == {"order": "1", "chips": ["Box L", "urgent"], "repeat": False, "notes": ""}
 
 
 def test_a_system_note_stands_in_for_a_missing_note():
@@ -119,10 +120,26 @@ def test_a_system_note_stands_in_for_a_missing_note():
     )
 
 
+def test_banner_repeat_with_customer_note():
+    b = banner_payload("#1", {"notes": "Leave at door", "system_note": "Repeat"})
+    assert b["repeat"] is True and b["notes"] == "Leave at door"
+
+
+def test_banner_repeat_only_has_no_notes():
+    b = banner_payload("#1", {"system_note": "Repeat"})
+    assert b["repeat"] is True and b["notes"] == ""
+
+
+def test_banner_blocker_note_is_not_repeat():
+    b = banner_payload("#1", {"system_note": "Cannot fulfill: Repeat SKU short"})
+    assert b["repeat"] is False and b["notes"] == "Cannot fulfill: Repeat SKU short"
+
+
 def test_no_metadata_still_names_the_order():
     assert banner_payload("10429", None) == {
         "order": "10429",
         "chips": [],
+        "repeat": False,
         "notes": "",
     }
 

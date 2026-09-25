@@ -491,7 +491,7 @@ def test_clearing_the_screen_returns_to_waiting_and_keeps_the_session(qtbot):
 
     assert widget.bridge.items == []
     assert widget.bridge.extras == []
-    assert widget.bridge.banner == {"order": "", "chips": [], "notes": ""}
+    assert widget.bridge.banner == {"order": "", "chips": [], "repeat": False, "notes": ""}
     assert widget.bridge.feedback["text"] == "Scan an order barcode"
     assert widget.bridge.history == [{"order": "10428", "status": "complete"}]
     assert widget.bridge.progress["orders_done"] == 8
@@ -515,6 +515,15 @@ def test_the_waiting_document_shows_no_list_and_no_banner(page, qtbot):
     bridge.set_banner({"order": "", "chips": [], "notes": ""})
     _until_js(qtbot, view, "document.getElementById('sku-list').hidden === true")
     assert _eval(qtbot, view, "document.getElementById('banner').hidden") is True
+
+
+def test_a_repeat_only_banner_shows_the_warning_chip_and_no_notes(page, qtbot):
+    view, bridge = page
+    bridge.set_banner({"order": "10429", "chips": [], "repeat": True, "notes": ""})
+    _until_js(qtbot, view, "document.querySelector('#banner .chip--warning') !== null")
+    assert _eval(qtbot, view, "document.getElementById('banner').hidden") is False
+    assert _eval(qtbot, view, "document.querySelector('#banner .chip--warning').textContent") == "Repeat"
+    assert _eval(qtbot, view, "document.querySelector('#banner .doc-banner-notes')") is None
 
 
 # The Qt -> web translation layer. Every other feedback test drives
