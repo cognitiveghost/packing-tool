@@ -141,10 +141,17 @@ def banner_payload(
         metadata.get("internal_tags") or []
     ):
         chips.append(_clean(tag))
+    # Same rule as shopify-fulfillment-tool's Repeat mark: a repeat note, but
+    # not a "Cannot fulfill: ..." blocker that merely mentions the word.
+    system_note = _clean(metadata.get("system_note"))
+    repeat = "Repeat" in system_note and not system_note.startswith("Cannot fulfill")
+    # A note that is only the repeat mark is carried by the chip instead.
+    fallback = "" if system_note == "Repeat" else system_note
     return {
         "order": str(order_number),
         "chips": [c for c in chips if c],
-        "notes": _clean(metadata.get("notes")) or _clean(metadata.get("system_note")),
+        "repeat": repeat,
+        "notes": _clean(metadata.get("notes")) or fallback,
     }
 
 

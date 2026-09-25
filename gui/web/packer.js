@@ -113,8 +113,9 @@ function renderBanner() {
   const b = state.bridge.banner || {};
   const chips = b.chips || [];
   els.banner.textContent = "";
-  els.banner.hidden = !b.order && chips.length === 0 && !b.notes;
+  els.banner.hidden = !b.order && chips.length === 0 && !b.notes && !b.repeat;
   if (b.order) els.banner.appendChild(span("doc-banner-order", orderLabel(b.order)));
+  if (b.repeat) els.banner.appendChild(span("chip chip--warning", "Repeat"));
   chips.forEach(function (c) {
     els.banner.appendChild(span("doc-banner-tag", c));
   });
