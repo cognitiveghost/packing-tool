@@ -82,7 +82,6 @@ def test_resume_after_restart_keeps_counts(session_factory, packer_logic_factory
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-1")
 def test_returning_to_a_skipped_order_keeps_its_own_scan_records(session_factory, packer_logic_factory):
     logic, _, _ = _loaded(session_factory, packer_logic_factory)
 
@@ -104,7 +103,6 @@ def test_returning_to_a_skipped_order_keeps_its_own_scan_records(session_factory
     assert record["started_at"] == started_001
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-1")
 def test_cancel_on_a_returned_order_does_not_edit_a_finished_order(session_factory, packer_logic_factory):
     orders = [
         ("#A", "DHL", [{"sku": "SKU-A", "quantity": 3, "product_name": "A"}]),
@@ -168,14 +166,12 @@ def ended_twice(main_window, session_factory, packer_logic_factory, monkeypatch)
     return main_window, worker.id, work_dir
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-2")
 def test_a_list_ended_twice_counts_each_order_once_in_global_stats(ended_twice):
     window, _, _ = ended_twice
     stats = window.stats_manager.get_global_stats()
     assert stats["total_orders_packed"] == 2
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-2")
 def test_a_list_ended_twice_counts_each_order_once_in_worker_stats(ended_twice):
     window, worker_id, _ = ended_twice
     worker = window.worker_manager.get_worker(worker_id)
@@ -187,7 +183,6 @@ def test_a_list_ended_twice_counts_each_order_once_in_worker_stats(ended_twice):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-3")
 def test_a_resumed_order_follows_the_quantity_now_on_the_list(session_factory, packer_logic_factory):
     logic, work_dir, list_path = _loaded(session_factory, packer_logic_factory)
     logic.start_order_packing("ORDER-001")
@@ -204,7 +199,6 @@ def test_a_resumed_order_follows_the_quantity_now_on_the_list(session_factory, p
     assert again.current_order_state[0]["required"] == 3
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-3")
 def test_an_order_dropped_from_the_list_does_not_count_toward_done(session_factory, packer_logic_factory):
     logic, work_dir, list_path = _loaded(session_factory, packer_logic_factory)
     logic.start_order_packing("ORDER-002")
@@ -235,7 +229,6 @@ def test_an_order_dropped_from_the_list_does_not_count_toward_done(session_facto
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-4")
 def test_sku_summary_counts_a_sku_once_across_product_names(session_factory, packer_logic_factory):
     orders = [
         ("#1", "DHL", [{"sku": "NO_SKU", "quantity": 1, "product_name": "Lab Sample"}]),
@@ -254,7 +247,6 @@ def test_sku_summary_counts_a_sku_once_across_product_names(session_factory, pac
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-5")
 def test_report_completed_at_is_when_the_order_was_packed(ended_twice):
     import pandas as pd
 
@@ -270,8 +262,36 @@ def test_report_completed_at_is_when_the_order_was_packed(ended_twice):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-01-6")
 def test_items_card_counts_units_like_every_other_items_figure(session_factory, packer_logic_factory):
     logic, _, _ = _loaded(session_factory, packer_logic_factory)
     totals = session_totals(logic.processed_df, [])
     assert totals["items"] == logic._total_items == 4
+
+
+def test_a_state_saved_before_the_fix_restores_timing_to_its_own_order(session_factory, packer_logic_factory):
+    """Old states carry one unnamed _timing block: it belongs to progress.in_progress_order."""
+    _logic, work_dir, list_path = _loaded(session_factory, packer_logic_factory)
+    state_path = work_dir / "packing_state.json"
+    state_path.write_text(json.dumps({
+        "session_id": "s", "started_at": "2026-01-01T09:00:00+00:00",
+        "progress": {"in_progress_order": "ORDER-001"},
+        "in_progress": {
+            "ORDER-001": [
+                {"original_sku": "SKU-AAA", "normalized_sku": "skuaaa", "required": 2, "packed": 1, "row": 0},
+                {"original_sku": "SKU-BBB", "normalized_sku": "skubbb", "required": 1, "packed": 0, "row": 1},
+            ],
+            "_timing": {"current_order_start_time": "2026-01-01T09:00:00+00:00",
+                        "items_scanned": [{"sku": "skuaaa", "quantity": 1, "row": 0}]},
+        },
+        "_current_extras": {},
+        "completed": [],
+    }), encoding="utf-8")
+
+    again = packer_logic_factory("M", work_dir)
+    again.load_packing_list_json(list_path)
+    again.start_order_packing("ORDER-002")  # another order first: must not take ORDER-001's timing
+    assert again.current_order_items_scanned == []
+    again.clear_current_order()
+    again.start_order_packing("ORDER-001")
+    assert again.current_order_start_time == "2026-01-01T09:00:00+00:00"
+    assert len(again.current_order_items_scanned) == 1

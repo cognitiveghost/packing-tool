@@ -245,7 +245,6 @@ def test_a_scan_does_not_rebuild_the_order_tree(main_window_with_list, monkeypat
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-9")
 def test_a_confirm_click_is_not_recorded_as_a_scan(main_window_with_list):
     window = main_window_with_list
     window.on_scanner_input("#10429")
@@ -259,14 +258,12 @@ def test_a_confirm_click_is_not_recorded_as_a_scan(main_window_with_list):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-10")
 def test_an_opened_order_is_not_shown_as_complete(main_window_with_list):
     window = main_window_with_list
     window.on_scanner_input("#10429")
-    assert window.packer_mode_widget._history[0]["status"] != "complete"
+    assert {"order": "#10429", "status": "complete"} not in window.packer_mode_widget._history
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-10")
 def test_a_skipped_order_appears_once_in_history(main_window_with_list):
     window = main_window_with_list
     window.on_scanner_input("#10429")
@@ -280,7 +277,6 @@ def test_a_skipped_order_appears_once_in_history(main_window_with_list):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-11")
 def test_scanning_the_next_orders_barcode_is_not_an_unknown_sku(main_window_with_list):
     logic = main_window_with_list.logic
     logic.start_order_packing("#10429")
@@ -293,7 +289,6 @@ def test_scanning_the_next_orders_barcode_is_not_an_unknown_sku(main_window_with
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-12")
 def test_the_state_snapshot_does_not_change_after_it_is_taken(main_window_with_list):
     logic = main_window_with_list.logic
     logic.start_order_packing("#10429")
@@ -308,7 +303,6 @@ def test_the_state_snapshot_does_not_change_after_it_is_taken(main_window_with_l
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-13")
 def test_already_packed_message_has_one_hash(main_window_with_list):
     window = main_window_with_list
     window.on_scanner_input("#10429")

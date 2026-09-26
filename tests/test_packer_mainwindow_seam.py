@@ -30,13 +30,16 @@ class StubLogic:
         self.started_at = None
         self.cleared = False
 
-    def process_sku_scan(self, sku):
+    def process_sku_scan(self, sku, confirmation_method="scanned"):
         if self._status == "SKU_NOT_FOUND":
             self.unknown_scans.append(sku)
         return self._result, self._status
 
     def clear_current_order(self):
         self.cleared = True
+
+    def packed_order_numbers(self):
+        return list(self.session_packing_state["completed_orders"])
 
 
 @pytest.fixture

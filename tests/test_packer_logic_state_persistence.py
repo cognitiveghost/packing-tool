@@ -86,7 +86,7 @@ def test_legacy_item_format_is_migrated_on_load(packer_logic_factory, session_fa
     assert item["original_sku"] == "SKU-AAA"
     assert item["normalized_sku"] == "skuaaa"
     assert item["packed"] == 1
-    assert item["required"] == 0  # filled with a lenient default, not the real packing-list qty
+    assert item["required"] == 2  # the lenient default 0 is replaced by the list's quantity (AUDIT-01-3)
     assert item["row"] == 0
 
 
@@ -114,7 +114,9 @@ def test_malformed_order_state_is_skipped_without_crashing(packer_logic_factory,
     assert "ORDER-GOOD" in logic.session_packing_state["in_progress"]
     assert "ORDER-BAD" not in logic.session_packing_state["in_progress"]
     assert "ORDER-BAD2" not in logic.session_packing_state["in_progress"]
-    assert logic.session_packing_state["completed_orders"] == ["ORDER-OLD"]
+    # ORDER-OLD is not on the list: it is kept as packed, out of the counts (AUDIT-01-3)
+    assert logic.session_packing_state["completed_orders"] == []
+    assert logic.session_packing_state["completed_off_list"] == ["ORDER-OLD"]
 
 
 def test_missing_state_file_starts_fresh(packer_logic_factory, session_factory):
@@ -201,6 +203,9 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
 
     # --- simulate crash + restart: fresh PackerLogic over the same work_dir ---
     instance2 = packer_logic_factory("M", work_dir)
+    instance2.load_packing_list_json(list_path)
+    instance2.start_order_packing("ORDER-A")
+    # Extras belong to their order: they come back when it is opened (AUDIT-01-1).
     assert instance2.current_extra_items == {"sku1": 1}, (
         "the pending extra flagged before the crash must still be there after restart, "
         f"got {instance2.current_extra_items!r} instead"
@@ -208,8 +213,6 @@ def test_unresolved_extras_survive_a_restart(packer_logic_factory, session_facto
 
     # Consequence if it isn't: resuming and finishing the order silently completes
     # it clean, even though a real extra unit is still sitting unresolved in the box.
-    instance2.load_packing_list_json(list_path)
-    instance2.start_order_packing("ORDER-A")
     _result, status = instance2.process_sku_scan("SKU-2")  # the only remaining required item
     assert status == "ORDER_COMPLETE_WITH_EXTRAS", (
         f"expected the pending extra to block clean completion, got {status!r}"

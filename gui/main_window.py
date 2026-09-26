@@ -145,23 +145,24 @@ def _session_seconds(started_at) -> int:
     return max(int((datetime.now(start.tzinfo) - start).total_seconds()), 0)
 
 
-def _packing_start_time(session_info, logic_started_at):
-    """When packing started, for the duration End session records.
+def list_changes_text(changes: dict) -> str:
+    """The toast for a packing list Shopify rewrote after packing started (AUDIT-01-3)."""
+    parts = []
+    if changes.get("packed_dropped"):
+        parts.append(f"{changes['packed_dropped']} packed order(s) no longer on it")
+    if changes.get("open_dropped"):
+        parts.append(f"{changes['open_dropped']} started order(s) removed")
+    if changes.get("quantities_changed"):
+        parts.append(f"{changes['quantities_changed']} started order(s) with new quantities")
+    return "The packing list changed since packing started: " + ", ".join(parts) + "."
 
-    session_info.json carries it on the Excel path only; the Shopify path
-    never starts SessionManager, so fall back to the packing state's own
-    stamp. Naive legacy stamps are read as local time.
-    """
-    for raw in ((session_info or {}).get("started_at"), logic_started_at):
-        if not raw:
-            continue
-        try:
-            parsed = datetime.fromisoformat(raw)
-        except (ValueError, TypeError):
-            logger.warning(f"Could not parse packing start time: {raw!r}")
-            continue
-        return parsed if parsed.tzinfo else parsed.astimezone()
-    return None
+
+def _local_stamp(iso) -> str:
+    """An ISO timestamp as local "YYYY-MM-DD HH:MM:SS"; empty when missing or unreadable."""
+    try:
+        return datetime.fromisoformat(str(iso)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return ""
 
 
 def _unmapped_choices(order_state) -> list[tuple[str, str]]:
@@ -451,6 +452,9 @@ class MainWindow(QMainWindow):
 
         self.packer_mode_widget = PackerModeWidget(sim_mode=self._sim_mode)
         self.packer_mode_widget.barcode_scanned.connect(self.on_scanner_input)
+        self.packer_mode_widget.manual_confirm_requested.connect(
+            lambda sku: self.on_scanner_input(sku, "manual")
+        )
         self.packer_mode_widget.exit_packing_mode.connect(self.switch_to_session_view)
         self.packer_mode_widget.skip_order_requested.connect(self._on_skip_order)
         self.packer_mode_widget.cancel_item_requested.connect(self._on_cancel_item)
@@ -1360,6 +1364,8 @@ class MainWindow(QMainWindow):
 
             # 11. Update UI state
             toast(self, f"Loaded {order_count} orders from {packing_list_name}.")
+            if self.logic.list_changes:
+                toast(self, list_changes_text(self.logic.list_changes), role="info")
 
             # 12. Enable packing UI
             self.enable_packing_mode()
@@ -1478,13 +1484,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
-            # Add Completed At column
+            # Add Completed At column: when each order was packed (AUDIT-01-5)
+            packed_at = {
+                o["order_number"]: _local_stamp(o.get("completed_at"))
+                for o in self.logic.completed_orders_metadata
+            }
             final_df["Completed At"] = final_df["Order_Number"].apply(
-                lambda x: (
-                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                    if x in completed_orders_set
-                    else ""
-                )
+                lambda x: packed_at.get(x, "") if x in completed_orders_set else ""
             )
 
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
@@ -1523,45 +1529,23 @@ class MainWindow(QMainWindow):
                     _session_type = "excel"
 
                 # --- Gather all stats data on the main thread (fast, no server I/O) ---
-                try:
-                    _session_info = self.session_manager.get_session_info()
-                    _start_time = _packing_start_time(
-                        _session_info, self.logic.started_at
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not get session_info: {e}")
-                    _session_info = None
-                    _start_time = _packing_start_time(None, self.logic.started_at)
-
+                # Stats get what this run added: a list ended, resumed and ended
+                # again must not be counted twice (AUDIT-01-2).
+                _start_time = self.logic.run_started_at
                 _end_time = datetime.now().astimezone()
-                _completed_orders_list = self.logic.session_packing_state.get(
-                    "completed_orders", []
+                _packed_orders = self.logic.packed_order_numbers()
+                _new_orders = [
+                    o for o in _packed_orders if o not in self.logic.stats_recorded_orders
+                ]
+                _completed_orders = len(_new_orders)
+                _in_progress_orders = len(
+                    self.logic.session_packing_state.get("in_progress", {})
                 )
-                _completed_orders = len(_completed_orders_list)
-                _in_progress_orders_dict = self.logic.session_packing_state.get(
-                    "in_progress", {}
+                _items_packed = sum(
+                    o.get("items_count", 0)
+                    for o in self.logic.completed_orders_metadata
+                    if o["order_number"] in _new_orders
                 )
-                _in_progress_orders = len(_in_progress_orders_dict)
-
-                _items_packed = 0
-                try:
-                    if self.logic.processed_df is not None and _completed_orders_list:
-                        _ci = pd.to_numeric(
-                            self.logic.processed_df[
-                                self.logic.processed_df["Order_Number"].isin(
-                                    _completed_orders_list
-                                )
-                            ]["Quantity"],
-                            errors="coerce",
-                        ).sum()
-                        _items_packed += int(_ci)
-                    for _osl in _in_progress_orders_dict.values():
-                        if isinstance(_osl, list):
-                            for _sd in _osl:
-                                if isinstance(_sd, dict):
-                                    _items_packed += _sd.get("packed", 0)
-                except Exception:
-                    logger.exception("Error calculating items_packed")
 
                 _total_orders, _total_items = 0, 0
                 try:
@@ -1590,11 +1574,8 @@ class MainWindow(QMainWindow):
                         self.session_manager.packing_list_path or "Unknown"
                     )
 
-                _duration_seconds = (
-                    int((_end_time - _start_time).total_seconds())
-                    if _start_time
-                    else None
-                )
+                _duration_seconds = int((_end_time - _start_time).total_seconds())
+                _stats_recorded = []
 
                 # Capture non-Qt references for the closure
                 _logic_ref = self.logic
@@ -1663,9 +1644,7 @@ class MainWindow(QMainWindow):
                             metadata={
                                 "duration_seconds": _duration_seconds,
                                 "packing_list_name": os.path.basename(_pl_path_str),
-                                "started_at": _start_time.isoformat()
-                                if _start_time
-                                else None,
+                                "started_at": _start_time.isoformat(),
                                 "completed_at": _end_time.isoformat(),
                                 "total_orders": _total_orders,
                                 "in_progress_orders": _in_progress_orders,
@@ -1675,6 +1654,7 @@ class MainWindow(QMainWindow):
                                 "pc_name": os.environ.get("COMPUTERNAME", "Unknown"),
                             },
                         )
+                        _stats_recorded.append(True)
                         logger.info(
                             f"Recorded {_completed_orders} orders, {_items_packed} items to stats"
                         )
@@ -1689,7 +1669,7 @@ class MainWindow(QMainWindow):
                                 sessions=1,
                                 orders=_completed_orders,
                                 items=_items_packed,
-                                duration_seconds=_duration_seconds or 0,
+                                duration_seconds=_duration_seconds,
                                 session_id=_session_id,
                             )
                             logger.info(f"Updated worker stats for {_worker_name}")
@@ -1703,13 +1683,7 @@ class MainWindow(QMainWindow):
                                 _cur_sess_path,
                                 _cur_pack_list,
                                 "completed",
-                                completed_orders=list(
-                                    _logic_ref.session_packing_state.get(
-                                        "completed_orders", []
-                                    )
-                                )
-                                if _logic_ref
-                                else None,
+                                completed_orders=_packed_orders,
                             )
                             logger.info("Updated session metadata to 'completed'")
                     except Exception as exc:
@@ -1758,6 +1732,9 @@ class MainWindow(QMainWindow):
                     logger.error(
                         f"Session end writes had an error: {_end_worker.error}"
                     )
+                if _stats_recorded:
+                    _logic_ref.stats_recorded_orders = _packed_orders
+                    _logic_ref.save_state()
 
         except Exception as e:
             # Neutral title: this can fire after the report was already saved.
@@ -1866,7 +1843,7 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.clear_screen()
         self.stacked_widget.setCurrentWidget(self.session_widget)
 
-    def on_scanner_input(self, text: str):
+    def on_scanner_input(self, text: str, confirmation_method: str = "scanned"):
         """
         Handles input from the barcode scanner in Packer Mode.
 
@@ -1875,6 +1852,7 @@ class MainWindow(QMainWindow):
 
         Args:
             text (str): The decoded text from the barcode scanner.
+            confirmation_method: "manual" when the row's Confirm button sent it.
         """
         self.packer_mode_widget.update_raw_scan_display(text)
         self.packer_mode_widget.show_notification("", "transparent")
@@ -1883,7 +1861,6 @@ class MainWindow(QMainWindow):
             items, status = self.logic.start_order_packing(text)
             if status == "ORDER_LOADED":
                 order_number_from_scan = self.logic.current_order_number
-                self.packer_mode_widget.add_order_to_history(order_number_from_scan)
                 order_metadata = self.logic.orders_data.get(
                     order_number_from_scan, {}
                 ).get("metadata", {})
@@ -1903,7 +1880,7 @@ class MainWindow(QMainWindow):
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
                 self.packer_mode_widget.show_notification(
-                    f"Order #{text} is already packed", "status_warning"
+                    f"Order {text} is already packed", "status_warning"
                 )
                 self.flash_border("orange")
             else:
@@ -1913,8 +1890,16 @@ class MainWindow(QMainWindow):
                 self.flash_border("red")
                 _beep(400, 350)
         else:
-            result, status = self.logic.process_sku_scan(text)
-            if status == "SKU_OK":
+            result, status = self.logic.process_sku_scan(text, confirmation_method)
+            if status == "ORDER_BARCODE":
+                self.packer_mode_widget.show_notification(
+                    f"{text} is an order. Finish or skip "
+                    f"{self.logic.current_order_number} first.",
+                    "status_warning",
+                )
+                self.flash_border("orange")
+                _beep(700, 200)
+            elif status == "SKU_OK":
                 self.packer_mode_widget.update_item_row(
                     result["row"], result["packed"], result["is_complete"]
                 )
@@ -2002,6 +1987,7 @@ class MainWindow(QMainWindow):
 
     def _handle_order_completion(self, order_number: str):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
+        self.packer_mode_widget.add_order_to_history(order_number)
         self.packer_mode_widget.show_notification(
             f"Order #{order_number} packed. Scan the next order.", "status_success"
         )
@@ -2024,9 +2010,9 @@ class MainWindow(QMainWindow):
         """Hand the session's packed and skipped orders to the publisher."""
         if self._progress_publisher is None or not self.logic:
             return
-        state = self.logic.session_packing_state
         self._progress_publisher.publish(
-            state.get("completed_orders", []), len(state.get("skipped_orders", []))
+            self.logic.packed_order_numbers(),
+            len(self.logic.session_packing_state.get("skipped_orders", [])),
         )
 
     def _close_progress_publisher(self):

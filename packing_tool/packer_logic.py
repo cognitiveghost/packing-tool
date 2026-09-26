@@ -1,5 +1,6 @@
 # Standard library imports
 # Data persistence and utilities
+import copy
 import json
 
 # Local imports
@@ -122,6 +123,11 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
     total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
     total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
+    total_manual_confirms = sum(
+        item.get('quantity', 1)
+        for item in all_items
+        if item.get('confirmation_method') == 'manual'
+    )
     avg_corrections_per_order = (
         round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
     )
@@ -136,6 +142,7 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
         "avg_corrections_per_order": avg_corrections_per_order,
         "total_extra_scans": total_extra_scans,
         "total_unknown_scans": total_unknown_scans,
+        "total_manual_confirms": total_manual_confirms,
     }
 
 class PackerLogic(QObject):
@@ -220,6 +227,9 @@ class PackerLogic(QObject):
             'completed_orders': [],
             'skipped_orders': [],
             'skipped_orders_timing': {},  # order_num -> ISO timestamp of skip
+            # Packed, but no longer on the (rewritten) list: kept so Shopify
+            # still hears they were packed, left out of every count.
+            'completed_off_list': [],
         }
 
         # Phase 2b: Order-level timing tracking — initialized BEFORE _load_session_state()
@@ -232,6 +242,19 @@ class PackerLogic(QObject):
         # Also initialized BEFORE _load_session_state() so crash-recovered extras
         # (from '_current_extras') survive a restart instead of being wiped.
         self.current_extra_items: dict[str, int] = {}
+
+        # Timing, scan records and extras of orders left open (skipped, or the
+        # packer left Packer Mode), keyed by order number, so a returning order
+        # gets its own back (AUDIT-01-1).
+        self._parked_timing: dict[str, dict] = {}
+
+        # Orders reported to the stats at an earlier End session of this list,
+        # so ending it again counts only what is new (AUDIT-01-2).
+        self.stats_recorded_orders: list[str] = []
+        self.run_started_at = datetime.now().astimezone()
+
+        # What changed in the packing list since packing started (AUDIT-01-3).
+        self.list_changes: dict[str, int] = {}
 
         # Per-order counters for 1.7 metrics — reset by start_order_packing()
         self.current_order_corrections: int = 0           # cancel_item_scan() events
@@ -513,6 +536,8 @@ class PackerLogic(QObject):
 
             # Load skipped orders list (added in later versions; default to empty list)
             self.session_packing_state['skipped_orders'] = state_data.get('skipped_orders', [])
+            self.session_packing_state['completed_off_list'] = list(state_data.get('completed_off_list', []))
+            self.stats_recorded_orders = list(state_data.get('stats_recorded_orders', []))
             # Load skipped orders timing (maps order_num -> ISO skip timestamp)
             self.session_packing_state['skipped_orders_timing'] = state_data.get('skipped_orders_timing', {})
 
@@ -524,24 +549,21 @@ class PackerLogic(QObject):
                 # worker_pc is set from environment in __init__, but can be overridden from state
                 logger.debug(f"Loaded session metadata: {self.session_id}")
 
-            # Phase 2b: Restore in-progress timing if present
-            if 'in_progress' in state_data and '_timing' in state_data['in_progress']:
-                timing_data = state_data['in_progress']['_timing']
-                self.current_order_start_time = timing_data.get('current_order_start_time')
-                self.current_order_items_scanned = timing_data.get('items_scanned', [])
-                self.current_order_corrections = timing_data.get('corrections', 0)
-                self.current_order_extra_scan_count = timing_data.get('extra_scan_count', 0)
-                self.current_order_unknown_scan_count = timing_data.get('unknown_scan_count', 0)
-                logger.debug(f"Restored in-progress timing: started_at={self.current_order_start_time}")
-            else:
-                self.current_order_start_time = None
-                self.current_order_items_scanned = []
-                self.current_order_corrections = 0
-                self.current_order_extra_scan_count = 0
-                self.current_order_unknown_scan_count = 0
-
-            # Restore extra items if present (crash recovery)
-            self.current_extra_items = state_data.get('_current_extras', {})
+            # Each open order's timing, scan records and extras wait until it is opened again.
+            raw = raw_in_progress if isinstance(raw_in_progress, dict) else {}
+            by_order = raw.get('_timing_by_order')
+            if isinstance(by_order, dict):
+                self._parked_timing = {
+                    order: timing for order, timing in by_order.items()
+                    if order in validated_in_progress and isinstance(timing, dict)
+                }
+            elif isinstance(raw.get('_timing'), dict):
+                # Before AUDIT-01-1 one unnamed block was saved: it belongs to the order that was open.
+                owner = (state_data.get('progress') or {}).get('in_progress_order')
+                if owner in validated_in_progress:
+                    self._parked_timing[owner] = {
+                        **raw['_timing'], 'extras': state_data.get('_current_extras', {})
+                    }
 
             in_progress_count = len(self.session_packing_state['in_progress'])
             completed_count = len(self.session_packing_state['completed_orders'])
@@ -551,6 +573,27 @@ class PackerLogic(QObject):
         except (OSError, json.JSONDecodeError):
             logger.exception("Error loading session state, starting fresh")
             self.session_packing_state = {'in_progress': {}, 'completed_orders': [], 'skipped_orders': [], 'skipped_orders_timing': {}}
+
+    def _timing_snapshot(self) -> dict[str, Any]:
+        """The open order's timing, scan records and extras, detached from the live objects."""
+        return copy.deepcopy({
+            "current_order_start_time": self.current_order_start_time,
+            "items_scanned": self.current_order_items_scanned,
+            "corrections": self.current_order_corrections,
+            "extra_scan_count": self.current_order_extra_scan_count,
+            "unknown_scan_count": self.current_order_unknown_scan_count,
+            "extras": self.current_extra_items,
+        })
+
+    def _apply_timing(self, timing: dict[str, Any] | None) -> None:
+        """Make `timing` (a _timing_snapshot(), or None for a fresh order) the open order's."""
+        timing = timing or {}
+        self.current_order_start_time = timing.get("current_order_start_time")
+        self.current_order_items_scanned = list(timing.get("items_scanned", []))
+        self.current_order_corrections = timing.get("corrections", 0)
+        self.current_order_extra_scan_count = timing.get("extra_scan_count", 0)
+        self.current_order_unknown_scan_count = timing.get("unknown_scan_count", 0)
+        self.current_extra_items = dict(timing.get("extras", {}))
 
     def _build_state_dict(self) -> dict[str, Any]:
         """
@@ -574,7 +617,13 @@ class PackerLogic(QObject):
 
         from shared.metadata_utils import get_current_timestamp
 
-        return {
+        timing_by_order = dict(self._parked_timing)
+        current_is_open = self.current_order_number in self.session_packing_state.get('in_progress', {})
+        if current_is_open and self.current_order_start_time:
+            timing_by_order[self.current_order_number] = self._timing_snapshot()
+
+        # A deep copy: the writer thread serialises this while scans go on (AUDIT-02-12).
+        return copy.deepcopy({
             "version": "1.3.0",
             "session_id": self.session_id,
             "client_id": self.client_id,
@@ -592,6 +641,8 @@ class PackerLogic(QObject):
             },
             "in_progress": {
                 **self.session_packing_state.get('in_progress', {}),
+                **({"_timing_by_order": timing_by_order} if timing_by_order else {}),
+                # Read by app versions from before _timing_by_order.
                 **({
                     "_timing": {
                         "current_order_start_time": self.current_order_start_time,
@@ -600,7 +651,7 @@ class PackerLogic(QObject):
                         "extra_scan_count": self.current_order_extra_scan_count,
                         "unknown_scan_count": self.current_order_unknown_scan_count,
                     }
-                } if self.current_order_number and self.current_order_start_time else {})
+                } if current_is_open and self.current_order_start_time else {})
             },
             "_current_extras": self.current_extra_items if self.current_extra_items else {},
             "completed": (
@@ -610,7 +661,9 @@ class PackerLogic(QObject):
             ),
             "skipped_orders": list(self.session_packing_state.get('skipped_orders', [])),
             "skipped_orders_timing": dict(self.session_packing_state.get('skipped_orders_timing', {})),
-        }
+            "completed_off_list": list(self.session_packing_state.get('completed_off_list', [])),
+            "stats_recorded_orders": list(self.stats_recorded_orders),
+        })
 
     def _do_atomic_write(self, state_data: dict[str, Any]) -> None:
         """
@@ -771,7 +824,7 @@ class PackerLogic(QObject):
             "completed_at": completed_at,
             "duration_seconds": duration_seconds,
             "items_count": items_count,
-            "items": self.current_order_items_scanned.copy(),
+            "items": copy.deepcopy(self.current_order_items_scanned),
             # 1.7 per-order counters
             "corrections": self.current_order_corrections,
             "extra_scans_count": self.current_order_extra_scan_count,
@@ -920,45 +973,18 @@ class PackerLogic(QObject):
         # Capture "is this a brand-new order?" BEFORE potentially adding it to in_progress.
         is_new_order = original_order_number not in self.session_packing_state['in_progress']
 
-        if not is_new_order:
-            self.current_order_state = self.session_packing_state['in_progress'][original_order_number]
-        else:
-            self.current_order_state = []
-            for i, item in enumerate(items):
-                sku = item.get('SKU')
-                if not sku: continue
-                try:
-                    quantity = int(float(item.get('Quantity', 0)))
-                except (ValueError, TypeError):
-                    quantity = 1
-
-                normalized_sku = self._normalize_sku(sku)
-                self.current_order_state.append({
-                    'original_sku': sku,
-                    'normalized_sku': normalized_sku,
-                    'required': quantity,
-                    'packed': 0,
-                    'row': i
-                })
-            self.session_packing_state['in_progress'][original_order_number] = self.current_order_state
-            self._save_session_state_async()
-
-        # Phase 2b: Record order start time.
-        # Only reset timing for brand-new orders. For orders already in in_progress (resumed
-        # from a previous session), preserve the start time and scanned items list that were
-        # restored by _load_session_state() so timing continuity is maintained.
         from shared.metadata_utils import get_current_timestamp
         if is_new_order:
-            self.current_order_start_time = get_current_timestamp()
-            self.current_order_items_scanned = []
-            self.current_order_corrections = 0
-            self.current_order_extra_scan_count = 0
-            self.current_order_unknown_scan_count = 0
+            self.current_order_state = self._fresh_order_state(items)
+            self.session_packing_state['in_progress'][original_order_number] = self.current_order_state
+            self._apply_timing({"current_order_start_time": get_current_timestamp()})
+            self._save_session_state_async()
             logger.info(f"Order {original_order_number} started at {self.current_order_start_time}")
         else:
-            # Resumed order — all timing and per-order quality counters were restored from
-            # _timing in _load_session_state(); nothing to reset here.
-            # If start time is missing despite being in in_progress, fall back gracefully.
+            # A returning order gets back its own timing, scan records and extras,
+            # parked when it was left or saved before a restart (AUDIT-01-1).
+            self.current_order_state = self.session_packing_state['in_progress'][original_order_number]
+            self._apply_timing(self._parked_timing.pop(original_order_number, None))
             if not self.current_order_start_time:
                 self.current_order_start_time = get_current_timestamp()
                 logger.warning(
@@ -973,7 +999,27 @@ class PackerLogic(QObject):
 
         return items, "ORDER_LOADED"
 
-    def process_sku_scan(self, sku: str) -> tuple[dict | None, str]:
+    def _fresh_order_state(self, items: list[dict]) -> list[dict]:
+        """One unpacked state row per list line that has a SKU; `row` is the line's index."""
+        state = []
+        for i, item in enumerate(items):
+            sku = item.get('SKU')
+            if not sku:
+                continue
+            try:
+                quantity = int(float(item.get('Quantity', 0)))
+            except (ValueError, TypeError):
+                quantity = 1
+            state.append({
+                'original_sku': sku,
+                'normalized_sku': self._normalize_sku(sku),
+                'required': quantity,
+                'packed': 0,
+                'row': i,
+            })
+        return state
+
+    def process_sku_scan(self, sku: str, confirmation_method: str = "scanned") -> tuple[dict | None, str]:
         """
         Processes a scanned SKU for the currently active order.
 
@@ -1007,6 +1053,9 @@ class PackerLogic(QObject):
                   * "SKU_NOT_FOUND" - Scanned SKU is not in this order
                   * "SKU_EXTRA" - All items with this SKU are already packed
                   * "NO_ACTIVE_ORDER" - No order currently selected
+                  * "ORDER_BARCODE" - Another order's barcode, not a product
+            confirmation_method: "scanned", or "manual" for the row's Confirm
+                button, so a click is never recorded as a scan (AUDIT-02-9).
         """
         # Safety check: ensure an order is actually loaded
         # This prevents errors if user somehow scans before loading an order
@@ -1105,7 +1154,7 @@ class PackerLogic(QObject):
                 "row": item_idx,
                 "scanned_at": scan_timestamp,
                 "time_from_order_start_seconds": time_from_order_start,
-                "confirmation_method": "scanned",
+                "confirmation_method": confirmation_method,
             }
             if time_to_first_scan is not None:
                 item_scan_record["time_to_first_scan_seconds"] = time_to_first_scan
@@ -1191,6 +1240,9 @@ class PackerLogic(QObject):
             self.current_order_extra_scan_count += 1
             self._save_session_state_async()
             return None, "SKU_EXTRA"
+        elif self._normalized_order_lookup.get(self._normalize_order_number(sku)):
+            # The next order's barcode, scanned before this one is finished (AUDIT-02-11)
+            return None, "ORDER_BARCODE"
         else:
             # SKU is not in this order at all
             # Example: User scanned wrong product, or product from different order
@@ -1199,10 +1251,12 @@ class PackerLogic(QObject):
             return None, "SKU_NOT_FOUND"
 
     def clear_current_order(self):
-        """Clears the currently active order from memory."""
+        """Clears the currently active order from memory, parking it if it is still open."""
+        if self.current_order_number in self.session_packing_state['in_progress']:
+            self._parked_timing[self.current_order_number] = self._timing_snapshot()
         self.current_order_number = None
         self.current_order_state = {}
-        self.current_extra_items = {}
+        self._apply_timing(None)
         self.unknown_scans = []
 
     def skip_order(self) -> None:
@@ -1560,6 +1614,7 @@ class PackerLogic(QObject):
             }
 
         self._build_order_lookup()
+        self._reconcile_with_list()
 
         # Initialize session metadata
         # Extract session_id from path if available (e.g., .../Sessions/CLIENT_M/2025-11-10_1/...)
@@ -1590,6 +1645,60 @@ class PackerLogic(QObject):
             error_msg = f"Error generating barcodes from packing list: {e}"
             logger.exception(error_msg)
             raise RuntimeError(error_msg)
+
+    def packed_order_numbers(self) -> list[str]:
+        """Every order this list has packed, on the current list or not: what Shopify must hear."""
+        state = self.session_packing_state
+        return list(state.get('completed_orders', [])) + list(state.get('completed_off_list', []))
+
+    def _reconcile_with_list(self) -> None:
+        """Follow the packing list as it is now, if Shopify rewrote it after packing started.
+
+        AUDIT-01-3 (owner: reconcile and tell). Packed orders the list no longer
+        holds move to completed_off_list, out of every count; open orders the
+        list dropped are forgotten; an open order whose lines changed takes the
+        new lines, keeping what was packed. list_changes says what happened.
+        """
+        state = self.session_packing_state
+        on_list = self.orders_data
+        off_list = state.setdefault('completed_off_list', [])
+
+        for order in [o for o in off_list if o in on_list]:  # back on the list
+            off_list.remove(order)
+            if order not in state['completed_orders']:
+                state['completed_orders'].append(order)
+        dropped = [o for o in state['completed_orders'] if o not in on_list]
+        for order in dropped:
+            state['completed_orders'].remove(order)
+            off_list.append(order)
+        state['skipped_orders'] = [o for o in state.get('skipped_orders', []) if o in on_list]
+        gone = [o for o in state['in_progress'] if o not in on_list]
+        for order in gone:
+            del state['in_progress'][order]
+            self._parked_timing.pop(order, None)
+
+        changed = 0
+        for order, saved in state['in_progress'].items():
+            fresh = self._fresh_order_state(on_list[order]['items'])
+            shape = [(r['normalized_sku'], r['required'], r['row']) for r in fresh]
+            if shape == [(r.get('normalized_sku'), r.get('required'), r.get('row')) for r in saved]:
+                continue
+            packed = {}
+            for row in saved:
+                packed[row.get('normalized_sku')] = packed.get(row.get('normalized_sku'), 0) + row.get('packed', 0)
+            for row in fresh:
+                row['packed'] = min(row['required'], packed.get(row['normalized_sku'], 0))
+                packed[row['normalized_sku']] = packed.get(row['normalized_sku'], 0) - row['packed']
+            saved[:] = fresh  # in place: current_order_state may be this same list
+            changed += 1
+
+        self.list_changes = {
+            k: v for k, v in
+            {"packed_dropped": len(dropped), "open_dropped": len(gone), "quantities_changed": changed}.items()
+            if v
+        }
+        if self.list_changes:
+            logger.warning(f"Packing list changed since packing started: {self.list_changes}")
 
     def load_from_shopify_analysis(self, session_path: Path) -> tuple[int, str]:
         """
@@ -1939,6 +2048,7 @@ class PackerLogic(QObject):
                 "avg_corrections_per_order": avg_corrections_per_order,
                 "total_extra_scans": total_extra_scans,
                 "total_unknown_scans": total_unknown_scans,
+                "total_manual_confirms": timing_metrics["total_manual_confirms"],
             },
 
             # Completed orders with full timing data
