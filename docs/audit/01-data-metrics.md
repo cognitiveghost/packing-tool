@@ -32,12 +32,12 @@ The weak points are around the edges of a single, straight run:
 
 | id | severity | summary | where | proof test | status |
 |---|---|---|---|---|---|
-| AUDIT-01-1 | high | Returning to a skipped or left order reuses the previous order's start time and scan records | `packer_logic.py:951`, `:1201`, `:1208` | `test_returning_to_a_skipped_order_keeps_its_own_scan_records`, `test_cancel_on_a_returned_order_does_not_edit_a_finished_order` | confirmed |
-| AUDIT-01-2 | high | Ending a list twice (incomplete → Resume → End) records its cumulative orders, items and time again | `gui/main_window.py:1537-1697` | `test_a_list_ended_twice_counts_each_order_once_in_global_stats`, `…_in_worker_stats` | confirmed |
-| AUDIT-01-3 | high | A packing list rewritten after packing started: resumed orders keep the old quantities; orders dropped from the list still count as done, so "all orders packed" can fire with orders unpacked | `packer_logic.py:923`, `:1337` | `test_a_resumed_order_follows_the_quantity_now_on_the_list`, `test_an_order_dropped_from_the_list_does_not_count_toward_done` | confirmed |
-| AUDIT-01-4 | low | Statistics SKU table gives a SKU's packed units to every product name it appears under | `session_stats.py:66`, `:79` | `test_sku_summary_counts_a_sku_once_across_product_names` | confirmed |
-| AUDIT-01-5 | low | The packing report stamps every completed order with the End-session time | `gui/main_window.py:1482` | `test_report_completed_at_is_when_the_order_was_packed` | confirmed |
-| AUDIT-01-6 | low | The Statistics "Items" card counts lines; every other "items" figure counts units | `session_stats.py:35` | `test_items_card_counts_units_like_every_other_items_figure` | confirmed |
+| AUDIT-01-1 | high | Returning to a skipped or left order reuses the previous order's start time and scan records | `packer_logic.py:951`, `:1201`, `:1208` | `test_returning_to_a_skipped_order_keeps_its_own_scan_records`, `test_cancel_on_a_returned_order_does_not_edit_a_finished_order` | fixed |
+| AUDIT-01-2 | high | Ending a list twice (incomplete → Resume → End) records its cumulative orders, items and time again | `gui/main_window.py:1537-1697` | `test_a_list_ended_twice_counts_each_order_once_in_global_stats`, `…_in_worker_stats` | fixed |
+| AUDIT-01-3 | high | A packing list rewritten after packing started: resumed orders keep the old quantities; orders dropped from the list still count as done, so "all orders packed" can fire with orders unpacked | `packer_logic.py:923`, `:1337` | `test_a_resumed_order_follows_the_quantity_now_on_the_list`, `test_an_order_dropped_from_the_list_does_not_count_toward_done` | fixed |
+| AUDIT-01-4 | low | Statistics SKU table gives a SKU's packed units to every product name it appears under | `session_stats.py:66`, `:79` | `test_sku_summary_counts_a_sku_once_across_product_names` | fixed |
+| AUDIT-01-5 | low | The packing report stamps every completed order with the End-session time | `gui/main_window.py:1482` | `test_report_completed_at_is_when_the_order_was_packed` | fixed |
+| AUDIT-01-6 | low | The Statistics "Items" card counts lines; every other "items" figure counts units | `session_stats.py:35` | `test_items_card_counts_units_like_every_other_items_figure` | fixed |
 
 ## 3. Findings in detail
 
@@ -143,11 +143,13 @@ summaries (script kept out of the repo; it reads only JSON):
 - Phase 12 fixes hold: unreadable state refuses to open; failed writes are
   shown; Shopify-path duration is recorded; registry progress moves per order.
 
-## 6. Owner decisions needed
+## 6. Owner decisions (2026-09-26)
 
-- **AUDIT-01-3:** when the list changed under a started session, should
-  packing reconcile to the new list (recommended: drop dropped orders from the
-  count, take new quantities, tell the packer), or refuse to resume?
+- **AUDIT-01-3 → reconcile and tell.** On resume, packing follows the list as
+  it is now. Packed orders the list dropped move to `completed_off_list`: out
+  of every count, still published to Shopify as packed. Open orders the list
+  dropped are forgotten. An open order whose lines changed takes the new
+  lines and keeps what was packed. A toast names the changes.
 
 ## 7. Not covered
 

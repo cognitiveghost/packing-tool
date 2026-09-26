@@ -58,10 +58,12 @@ class SKUMappingDialog(QDialog):
         # Load current mappings from file server
         try:
             self.current_map = self.profile_manager.load_sku_mapping(client_id).copy()
+            self._loaded_map = dict(self.current_map)
             logger.info(f"Loaded {len(self.current_map)} SKU mappings for client {client_id}")
         except Exception as e:
             logger.exception("Failed to load SKU mappings")
             self.current_map = {}
+            self._loaded_map = {}
             QMessageBox.warning(
                 self,
                 "Load Error",
@@ -285,6 +287,7 @@ class SKUMappingDialog(QDialog):
 
         try:
             self.current_map = self.profile_manager.load_sku_mapping(self.client_id).copy()
+            self._loaded_map = dict(self.current_map)
             self._populate_table()
             self.status_label.setText(f"{len(self.current_map)} mapping(s) loaded from file server")
 
@@ -304,7 +307,18 @@ class SKUMappingDialog(QDialog):
         """
         try:
             # Save to ProfileManager (centralized storage with file locking)
-            success = self.profile_manager.save_sku_mapping(self.client_id, self.current_map)
+            # Send only this dialog's edits: the table was loaded minutes ago, and
+            # other PCs may have mapped barcodes since (AUDIT-02-3).
+            added = {
+                barcode: sku for barcode, sku in self.current_map.items()
+                if self._loaded_map.get(barcode) != sku
+            }
+            removed = [barcode for barcode in self._loaded_map if barcode not in self.current_map]
+            self.current_map = self.profile_manager.update_sku_mapping(
+                self.client_id, added, removed
+            )
+            self._loaded_map = dict(self.current_map)
+            success = True
 
             if success:
                 logger.info(f"Saved {len(self.current_map)} SKU mappings to file server")

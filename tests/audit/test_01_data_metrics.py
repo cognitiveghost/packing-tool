@@ -1,9 +1,8 @@
 """Audit 01: packing-list reading, scan matching, packing state, metrics.
 
-Report: docs/audit/01-data-metrics.md. Every AUDIT-01-k test fails because of
-the bug it names and is marked xfail(strict=True); the fix removes the marker.
-The unmarked tests pin what the audit verified correct. Fixtures are synthetic
-and only reproduce the shape of the production data.
+Report: docs/audit/01-data-metrics.md. Each AUDIT-k test reproduced the bug it names before
+the fix bundles (strict xfail at audit time); it now guards against its
+return. The other tests pin what the audit verified correct.
 """
 
 import json

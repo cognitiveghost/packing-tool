@@ -24,7 +24,7 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl.styles import PatternFill
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -54,10 +54,7 @@ from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool.exceptions import (
     PackingStateUnreadableError,
-    SessionLockedError,
-    StaleLockError,
 )
-from packing_tool.packer_logic import PackerLogic
 from packing_tool.profile_manager import NetworkError, ProfileManager
 from packing_tool.progress_publisher import ProgressPublisher
 from packing_tool.session_history_manager import SessionHistoryManager
@@ -201,6 +198,9 @@ class MainWindow(QMainWindow):
         orders_table (QTableView): The table displaying the list of orders.
     """
 
+    # A background heartbeat found another PC holding the lock (its work_dir)
+    _heartbeat_lost = Signal(str)
+
     def __init__(
         self,
         skip_worker_selection: bool = False,
@@ -248,6 +248,11 @@ class MainWindow(QMainWindow):
 
         # Initialize SessionLockManager
         self.lock_manager = SessionLockManager(self.profile_manager)
+        # Heartbeat I/O and lock release never overlap: a renewal landing after
+        # a release would recreate a lock nobody holds (AUDIT-02-8).
+        self._lock_io = threading.Lock()
+        self._heartbeat_busy = False
+        self._heartbeat_lost.connect(self._on_heartbeat_lost)
         logger.info("SessionLockManager initialized successfully")
 
         # Initialize WorkerManager
@@ -440,6 +445,7 @@ class MainWindow(QMainWindow):
         self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
         self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
         self.session_tabs.currentChanged.connect(self._sync_status_bar_to_page)
+        self.session_tabs.currentChanged.connect(self._rebuild_order_tree_if_stale)
         self.session_tabs.currentChanged.connect(
             lambda index: self.command_bar.set_page(PAGES[index])
         )
@@ -682,6 +688,22 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _refresh_order_tree(self):
+        """Rebuild the order tree now if it is on screen, else when it next is.
+
+        A rebuild is every order and line, ~130 ms on a 117-order list, and
+        during packing the tree sits on a page nobody is looking at (AUDIT-02-7).
+        """
+        if self.order_tree.isVisible():
+            self._populate_order_tree()
+        else:
+            self._order_tree_stale = True
+
+    def _rebuild_order_tree_if_stale(self, *_):
+        if getattr(self, "_order_tree_stale", False):
+            self._order_tree_stale = False
+            self._populate_order_tree()
+
     def _filter_orders(self, text: str):
         """Filter tree items by search text."""
         if not hasattr(self, "order_tree"):
@@ -825,6 +847,16 @@ class MainWindow(QMainWindow):
         """
         client_id = self.client_combo.currentData()
 
+        if self.logic is not None and client_id != self.current_client_id:
+            # A list is open: its stats, registry entry and SKU mappings belong
+            # to its client, so the picker holds still until it ends (AUDIT-02-6).
+            self.client_combo.blockSignals(True)
+            self.client_combo.setCurrentIndex(
+                self.client_combo.findData(self.current_client_id)
+            )
+            self.client_combo.blockSignals(False)
+            return
+
         if not client_id:
             logger.debug("No valid client selected")
             self.current_client_id = None
@@ -853,134 +885,6 @@ class MainWindow(QMainWindow):
                 matches, and would sail past style_lint.
         """
         self.packer_mode_widget.flash_scan(color)
-
-    def start_session(
-        self, file_path: str | None = None, restore_dir: str | None = None
-    ):
-        """
-        Start a new packing session for the currently selected client.
-
-        This method is used to start or restore Shopify Tool sessions. All sessions
-        must be created through Shopify Tool - direct Excel file loading is no longer supported.
-
-        Args:
-            file_path: Path to the Shopify session directory (contains analysis_data.json).
-                      Must be provided - no file dialog shown. Use the Session Browser
-                      to let users choose a session.
-            restore_dir: Optional directory of the session to restore (for crash recovery)
-        """
-        logger.info("Starting new session")
-
-        # Check if client is selected
-        if not self.current_client_id:
-            logger.warning("Attempted to start session without selecting client")
-            self.client_combo.setStyleSheet(
-                f"border: 2px solid {current_tokens().status_danger};"
-            )
-            QMessageBox.warning(
-                self,
-                "No Client Selected",
-                "Please select a client before starting a session!",
-            )
-            QTimer.singleShot(2000, lambda: self.client_combo.setStyleSheet(""))
-            return
-
-        # Check if session already active
-        if self.session_manager and self.session_manager.is_active():
-            logger.warning("Attempted to start session while one is already active")
-            toast(self, "A session is already open. End it first.", role="info")
-            return
-
-        # Require file_path for Shopify sessions
-        if not file_path and not restore_dir:
-            logger.error("start_session() called without file_path or restore_dir")
-            QMessageBox.warning(
-                self,
-                "No Session Selected",
-                "Please use 'Load Shopify Session' to select a session.\n\n"
-                "All sessions must be created through Shopify Tool.",
-            )
-            return
-
-        # Clear existing tree
-        if hasattr(self, "order_tree"):
-            self.order_tree.clear()
-
-        logger.info(
-            f"Starting session for client {self.current_client_id} with path: {file_path}"
-        )
-
-        try:
-            # Create SessionManager for this client
-            self.session_manager = SessionManager(
-                client_id=self.current_client_id,
-                profile_manager=self.profile_manager,
-                lock_manager=self.lock_manager,
-                worker_id=self.current_worker_id,
-                worker_name=self.current_worker_name,
-            )
-
-            # Start session
-            session_id = self.session_manager.start_session(
-                file_path, restore_dir=restore_dir
-            )
-            logger.info(f"Session started: {session_id}")
-
-            # Get barcode directory (for Excel workflow backward compatibility)
-            # This will be detected as legacy workflow in PackerLogic
-            barcodes_dir = self.session_manager.get_barcodes_dir()
-
-            # Create PackerLogic instance
-            self.logic = PackerLogic(
-                client_id=self.current_client_id,
-                profile_manager=self.profile_manager,
-                work_dir=barcodes_dir,
-            )
-
-            # Connect signals
-            self.logic.item_packed.connect(self._on_item_packed)
-            self.logic.all_orders_complete.connect(self._on_all_orders_complete)
-            self.logic.save_failed.connect(self.packer_mode_widget.set_unsaved)
-
-            # Load Shopify session data
-            session_path = self.session_manager.output_dir
-            order_count, analysis_timestamp = self.logic.load_from_shopify_analysis(
-                session_path
-            )
-
-            logger.info(
-                f"Loaded {order_count} orders from Shopify analysis (analyzed at: {analysis_timestamp})"
-            )
-
-            # Setup order table
-            self.setup_order_table()
-            self._open_packer_document()
-
-            # Update UI
-            toast(self, f"Loaded {order_count} orders.")
-            self.packer_mode_button.setEnabled(True)
-
-        except StaleLockError as e:
-            # Session has a stale lock - offer to force-release it
-            logger.warning(f"Session has stale lock: {e}")
-            self._handle_stale_lock_error(e, file_path, restore_dir)
-            self.session_manager = None
-            self.logic = None
-
-        except SessionLockedError as e:
-            # Session is actively locked by another process
-            logger.warning(f"Session is locked: {e}")
-            self._handle_session_locked_error(e)
-            self.session_manager = None
-            self.logic = None
-
-        except Exception as e:
-            logger.exception("Failed to start session")
-            QMessageBox.critical(self, "Error", f"Failed to start session:\n\n{e}")
-            if self.session_manager:
-                self.session_manager.end_session()
-            self.session_manager = None
-            self.logic = None
 
     def _toggle_theme(self):
         """Toggle between dark and light themes."""
@@ -1044,23 +948,54 @@ class MainWindow(QMainWindow):
             self.heartbeat_timer.stop()
 
         self.heartbeat_timer = QTimer(self)
-        self.heartbeat_timer.timeout.connect(self._update_session_heartbeat)
+        self.heartbeat_timer.timeout.connect(self._heartbeat_tick)
         self.heartbeat_timer.start(60000)  # 60 seconds
         logger.debug("Heartbeat timer started")
 
+    def _heartbeat_tick(self):
+        """The timer's heartbeat, off the UI thread.
+
+        On an unreachable share a renewal can block for many seconds; on the UI
+        thread that froze the packing screen with it (AUDIT-02-8).
+        """
+        if self._heartbeat_busy or not (self.logic and getattr(self, "current_work_dir", None)):
+            return
+        work_dir = Path(self.current_work_dir)
+        self._heartbeat_busy = True
+
+        def run():
+            try:
+                if self._renew_lock(work_dir):
+                    self._heartbeat_lost.emit(str(work_dir))  # queued to the UI thread
+            finally:
+                self._heartbeat_busy = False
+
+        threading.Thread(target=run, name="heartbeat", daemon=True).start()
+
+    def _on_heartbeat_lost(self, work_dir: str):
+        current = getattr(self, "current_work_dir", None)
+        if self.logic and current and Path(current) == Path(work_dir):
+            self._on_lock_lost(Path(work_dir))
+
+    def _renew_lock(self, work_dir: Path) -> bool:
+        """Renew the session lock. True when another PC has taken it (spec B3)."""
+        try:
+            with self._lock_io:
+                if self.lock_manager.update_heartbeat(work_dir):
+                    logger.debug("Lock heartbeat updated")
+                    return False
+                return self.lock_manager.owns_lock(work_dir) is False
+        except Exception:
+            logger.exception("Failed to update heartbeat")
+            return False
+
     def _update_session_heartbeat(self):
-        """Renew the session lock; notice if another PC has taken it (spec B3)."""
+        """One heartbeat, on the calling thread; notice if another PC has taken the lock."""
         if not (self.logic and getattr(self, "current_work_dir", None)):
             return
         work_dir = Path(self.current_work_dir)
-        try:
-            if self.lock_manager.update_heartbeat(work_dir):
-                logger.debug("Lock heartbeat updated")
-                return
-            if self.lock_manager.owns_lock(work_dir) is False:
-                self._on_lock_lost(work_dir)
-        except Exception:
-            logger.exception("Failed to update heartbeat")
+        if self._renew_lock(work_dir):
+            self._on_lock_lost(work_dir)
 
     def _on_lock_lost(self, work_dir: Path):
         """Another PC holds this list's lock: stop writing, then leave it."""
@@ -1098,7 +1033,8 @@ class MainWindow(QMainWindow):
         # Release lock if acquired
         if hasattr(self, "current_work_dir") and self.current_work_dir:
             try:
-                self.lock_manager.release_lock(Path(self.current_work_dir))
+                with self._lock_io:
+                    self.lock_manager.release_lock(Path(self.current_work_dir))
                 logger.info(f"Lock released during cleanup: {self.current_work_dir}")
             except Exception as lock_error:
                 logger.warning(f"Failed to release lock: {lock_error}")
@@ -1169,7 +1105,8 @@ class MainWindow(QMainWindow):
             # 3. Release lock on current work directory
             if hasattr(self, "current_work_dir") and self.current_work_dir:
                 try:
-                    self.lock_manager.release_lock(Path(self.current_work_dir))
+                    with self._lock_io:
+                        self.lock_manager.release_lock(Path(self.current_work_dir))
                     logger.info(f"Lock released: {self.current_work_dir}")
                 except Exception as e:
                     logger.warning(f"Failed to release lock: {e}")
@@ -1761,7 +1698,8 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "current_work_dir") and self.current_work_dir:
             try:
-                self.lock_manager.release_lock(Path(self.current_work_dir))
+                with self._lock_io:
+                    self.lock_manager.release_lock(Path(self.current_work_dir))
                 logger.info("Lock released")
             except Exception:
                 logger.exception("Failed to release lock")
@@ -1786,6 +1724,7 @@ class MainWindow(QMainWindow):
             self.packing_data = None
 
         self.packer_mode_button.setEnabled(False)
+        self.client_combo.setEnabled(True)
 
         self.toolbar_end_btn.setEnabled(False)
         self._show_session(None)
@@ -1842,6 +1781,7 @@ class MainWindow(QMainWindow):
         if self.packer_mode_widget:
             self.packer_mode_widget.clear_screen()
         self.stacked_widget.setCurrentWidget(self.session_widget)
+        self._rebuild_order_tree_if_stale()
 
     def on_scanner_input(self, text: str, confirmation_method: str = "scanned"):
         """
@@ -1966,7 +1906,7 @@ class MainWindow(QMainWindow):
             required_count (int): The total items required for the order.
         """
         # Refresh tree and statistics to show updated progress
-        self._populate_order_tree()
+        self._refresh_order_tree()
         self._update_statistics()
         logger.debug(f"Order {order_number} progress: {packed_count}/{required_count}")
 
@@ -1979,7 +1919,7 @@ class MainWindow(QMainWindow):
             status (str): The new status ('In Progress' or 'Completed').
         """
         # Simply refresh the tree and statistics to reflect the new status
-        self._populate_order_tree()
+        self._refresh_order_tree()
         self._update_statistics()
         logger.debug(f"Order {order_number} status updated to: {status}")
 
@@ -2092,18 +2032,14 @@ class MainWindow(QMainWindow):
                 if reply != QMessageBox.StandardButton.Yes:
                     return False
 
-            existing[barcode] = sku
-            if not self.profile_manager.save_sku_mapping(
-                self.current_client_id, existing
-            ):
-                QMessageBox.warning(
-                    self, "Save Failed", "Could not save mapping to file server."
-                )
-                return False
+            # One entry onto the mapping as it is on the server now (AUDIT-02-3)
+            mapping = self.profile_manager.update_sku_mapping(
+                self.current_client_id, {barcode: sku}
+            )
 
             if self.logic:
                 self.logic.sku_map = {
-                    self.logic._normalize_sku(k): v for k, v in existing.items()
+                    self.logic._normalize_sku(k): v for k, v in mapping.items()
                 }
                 logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
             self.packer_mode_widget.show_notification(
@@ -2259,6 +2195,7 @@ class MainWindow(QMainWindow):
 
         # Enable packing operation buttons
         self.packer_mode_button.setEnabled(True)
+        self.client_combo.setEnabled(False)  # AUDIT-02-6
 
         self.toolbar_end_btn.setEnabled(True)
 
@@ -2301,6 +2238,21 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
+        # One list at a time. is_active() covers only the legacy Excel path;
+        # an open Shopify list is self.logic (AUDIT-02-2).
+        if self.logic is not None or (
+            self.session_manager and self.session_manager.is_active()
+        ):
+            logger.warning(
+                "Attempted to start/resume packing while a session is already active"
+            )
+            QMessageBox.warning(
+                self,
+                "Session Active",
+                "A session is already active. Please end it first.",
+            )
+            return
+
         # The browser is a page now, so there is no dialog to accept -- the
         # equivalent is going back to the page the work happens on.
         self.session_tabs.setCurrentIndex(PAGE_PACKING)
@@ -2311,18 +2263,6 @@ class MainWindow(QMainWindow):
                 if self.client_combo.itemData(i) == client_id:
                     self.client_combo.setCurrentIndex(i)
                     break
-
-        # Check if session already active
-        if self.session_manager and self.session_manager.is_active():
-            logger.warning(
-                "Attempted to start/resume packing while a session is already active"
-            )
-            QMessageBox.warning(
-                self,
-                "Session Active",
-                "A session is already active. Please end it first.",
-            )
-            return
 
         # Create SessionManager for this client if not exists
         if not self.session_manager or self.session_manager.client_id != client_id:
@@ -2443,7 +2383,7 @@ class MainWindow(QMainWindow):
             (False, None) if the lock is stale and the user declined to force-release.
             (False, error_msg) if the lock is actively held, or force-release+retry failed.
         """
-        success, error_msg, _ = self.lock_manager.acquire_lock(
+        success, error_msg, stale_lock = self.lock_manager.acquire_lock(
             client_id,
             work_dir,
             worker_id=self.current_worker_id,
@@ -2464,7 +2404,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return False, None
 
-        self.lock_manager.force_release_lock(work_dir)
+        self.lock_manager.force_release_lock(work_dir, expected=stale_lock)
         success, error_msg, _ = self.lock_manager.acquire_lock(
             client_id,
             work_dir,
@@ -2472,126 +2412,3 @@ class MainWindow(QMainWindow):
             worker_name=self.current_worker_name,
         )
         return success, error_msg
-
-    def _handle_session_locked_error(self, error: SessionLockedError):
-        """
-        Handle when a session is actively locked by another process.
-
-        Shows a dialog informing the user that the session is currently in use.
-
-        Args:
-            error: SessionLockedError with lock information
-        """
-        lock_info = error.lock_info
-        if not lock_info:
-            QMessageBox.warning(
-                self,
-                "Session Locked",
-                "This session is currently locked by another process.\n\n"
-                "Please wait or choose a different session.",
-            )
-            return
-
-        locked_by = lock_info.get("locked_by", "Unknown PC")
-        user_name = lock_info.get("user_name", "Unknown user")
-        lock_time = lock_info.get("lock_time", "Unknown time")
-
-        # Format time nicely
-        try:
-            from datetime import datetime
-
-            lock_dt = datetime.fromisoformat(lock_time)
-            lock_time_formatted = lock_dt.strftime("%d.%m.%Y %H:%M")
-        except (ValueError, TypeError):
-            lock_time_formatted = lock_time
-
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Warning)
-        msg.setWindowTitle("Session Already in Use")
-        msg.setText("This session is currently active on another computer.")
-        msg.setInformativeText(
-            f"<b>User:</b> {user_name}<br>"
-            f"<b>Computer:</b> {locked_by}<br>"
-            f"<b>Started:</b> {lock_time_formatted}<br><br>"
-            "Please wait for the user to finish, or choose another session."
-        )
-        msg.setStandardButtons(QMessageBox.Ok)
-        msg.exec()
-
-    def _handle_stale_lock_error(
-        self, error: StaleLockError, file_path: str, restore_dir: str
-    ):
-        """
-        Handle when a session has a stale lock (possible crash).
-
-        Shows a dialog allowing the user to force-release the lock and open the session.
-
-        Args:
-            error: StaleLockError with lock information
-            file_path: Path to the packing list file
-            restore_dir: Directory of the session to restore
-        """
-        lock_info = error.lock_info
-        if not lock_info:
-            QMessageBox.warning(self, "Stale Lock", "Session has an invalid lock file.")
-            return
-
-        locked_by = lock_info.get("locked_by", "Unknown PC")
-        user_name = lock_info.get("user_name", "Unknown user")
-        heartbeat = lock_info.get("heartbeat", "Unknown")
-        stale_minutes = error.stale_minutes
-
-        # Format time nicely
-        try:
-            from datetime import datetime
-
-            heartbeat_dt = datetime.fromisoformat(heartbeat)
-            heartbeat_formatted = heartbeat_dt.strftime("%d.%m.%Y %H:%M")
-        except (ValueError, TypeError):
-            heartbeat_formatted = heartbeat
-
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Warning)
-        msg.setWindowTitle("Stale Session Lock Detected")
-        msg.setText("This session has a stale lock - the application may have crashed.")
-        msg.setInformativeText(
-            f"<b>Original user:</b> {user_name}<br>"
-            f"<b>Computer:</b> {locked_by}<br>"
-            f"<b>Last heartbeat:</b> {heartbeat_formatted}<br>"
-            f"<b>No response for:</b> {stale_minutes} minutes<br><br>"
-            "The application may have crashed on that PC.<br><br>"
-            "<b>Do you want to force-release the lock and open this session?</b>"
-        )
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        msg.setDefaultButton(QMessageBox.Yes)
-
-        reply = msg.exec()
-
-        if reply == QMessageBox.Yes:
-            # Force release the lock
-            logger.info(
-                f"User chose to force-release stale lock for session {restore_dir}"
-            )
-            try:
-                success = self.lock_manager.force_release_lock(Path(restore_dir))
-                if success:
-                    logger.info("Stale lock force-released successfully")
-                    # Retry opening the session
-                    QTimer.singleShot(
-                        100,
-                        lambda: self.start_session(
-                            file_path=file_path, restore_dir=restore_dir
-                        ),
-                    )
-                else:
-                    logger.error("Failed to force-release lock")
-                    QMessageBox.critical(
-                        self,
-                        "Error",
-                        "Failed to release the lock. Please try again or contact support.",
-                    )
-            except Exception as e:
-                logger.exception("Error force-releasing lock")
-                QMessageBox.critical(self, "Error", f"Failed to release lock:\n\n{e}")
-        else:
-            logger.info("User cancelled force-release of stale lock")

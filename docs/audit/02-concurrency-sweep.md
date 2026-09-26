@@ -30,20 +30,20 @@ takes 128 ms on the largest real list (AUDIT-02-7).
 
 | id | severity | summary | where | proof test | status |
 |---|---|---|---|---|---|
-| AUDIT-02-1 | high | "Force-release stale lock?" deletes whatever lock exists when the user answers, even a fresh one | `gui/main_window.py:2481`, `session_lock_manager.py:408` | `test_force_release_after_the_prompt_does_not_steal_a_fresh_lock` | confirmed |
-| AUDIT-02-2 | high | A second list can be opened while one is packing; the first lock is orphaned and its writer leaks | `gui/main_window.py:2330` | `test_opening_a_second_list_is_refused_while_one_is_packing` | confirmed |
-| AUDIT-02-3 | high | SKU mapping saves replace the whole table from a view up to 60 s old (or from when the dialog opened); a torn read saves an empty table | `gui/main_window.py:2096`, `profile_manager.py:464`, `:516`; `gui/sku_mapping_dialog.py:307` | `test_a_mapping_saved_on_one_pc_survives_a_save_on_another`, `test_an_unreadable_mapping_file_is_not_saved_over` | confirmed |
-| AUDIT-02-4 | medium | `workers.json` is an unlocked read-modify-write; two End sessions together lose one's counts, two new workers can get one id | `worker_manager.py:195`, `:270` | `test_two_pcs_ending_sessions_together_both_count` | confirmed |
-| AUDIT-02-5 | medium | `read_registry` returns an empty registry on any read error, and the locked writers save it | `session_registry_manager.py:110` | `test_a_failed_registry_read_does_not_wipe_it` | confirmed |
-| AUDIT-02-6 | medium | The client picker stays live during a session; stats, registry and SKU mappings then go to the other client | `gui/main_window.py:815` | `test_the_client_cannot_change_under_a_running_list` | confirmed |
-| AUDIT-02-7 | medium | Every order open and SKU scan rebuilds the whole order tree (hidden while packing): 128 ms at 117 orders, 375 ms at 400 | `gui/main_window.py:1969`, `:1988` | `test_a_scan_does_not_rebuild_the_order_tree` | confirmed |
-| AUDIT-02-8 | medium | Heartbeat (every 60 s) and the order-complete checkpoint do share I/O on the UI thread; a share outage freezes the packing screen | `gui/main_window.py:1047`, `packer_logic.py:668` | — (design) | observed |
-| AUDIT-02-9 | medium | The row's **Confirm** button packs a unit without a scan and records it as `scanned` | `gui/packer_mode_widget.py:242`, `packer_bridge.py:76` | `test_a_confirm_click_is_not_recorded_as_a_scan` | confirmed |
-| AUDIT-02-10 | medium | History shows an order "Complete" the moment it is opened; a skip then adds a second entry | `gui/main_window.py:1886`, `packer_mode_widget.py:505` | `test_an_opened_order_is_not_shown_as_complete`, `test_a_skipped_order_appears_once_in_history` | confirmed |
-| AUDIT-02-11 | low | Scanning the next order's barcode mid-order reads "Unknown SKU", counts as an unknown scan and offers Map SKU | `packer_logic.py:1194` | `test_scanning_the_next_orders_barcode_is_not_an_unknown_sku` | confirmed |
-| AUDIT-02-12 | low | The state "snapshot" handed to the writer thread aliases live lists; a write can serialise mid-change | `packer_logic.py:555` | `test_the_state_snapshot_does_not_change_after_it_is_taken` | confirmed |
-| AUDIT-02-13 | low | "Order ##11019922 is already packed" | `gui/main_window.py:1906` | `test_already_packed_message_has_one_hash` | confirmed |
-| AUDIT-02-14 | cleanup | The legacy Excel path is unreachable: `start_session`, `_handle_stale_lock_error`, `_handle_session_locked_error`, `restore_session_dialog.py`, `ProfileManager.get_incomplete_sessions` | `gui/main_window.py:853-980`, `:2490-2611` | — | observed |
+| AUDIT-02-1 | high | "Force-release stale lock?" deletes whatever lock exists when the user answers, even a fresh one | `gui/main_window.py:2481`, `session_lock_manager.py:408` | `test_force_release_after_the_prompt_does_not_steal_a_fresh_lock` | fixed |
+| AUDIT-02-2 | high | A second list can be opened while one is packing; the first lock is orphaned and its writer leaks | `gui/main_window.py:2330` | `test_opening_a_second_list_is_refused_while_one_is_packing` | fixed |
+| AUDIT-02-3 | high | SKU mapping saves replace the whole table from a view up to 60 s old (or from when the dialog opened); a torn read saves an empty table | `gui/main_window.py:2096`, `profile_manager.py:464`, `:516`; `gui/sku_mapping_dialog.py:307` | `test_a_mapping_saved_on_one_pc_survives_a_save_on_another`, `test_an_unreadable_mapping_file_is_not_saved_over` | fixed |
+| AUDIT-02-4 | medium | `workers.json` is an unlocked read-modify-write; two End sessions together lose one's counts, two new workers can get one id | `worker_manager.py:195`, `:270` | `test_two_pcs_ending_sessions_together_both_count` | fixed |
+| AUDIT-02-5 | medium | `read_registry` returns an empty registry on any read error, and the locked writers save it | `session_registry_manager.py:110` | `test_a_failed_registry_read_does_not_wipe_it` | fixed |
+| AUDIT-02-6 | medium | The client picker stays live during a session; stats, registry and SKU mappings then go to the other client | `gui/main_window.py:815` | `test_the_client_cannot_change_under_a_running_list` | fixed |
+| AUDIT-02-7 | medium | Every order open and SKU scan rebuilds the whole order tree (hidden while packing): 128 ms at 117 orders, 375 ms at 400 | `gui/main_window.py:1969`, `:1988` | `test_a_scan_does_not_rebuild_the_order_tree` | fixed |
+| AUDIT-02-8 | medium | Heartbeat (every 60 s) and the order-complete checkpoint do share I/O on the UI thread; a share outage freezes the packing screen (heartbeat moved off; checkpoint kept on purpose) | `gui/main_window.py:1047`, `packer_logic.py:668` | `test_the_heartbeat_runs_off_the_ui_thread_and_notices_a_takeover` | fixed |
+| AUDIT-02-9 | medium | The row's **Confirm** button packs a unit without a scan and records it as `scanned` | `gui/packer_mode_widget.py:242`, `packer_bridge.py:76` | `test_a_confirm_click_is_not_recorded_as_a_scan` | fixed |
+| AUDIT-02-10 | medium | History shows an order "Complete" the moment it is opened; a skip then adds a second entry | `gui/main_window.py:1886`, `packer_mode_widget.py:505` | `test_an_opened_order_is_not_shown_as_complete`, `test_a_skipped_order_appears_once_in_history` | fixed |
+| AUDIT-02-11 | low | Scanning the next order's barcode mid-order reads "Unknown SKU", counts as an unknown scan and offers Map SKU | `packer_logic.py:1194` | `test_scanning_the_next_orders_barcode_is_not_an_unknown_sku` | fixed |
+| AUDIT-02-12 | low | The state "snapshot" handed to the writer thread aliases live lists; a write can serialise mid-change | `packer_logic.py:555` | `test_the_state_snapshot_does_not_change_after_it_is_taken` | fixed |
+| AUDIT-02-13 | low | "Order ##11019922 is already packed" | `gui/main_window.py:1906` | `test_already_packed_message_has_one_hash` | fixed |
+| AUDIT-02-14 | cleanup | The legacy Excel path is unreachable: `start_session`, `_handle_stale_lock_error`, `_handle_session_locked_error`, `restore_session_dialog.py`, `ProfileManager.get_incomplete_sessions` | `gui/main_window.py:853-980`, `:2490-2611` | — | fixed (removed; `SessionManager`'s Excel lifecycle left for a later refactor) |
 
 ## 3. Findings in detail
 
@@ -205,7 +205,8 @@ change to session start has to reason around.
   cost grows with history (≈3 share round-trips per session). Fine at today's
   volume.
 
-## 6. Owner decisions needed
+## 6. Owner decisions (2026-09-26)
 
-- **AUDIT-02-9:** keep the Confirm button, recorded as `manual` and counted
-  in the summary (recommended), or remove it so only scans and Force pack?
+- **AUDIT-02-9 → keep, record as manual.** Confirm stays; each click is saved
+  as `confirmation_method: "manual"` and summed in the session summary's
+  `metrics.total_manual_confirms`.

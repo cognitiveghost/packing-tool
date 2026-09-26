@@ -7,10 +7,12 @@ Simple trust-based system without authentication.
 
 import json
 import logging
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
+from shared.file_lock import locked_file
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,16 @@ class WorkerManager:
             logger.exception("Failed to create Workers directory")
             raise
 
+    @contextmanager
+    def _locked(self):
+        """Hold workers.json's sidecar lock for one read-modify-write.
+
+        Every PC's End session adds to this one file; unlocked, two at once
+        kept only the last writer's counts (AUDIT-02-4).
+        """
+        with open(self.workers_file.with_name("workers.json.lock"), "a+") as handle, locked_file(handle):
+            yield
+
     def _load_workers_registry(self) -> dict[str, list]:
         """Load workers.json registry
 
@@ -209,22 +221,26 @@ class WorkerManager:
             raise ValueError("Worker name cannot be empty")
 
         name = name.strip()
-
-        # Check for duplicate names
-        existing = self.get_all_workers()
-        if any(w.name.lower() == name.lower() for w in existing):
-            raise ValueError(f"Worker with name '{name}' already exists")
-
-        # Generate new ID
-        worker_id = self._generate_worker_id(existing)
-
-        # Create profile
         from shared.metadata_utils import get_current_timestamp
 
-        worker = WorkerProfile(
+        with self._locked():
+            data = self._load_workers_registry()
+            existing = [WorkerProfile.from_dict(w) for w in data.get('workers', [])]
+            if any(w.name.lower() == name.lower() for w in existing):
+                raise ValueError(f"Worker with name '{name}' already exists")
+            worker = self._new_worker(self._generate_worker_id(existing), name, get_current_timestamp())
+            data.setdefault('workers', []).append(worker.to_dict())
+            self._save_workers_registry(data)
+
+        logger.info(f"Created worker: {worker.id} ({name})")
+        return worker
+
+    @staticmethod
+    def _new_worker(worker_id: str, name: str, created_at: str) -> WorkerProfile:
+        return WorkerProfile(
             id=worker_id,
             name=name,
-            created_at=get_current_timestamp(),
+            created_at=created_at,
             total_sessions=0,
             total_orders=0,
             total_items=0,
@@ -235,14 +251,6 @@ class WorkerManager:
             last_session_id=None,
             version="1.3.0"
         )
-
-        # Save to registry
-        data = self._load_workers_registry()
-        data['workers'].append(worker.to_dict())
-        self._save_workers_registry(data)
-
-        logger.info(f"Created worker: {worker_id} ({name})")
-        return worker
 
     def _generate_worker_id(self, existing_workers: list[WorkerProfile]) -> str:
         """Generate unique worker ID
@@ -288,6 +296,13 @@ class WorkerManager:
         """
         from shared.metadata_utils import get_current_timestamp
 
+        with self._locked():
+            self._add_worker_stats(
+                worker_id, sessions, orders, items, duration_seconds, session_id,
+                get_current_timestamp(),
+            )
+
+    def _add_worker_stats(self, worker_id, sessions, orders, items, duration_seconds, session_id, now):
         data = self._load_workers_registry()
         workers = data.get('workers', [])
 
@@ -300,7 +315,7 @@ class WorkerManager:
                 worker_dict['total_duration_seconds'] = worker_dict.get('total_duration_seconds', 0) + duration_seconds
 
                 # Update activity tracking
-                worker_dict['last_active'] = get_current_timestamp()
+                worker_dict['last_active'] = now
                 if session_id:
                     worker_dict['last_session_id'] = session_id
 

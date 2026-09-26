@@ -27,6 +27,7 @@ Design notes:
 import json
 import logging
 import os
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +43,10 @@ STALE_HEARTBEAT_SECONDS = 300  # 5 minutes
 
 # Seconds before a session with no summary and no recent activity is "abandoned"
 ABANDONED_SECONDS = 86400  # 24 hours
+
+# A read inside a locked update is retried before it gives up (AUDIT-02-5)
+REGISTRY_READ_ATTEMPTS = 3
+REGISTRY_READ_RETRY_SECONDS = 0.2
 
 
 class SessionRegistryManager:
@@ -125,6 +130,29 @@ class SessionRegistryManager:
                 )
         except Exception as e:
             logger.warning(f"Could not read registry for client {client_id}: {e}")
+        return self._empty_registry(client_id)
+
+    def _read_for_update(self, client_id: str) -> dict:
+        """read_registry() for a locked read-modify-write.
+
+        Retries a failed read, then raises: an empty registry returned here would
+        be written back over every entry (AUDIT-02-5). Missing means empty.
+        """
+        path = self._get_registry_path(client_id)
+        for attempt in range(REGISTRY_READ_ATTEMPTS):
+            try:
+                if not path.exists():
+                    return self._empty_registry(client_id)
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                break
+            except (OSError, ValueError) as e:
+                if attempt == REGISTRY_READ_ATTEMPTS - 1:
+                    raise OSError(f"Registry for client {client_id} could not be read: {e}") from e
+                time.sleep(REGISTRY_READ_RETRY_SECONDS)
+        if isinstance(data, dict) and data.get("version") == self.REGISTRY_VERSION:
+            return data
+        logger.warning(f"Registry for client {client_id} has unexpected version/format, using empty.")
         return self._empty_registry(client_id)
 
     def write_registry(self, client_id: str, registry: dict) -> bool:
@@ -426,7 +454,7 @@ class SessionRegistryManager:
         Also removes the packing list from available_lists (it has now been started).
         """
         with self._locked(client_id):
-            registry = self.read_registry(client_id)
+            registry = self._read_for_update(client_id)
             key = self._session_key(session_id, packing_list_name)
             now = get_current_timestamp()
             existing = registry["sessions"].get(key, {})
@@ -469,7 +497,7 @@ class SessionRegistryManager:
         session_summary.json.
         """
         with self._locked(client_id):
-            registry = self.read_registry(client_id)
+            registry = self._read_for_update(client_id)
             key = self._session_key(session_id, packing_list_name)
 
             # Create a stub entry if it somehow isn't in the registry yet
@@ -517,7 +545,7 @@ class SessionRegistryManager:
         Only updates status if the entry exists and is not already completed.
         """
         with self._locked(client_id):
-            registry = self.read_registry(client_id)
+            registry = self._read_for_update(client_id)
             key = self._session_key(session_id, packing_list_name)
 
             if key in registry["sessions"]:
@@ -542,7 +570,7 @@ class SessionRegistryManager:
         came from the session summary and are final.
         """
         with self._locked(client_id):
-            registry = self.read_registry(client_id)
+            registry = self._read_for_update(client_id)
             entry = registry["sessions"].get(self._session_key(session_id, packing_list_name))
             if entry is None or entry.get("status") in ("completed", "incomplete"):
                 return False
@@ -571,7 +599,7 @@ class SessionRegistryManager:
         server that is not yet represented in the registry.
         """
         with self._locked(client_id):
-            registry = self.read_registry(client_id)
+            registry = self._read_for_update(client_id)
             key = self._session_key(session_id, packing_list_name)
 
             # Don't add to available_lists if a session already exists for this key
@@ -762,7 +790,7 @@ class SessionRegistryManager:
         new_count = 0
         try:
             with self._locked(client_id):
-                current = self.read_registry(client_id)
+                current = self._read_for_update(client_id)
                 for section in ("sessions", "available_lists"):
                     for key, entry in found[section].items():
                         if key in current["sessions"] or key in current["available_lists"]:

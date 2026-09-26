@@ -1,8 +1,8 @@
 """Audit 02: concurrent PCs, file-server behaviour, and the whole-app sweep.
 
-Report: docs/audit/02-concurrency-sweep.md. Every AUDIT-02-k test fails because
-of the bug it names and is marked xfail(strict=True); the fix removes the
-marker. The unmarked tests pin what the audit verified correct.
+Report: docs/audit/02-concurrency-sweep.md. Each AUDIT-k test reproduced the bug it names before
+the fix bundles (strict xfail at audit time); it now guards against its
+return. The other tests pin what the audit verified correct.
 """
 
 import json
@@ -11,8 +11,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-
-import pytest
 
 from gui.main_window import MainWindow
 from packing_tool.profile_manager import ProfileManager
@@ -60,7 +58,6 @@ def test_registry_writers_do_not_drop_each_others_entries(profile_manager):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-1")
 def test_force_release_after_the_prompt_does_not_steal_a_fresh_lock(main_window, tmp_path, monkeypatch):
     work_dir = tmp_path / "L"
     work_dir.mkdir()
@@ -84,7 +81,6 @@ def test_force_release_after_the_prompt_does_not_steal_a_fresh_lock(main_window,
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-2")
 def test_opening_a_second_list_is_refused_while_one_is_packing(main_window, tmp_path, monkeypatch):
     main_window.logic = Mock()
     main_window.current_work_dir = str(tmp_path / "A")
@@ -111,7 +107,6 @@ def _map_on(pc: ProfileManager, barcode: str, sku: str) -> None:
     assert MainWindow._save_sku_mapping(window, barcode, sku)
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-3")
 def test_a_mapping_saved_on_one_pc_survives_a_save_on_another(config_ini):
     pc1, pc2 = ProfileManager(str(config_ini)), ProfileManager(str(config_ini))
     pc1.create_client_profile("M", "M")
@@ -123,7 +118,6 @@ def test_a_mapping_saved_on_one_pc_survives_a_save_on_another(config_ini):
     assert pc1.load_sku_mapping("M") == {"111": "SKU-1", "222": "SKU-2"}
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-3")
 def test_an_unreadable_mapping_file_is_not_saved_over(config_ini, monkeypatch):
     pc = ProfileManager(str(config_ini))
     pc.create_client_profile("M", "M")
@@ -149,7 +143,6 @@ def test_an_unreadable_mapping_file_is_not_saved_over(config_ini, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-4")
 def test_two_pcs_ending_sessions_together_both_count(server_root):
     pc1, pc2 = WorkerManager(str(server_root)), WorkerManager(str(server_root))
     worker = pc1.create_worker("Ana")
@@ -182,7 +175,6 @@ def test_two_pcs_ending_sessions_together_both_count(server_root):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-5")
 def test_a_failed_registry_read_does_not_wipe_it(profile_manager, monkeypatch):
     reg = SessionRegistryManager(profile_manager)
     for n in range(3):
@@ -210,11 +202,12 @@ def test_a_failed_registry_read_does_not_wipe_it(profile_manager, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-6")
 def test_the_client_cannot_change_under_a_running_list(main_window_with_list, tmp_path):
     window = main_window_with_list
     combo = window.client_combo
+    logic, window.logic = window.logic, None  # pick the client before the list opens
     combo.setCurrentIndex(combo.findData("TESTCL"))
+    window.logic = logic
     window.current_work_dir = str(tmp_path)
     window.current_session_path = str(tmp_path)
     window.enable_packing_mode()
@@ -228,7 +221,6 @@ def test_the_client_cannot_change_under_a_running_list(main_window_with_list, tm
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-02-7")
 def test_a_scan_does_not_rebuild_the_order_tree(main_window_with_list, monkeypatch):
     window = main_window_with_list
     window.logic.item_packed.connect(window._on_item_packed)  # as start_shopify_packing_session wires it
@@ -238,6 +230,33 @@ def test_a_scan_does_not_rebuild_the_order_tree(main_window_with_list, monkeypat
     window.logic.current_order_state[0]["required"] = 2  # so the scan is SKU_OK, not complete
     window.on_scanner_input("TS-4409-B")
     assert rebuilds == []  # the tree is on the other page; rebuild it when that page is shown
+
+
+# ---------------------------------------------------------------------------
+# AUDIT-02-8  The heartbeat runs off the UI thread, and still notices a takeover
+# ---------------------------------------------------------------------------
+
+
+def test_the_heartbeat_runs_off_the_ui_thread_and_notices_a_takeover(main_window, tmp_path, monkeypatch, qtbot):
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    _lock(work_dir, "PC-2", age_seconds=0, pid=2)
+    main_window.logic = Mock()
+    main_window.current_work_dir = str(work_dir)
+    main_window.current_packing_list = "L"
+    monkeypatch.setattr("gui.main_window.QMessageBox.critical", lambda *a: None)
+    threads = []
+    renew = main_window.lock_manager.update_heartbeat
+    monkeypatch.setattr(
+        main_window.lock_manager, "update_heartbeat",
+        lambda d: threads.append(threading.current_thread().name) or renew(d),
+    )
+
+    main_window._heartbeat_tick()
+    qtbot.waitUntil(lambda: main_window.logic is None, timeout=3000)
+
+    assert threads == ["heartbeat"]
+    assert _lock_owner(work_dir) == "PC-2"  # not ours to delete
 
 
 # ---------------------------------------------------------------------------
