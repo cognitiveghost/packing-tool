@@ -590,7 +590,7 @@ class PackerLogic(QObject):
         completed_orders_count = len(self.session_packing_state.get('completed_orders', []))
 
         total_items = self._total_items
-        packed_items = sum(o.get('items_count', 0) for o in self.completed_orders_metadata)
+        packed_items = sum(o.get('items_count', 0) for o in self._on_list_metadata())
 
         for order_state in self.session_packing_state.get('in_progress', {}).values():
             if isinstance(order_state, list):
@@ -1629,6 +1629,11 @@ class PackerLogic(QObject):
             logger.exception(error_msg)
             raise RuntimeError(error_msg)
 
+    def _on_list_metadata(self) -> list[dict]:
+        """completed_orders_metadata without the orders the list dropped: what counts."""
+        on_list = set(self.session_packing_state.get('completed_orders', []))
+        return [o for o in self.completed_orders_metadata if o.get('order_number') in on_list]
+
     def packed_order_numbers(self) -> list[str]:
         """Every order this list has packed, on the current list or not: what Shopify must hear."""
         state = self.session_packing_state
@@ -1650,10 +1655,11 @@ class PackerLogic(QObject):
             off_list.remove(order)
             if order not in state['completed_orders']:
                 state['completed_orders'].append(order)
-        dropped = [o for o in state['completed_orders'] if o not in on_list]
-        for order in dropped:
-            state['completed_orders'].remove(order)
-            off_list.append(order)
+        # completed_orders is rebuilt from the saved 'completed' list, which
+        # still holds orders already off the list: only new ones count as dropped.
+        dropped = [o for o in state['completed_orders'] if o not in on_list and o not in off_list]
+        state['completed_orders'] = [o for o in state['completed_orders'] if o in on_list]
+        off_list.extend(dropped)
         state['skipped_orders'] = [o for o in state.get('skipped_orders', []) if o in on_list]
         gone = [o for o in state['in_progress'] if o not in on_list]
         for order in gone:
@@ -1769,7 +1775,7 @@ class PackerLogic(QObject):
         unique_skus = self._count_unique_skus()
 
         # Calculate metrics from completed_orders_metadata
-        orders_with_timing = self.completed_orders_metadata if self.completed_orders_metadata else []
+        orders_with_timing = self._on_list_metadata()
         if not orders_with_timing:
             logger.warning("No timing metadata available, metrics will be zero")
 

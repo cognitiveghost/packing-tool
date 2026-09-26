@@ -12,8 +12,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from gui.main_window import MainWindow
-from packing_tool.profile_manager import ProfileManager
+from packing_tool.profile_manager import ProfileManager, ProfileManagerError
 from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
@@ -127,15 +129,12 @@ def test_an_unreadable_mapping_file_is_not_saved_over(config_ini, monkeypatch):
     config = pc.clients_dir / "CLIENT_M" / "packer_config.json"
     good = config.read_text(encoding="utf-8")
     config.write_text("", encoding="utf-8")  # read mid-way through another PC's rewrite
-    loaded = pc.load_sku_mapping("M")
+    with pytest.raises(ProfileManagerError):
+        pc.load_sku_mapping("M")
     config.write_text(good, encoding="utf-8")  # that rewrite lands
 
-    pc._sku_cache["sku_M"] = (loaded, datetime.now().astimezone())
-    try:
-        _map_on(pc, "999", "SKU-999")
-    except AssertionError:
-        pass  # refusing to save is an acceptable fix
-    assert len(pc.load_sku_mapping("M")) >= 50
+    _map_on(pc, "999", "SKU-999")  # the failed read was not cached as an empty table
+    assert len(pc.load_sku_mapping("M")) == 51
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +256,31 @@ def test_the_heartbeat_runs_off_the_ui_thread_and_notices_a_takeover(main_window
 
     assert threads == ["heartbeat"]
     assert _lock_owner(work_dir) == "PC-2"  # not ours to delete
+
+
+def test_a_release_waits_for_a_renewal_already_on_the_share(main_window, tmp_path, monkeypatch, qtbot):
+    # A renewal that read the lock just before a release must not write it back afterwards.
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    main_window.logic = Mock()
+    main_window.current_work_dir = str(work_dir)
+    events, renewing = [], threading.Event()
+
+    def slow_renew(_d):
+        events.append("renew")
+        renewing.set()
+        threading.Event().wait(0.2)
+        events.append("renewed")
+        return True
+
+    monkeypatch.setattr(main_window.lock_manager, "update_heartbeat", slow_renew)
+    monkeypatch.setattr(main_window.lock_manager, "release_lock", lambda _d: events.append("release"))
+
+    main_window._heartbeat_tick()
+    assert renewing.wait(3)
+    main_window._cleanup_failed_session_start()
+
+    assert events == ["renew", "renewed", "release"]
 
 
 # ---------------------------------------------------------------------------

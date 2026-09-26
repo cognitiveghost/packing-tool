@@ -4,6 +4,7 @@ live session as ended."""
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 from packing_tool.session_lock_manager import SessionLockManager
 
@@ -18,6 +19,13 @@ class LockLossLogic:
 
     def end_session_cleanup(self):
         self.cleaned = True
+
+
+def _heartbeat(main_window):
+    """One heartbeat tick as the thread and its queued signal run it, inline."""
+    work_dir = main_window.current_work_dir
+    if main_window._renew_lock(Path(work_dir)):
+        main_window._on_heartbeat_lost(work_dir)
 
 
 def test_a_lost_lock_stops_writing_and_tears_down_without_ending(main_window, tmp_path, monkeypatch):
@@ -41,7 +49,7 @@ def test_a_lost_lock_stops_writing_and_tears_down_without_ending(main_window, tm
         lambda _parent, title, text: shown.append((title, text)),
     )
 
-    main_window._update_session_heartbeat()
+    _heartbeat(main_window)
 
     assert logic.stopped and logic.cleaned
     assert main_window.logic is None
@@ -59,7 +67,7 @@ def test_an_unreachable_share_at_a_heartbeat_keeps_the_session(main_window, tmp_
     main_window.current_work_dir = str(tmp_path / "unreachable" / "DHL_Orders")
     monkeypatch.setattr("gui.main_window.QMessageBox.critical", lambda *a: None)
 
-    main_window._update_session_heartbeat()
+    _heartbeat(main_window)
 
     assert main_window.logic is logic
     assert not logic.stopped

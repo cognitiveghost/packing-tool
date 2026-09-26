@@ -39,11 +39,18 @@ class ProgressPublisher:
         self._stopped = False
         self._writer = AsyncStateWriter(self._write, sync_mode=sync_mode)
 
-    def publish(self, completed_orders: list[str], skipped_count: int) -> None:
+    def publish(
+        self, completed_orders: list[str], skipped_count: int, completed_count: int | None = None
+    ) -> None:
+        """completed_orders is every packed order, for Shopify; completed_count,
+        when given, is the registry's count (orders the list still holds)."""
         self._writer.schedule(
             {
                 "completed_orders": list(completed_orders),
                 "skipped_count": int(skipped_count),
+                "completed_count": (
+                    len(completed_orders) if completed_count is None else int(completed_count)
+                ),
             }
         )
 
@@ -79,7 +86,7 @@ class ProgressPublisher:
                     self._client_id,
                     Path(self._session_path).name,
                     self._list_name,
-                    len(completed),
+                    snapshot["completed_count"],
                     snapshot["skipped_count"],
                 )
         except Exception:

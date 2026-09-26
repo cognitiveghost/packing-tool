@@ -318,24 +318,14 @@ class SKUMappingDialog(QDialog):
                 self.client_id, added, removed
             )
             self._loaded_map = dict(self.current_map)
-            success = True
-
-            if success:
-                logger.info(f"Saved {len(self.current_map)} SKU mappings to file server")
-                QMessageBox.information(
-                    self,
-                    "Saved",
-                    f"Successfully saved {len(self.current_map)} mapping(s) to file server.\n\n"
-                    f"Changes are now synchronized across all PCs."
-                )
-                self.accept()
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Save Failed",
-                    "Failed to save mappings to file server.\n\n"
-                    "Please check your network connection and try again."
-                )
+            logger.info(f"Saved {len(self.current_map)} SKU mappings to file server")
+            QMessageBox.information(
+                self,
+                "Saved",
+                f"Successfully saved {len(self.current_map)} mapping(s) to file server.\n\n"
+                f"Changes are now synchronized across all PCs."
+            )
+            self.accept()
 
         except Exception as e:
             logger.exception("Error saving SKU mappings")

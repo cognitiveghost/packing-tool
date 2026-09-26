@@ -252,6 +252,7 @@ class MainWindow(QMainWindow):
         # a release would recreate a lock nobody holds (AUDIT-02-8).
         self._lock_io = threading.Lock()
         self._heartbeat_busy = False
+        self._order_tree_stale = False
         self._heartbeat_lost.connect(self._on_heartbeat_lost)
         logger.info("SessionLockManager initialized successfully")
 
@@ -700,7 +701,7 @@ class MainWindow(QMainWindow):
             self._order_tree_stale = True
 
     def _rebuild_order_tree_if_stale(self, *_):
-        if getattr(self, "_order_tree_stale", False):
+        if self._order_tree_stale:
             self._order_tree_stale = False
             self._populate_order_tree()
 
@@ -988,14 +989,6 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("Failed to update heartbeat")
             return False
-
-    def _update_session_heartbeat(self):
-        """One heartbeat, on the calling thread; notice if another PC has taken the lock."""
-        if not (self.logic and getattr(self, "current_work_dir", None)):
-            return
-        work_dir = Path(self.current_work_dir)
-        if self._renew_lock(work_dir):
-            self._on_lock_lost(work_dir)
 
     def _on_lock_lost(self, work_dir: Path):
         """Another PC holds this list's lock: stop writing, then leave it."""
@@ -1512,7 +1505,7 @@ class MainWindow(QMainWindow):
                     )
 
                 _duration_seconds = int((_end_time - _start_time).total_seconds())
-                _stats_recorded = []
+                _stats_recorded = threading.Event()
 
                 # Capture non-Qt references for the closure
                 _logic_ref = self.logic
@@ -1591,16 +1584,18 @@ class MainWindow(QMainWindow):
                                 "pc_name": os.environ.get("COMPUTERNAME", "Unknown"),
                             },
                         )
-                        _stats_recorded.append(True)
+                        _stats_recorded.set()
                         logger.info(
                             f"Recorded {_completed_orders} orders, {_items_packed} items to stats"
                         )
                     except Exception:
                         logger.exception("record_packing failed")
 
-                    # 3. Update worker stats
+                    # 3. Update worker stats. Only after the global stats took
+                    # these orders: stats_recorded_orders follows record_packing,
+                    # so a worker write without it would be repeated next End.
                     try:
-                        if _worker_id:
+                        if _worker_id and _stats_recorded.is_set():
                             _worker_mgr.update_worker_stats(
                                 worker_id=_worker_id,
                                 sessions=1,
@@ -1669,7 +1664,7 @@ class MainWindow(QMainWindow):
                     logger.error(
                         f"Session end writes had an error: {_end_worker.error}"
                     )
-                if _stats_recorded:
+                if _stats_recorded.is_set():
                     _logic_ref.stats_recorded_orders = _packed_orders
                     _logic_ref.save_state()
 
@@ -1950,9 +1945,11 @@ class MainWindow(QMainWindow):
         """Hand the session's packed and skipped orders to the publisher."""
         if self._progress_publisher is None or not self.logic:
             return
+        state = self.logic.session_packing_state
         self._progress_publisher.publish(
             self.logic.packed_order_numbers(),
-            len(self.logic.session_packing_state.get("skipped_orders", [])),
+            len(state.get("skipped_orders", [])),
+            len(state.get("completed_orders", [])),  # off-list orders are out of the count
         )
 
     def _close_progress_publisher(self):

@@ -488,18 +488,20 @@ class ProfileManager:
         mapping_path = self.clients_dir / f"CLIENT_{client_id}" / "sku_mapping.json"
 
         mappings = {}
-        failed = False
 
-        # Try packer_config.json first
+        # Try packer_config.json first. A failed read raises, and is never
+        # cached: an empty table read mid-rewrite is not "no mappings" (AUDIT-02-3).
         if packer_config_path.exists():
             try:
                 with open(packer_config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     mappings = data.get("sku_mapping", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from packer_config for {client_id}")
-            except Exception:
-                failed = True
+            except (OSError, ValueError) as e:
                 logger.exception(f"Error loading SKU mapping from packer_config for {client_id}")
+                raise ProfileManagerError(
+                    f"Could not read the SKU mapping from the file server: {e}"
+                ) from e
 
         # Fall back to old sku_mapping.json if packer_config doesn't have mappings
         if not mappings and mapping_path.exists():
@@ -511,9 +513,7 @@ class ProfileManager:
             except Exception:
                 logger.exception(f"Error loading SKU mapping from sku_mapping.json for {client_id}")
 
-        # A failed read is not cached: the next read tries the file again
-        if not failed:
-            self._sku_cache[cache_key] = (mappings, datetime.now().astimezone())
+        self._sku_cache[cache_key] = (mappings, datetime.now().astimezone())
 
         return mappings.copy()
 

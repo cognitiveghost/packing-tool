@@ -223,6 +223,33 @@ def test_an_order_dropped_from_the_list_does_not_count_toward_done(session_facto
     assert fired == []  # ORDER-003 is still to pack
 
 
+def test_a_dropped_packed_order_is_moved_off_the_list_once_across_resumes(
+    session_factory, packer_logic_factory
+):
+    logic, work_dir, list_path = _loaded(session_factory, packer_logic_factory)
+    logic.start_order_packing("ORDER-002")
+    logic.process_sku_scan("SKU-CCC")
+    logic.save_state()
+
+    data = json.loads(list_path.read_text(encoding="utf-8"))
+    del data["orders"][1]  # Shopify re-ran without ORDER-002
+    list_path.write_text(json.dumps(data), encoding="utf-8")
+
+    changes = []
+    for _ in range(3):  # the list is opened, closed and opened again
+        again = packer_logic_factory("M", work_dir)
+        again.load_packing_list_json(list_path)
+        changes.append(again.list_changes)
+        again.save_state()
+
+    assert changes == [{"packed_dropped": 1}, {}, {}]  # told once, not on every open
+    assert again.packed_order_numbers() == ["ORDER-002"]  # still published to Shopify
+    state = again._build_state_dict()["progress"]
+    assert (state["completed_orders"], state["packed_items"]) == (0, 0)
+    summary = again.generate_session_summary()
+    assert (summary["completed_orders"], summary["orders"]) == (0, [])
+
+
 # ---------------------------------------------------------------------------
 # AUDIT-01-4  SKU table double-counts a SKU listed under two product names
 # ---------------------------------------------------------------------------

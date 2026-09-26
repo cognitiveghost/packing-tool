@@ -128,7 +128,7 @@ class RecordingPublisher:
     def __init__(self):
         self.published = []
 
-    def publish(self, completed_orders, skipped_count):
+    def publish(self, completed_orders, skipped_count, completed_count=None):
         self.published.append((list(completed_orders), skipped_count))
 
 
