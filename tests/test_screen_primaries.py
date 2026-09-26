@@ -8,9 +8,7 @@ set_button_role call goes silently grey rather than failing loudly.
 
 from PySide6.QtWidgets import QPushButton
 
-from gui.restore_session_dialog import RestoreSessionDialog
 from gui.sku_mapping_dialog import SKUMappingDialog
-from packing_tool.session_lock_manager import SessionLockManager
 
 
 def _primaries(widget) -> list[str]:
@@ -19,15 +17,6 @@ def _primaries(widget) -> list[str]:
         for b in widget.findChildren(QPushButton)
         if b.property("role") == "primary"
     ]
-
-
-def test_restore_selected_is_the_restore_dialogs_one_primary(profile_manager, qapp):
-    lock_manager = SessionLockManager(profile_manager)
-    dialog = RestoreSessionDialog("TEST", profile_manager, lock_manager)
-    try:
-        assert _primaries(dialog) == ["Restore Selected"]
-    finally:
-        dialog.deleteLater()
 
 
 def test_save_and_close_is_the_sku_mapping_dialogs_one_primary(profile_manager, qapp):

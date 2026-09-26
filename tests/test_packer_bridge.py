@@ -249,16 +249,17 @@ def test_display_order_then_a_scan_updates_only_that_row(qtbot):
     assert widget.bridge.banner["chips"] == ["DPD"]
 
 
-def test_a_confirm_click_re_emits_the_row_s_sku_as_a_scan(qtbot):
+def test_a_confirm_click_sends_the_row_s_sku_as_a_manual_confirm(qtbot):
     from gui.packer_mode_widget import PackerModeWidget
 
     widget = PackerModeWidget()
     qtbot.addWidget(widget)
     widget.display_order(ITEMS, STATE)
-    seen = []
-    widget.barcode_scanned.connect(seen.append)
+    manual, scanned = [], []
+    widget.manual_confirm_requested.connect(manual.append)
+    widget.barcode_scanned.connect(scanned.append)
     widget.bridge.confirmItem(1)
-    assert seen == ["BX-3311-A"]
+    assert (manual, scanned) == (["BX-3311-A"], [])  # a click is not a scan (AUDIT-02-9)
 
 
 def test_an_undo_click_asks_nothing_and_reaches_the_cancel_signal(qtbot):

@@ -71,6 +71,7 @@ class PackerModeWidget(QWidget):
     extra_removed = Signal(str)  # normalized_sku
     end_session_requested = Signal()  # P8's primary action
     map_barcode_requested = Signal(str)  # raw barcode from an unmatched scan
+    manual_confirm_requested = Signal(str)  # a row's SKU, confirmed by hand (not a scan)
 
     def __init__(self, parent: QWidget = None, sim_mode: bool = False):
         """
@@ -240,9 +241,9 @@ class PackerModeWidget(QWidget):
     # ─── Action button slots ──────────────────────────────────────────────────
 
     def _on_manual_confirm(self, row: int):
-        """Confirm one item by hand -- the same as scanning its SKU."""
+        """Confirm one item by hand. Packs like a scan, but is recorded as manual (AUDIT-02-9)."""
         if 0 <= row < len(self._rows):
-            self.barcode_scanned.emit(self._rows[row]["sku"])
+            self.manual_confirm_requested.emit(self._rows[row]["sku"])
         self.set_focus_to_scanner()
 
     def _on_cancel_item(self, row: int):
@@ -505,10 +506,14 @@ class PackerModeWidget(QWidget):
     def add_order_to_history(self, order_number: str, status: str = ""):
         """Add an order to the top of the session's history.
 
+        One entry per order: a skipped order that is later packed moves to
+        the top as complete (AUDIT-02-10).
+
         Args:
-            order_number: The order that was just scanned.
+            order_number: The order that was just packed or skipped.
             status: "[SKIPPED]" for a skipped order; empty for a completed one.
         """
+        self._history = [h for h in self._history if h["order"] != str(order_number)]
         self._history.insert(
             0,
             {

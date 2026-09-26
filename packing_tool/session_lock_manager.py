@@ -405,7 +405,7 @@ class SessionLockManager:
             self.logger.warning(f"Failed to parse heartbeat time: {e}")
             return True  # Treat invalid heartbeat as stale
 
-    def force_release_lock(self, session_dir: Path) -> bool:
+    def force_release_lock(self, session_dir: Path, expected: dict | None = None) -> bool:
         """
         Forcefully release a lock, regardless of who owns it.
 
@@ -413,6 +413,10 @@ class SessionLockManager:
 
         Args:
             session_dir: Path to session directory
+            expected: The stale lock the user was asked about. When given, the
+                lock is released only if it is still that lock and still stale:
+                while the question was open its owner may have come back, or
+                another PC may have taken the list (AUDIT-02-1).
 
         Returns:
             True if lock was released, False otherwise
@@ -425,6 +429,17 @@ class SessionLockManager:
         try:
             # Get lock info for logging
             _is_locked, lock_info = self.is_locked(session_dir)
+            if expected is not None and lock_info is not None:
+                same = all(
+                    lock_info.get(k) == expected.get(k)
+                    for k in ("locked_by", "process_id", "heartbeat")
+                )
+                if not (same and self.is_lock_stale(lock_info)):
+                    self.logger.warning(
+                        "Stale lock changed before force-release; left in place",
+                        extra={"session_dir": str(session_dir)},
+                    )
+                    return False
 
             # Delete the lock file
             lock_path.unlink()

@@ -11,11 +11,12 @@ import logging
 import os
 import re
 import shutil
-import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from shared.file_lock import WINDOWS_LOCKING_AVAILABLE, FileLockError, locked_file
+from shared.atomic_write import atomic_write_json
+from shared.file_lock import FileLockError, locked_file
 from shared.logger import setup_logging
 from shared.server_connection import resolve_server_path, test_path_reachable
 
@@ -488,15 +489,19 @@ class ProfileManager:
 
         mappings = {}
 
-        # Try packer_config.json first
+        # Try packer_config.json first. A failed read raises, and is never
+        # cached: an empty table read mid-rewrite is not "no mappings" (AUDIT-02-3).
         if packer_config_path.exists():
             try:
                 with open(packer_config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     mappings = data.get("sku_mapping", {})
                 logger.debug(f"Loaded {len(mappings)} SKU mappings from packer_config for {client_id}")
-            except Exception:
+            except (OSError, ValueError) as e:
                 logger.exception(f"Error loading SKU mapping from packer_config for {client_id}")
+                raise ProfileManagerError(
+                    f"Could not read the SKU mapping from the file server: {e}"
+                ) from e
 
         # Fall back to old sku_mapping.json if packer_config doesn't have mappings
         if not mappings and mapping_path.exists():
@@ -508,143 +513,82 @@ class ProfileManager:
             except Exception:
                 logger.exception(f"Error loading SKU mapping from sku_mapping.json for {client_id}")
 
-        # Update cache
         self._sku_cache[cache_key] = (mappings, datetime.now().astimezone())
 
         return mappings.copy()
 
-    def save_sku_mapping(self, client_id: str, mappings: dict[str, str]) -> bool:
+    @contextmanager
+    def _packer_config_locked(self, client_id: str):
+        """Hold packer_config.json's sidecar lock for one read-modify-write.
+
+        A sidecar, as the session registry does: the file itself is replaced by
+        rename, so no reader ever sees it half-written (AUDIT-02-3).
         """
-        Save SKU mapping to packer_config.json with file locking and merge support.
+        path = self.clients_dir / f"CLIENT_{client_id}" / "packer_config.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path.with_name(path.name + ".lock"), "a+") as handle, locked_file(handle):
+            yield path
 
-        This method uses Windows file locking to prevent concurrent write conflicts.
-        It reads the current packer_config, merges with new SKU mappings, and writes atomically.
+    def _change_sku_mapping(self, client_id: str, change) -> dict[str, str]:
+        """Apply change(mapping) to the mapping as it is on disk now, under the lock.
 
-        Args:
-            client_id: Client identifier
-            mappings: Dictionary mapping barcode to SKU
-
-        Returns:
-            True if saved successfully
-
-        Raises:
-            ProfileManagerError: If save fails after retries
+        An unreadable packer_config.json raises: a mapping read as empty must
+        never be saved over the real one.
         """
-        packer_config_path = self.clients_dir / f"CLIENT_{client_id}" / "packer_config.json"
-
-        logger.info(f"Saving SKU mapping for client {client_id}: {len(mappings)} entries")
-
-        if not WINDOWS_LOCKING_AVAILABLE:
-            logger.warning("Windows file locking not available, using basic save")
-            return self._save_sku_mapping_simple(client_id, mappings)
-
-        max_retries = 5
-        retry_delay = 0.5  # seconds
-
-        for attempt in range(max_retries):
-            try:
-                # Create packer_config if doesn't exist
-                if not packer_config_path.exists():
-                    packer_config_path.parent.mkdir(parents=True, exist_ok=True)
-                    default_config = {
-                        "client_id": client_id,
-                        "sku_mapping": {},
-                        "last_updated": "",
-                        "updated_by": ""
-                    }
-                    with open(packer_config_path, 'w', encoding='utf-8') as f:
-                        json.dump(default_config, f)
-
-                with open(packer_config_path, 'r+', encoding='utf-8') as f, locked_file(f):
-                    # Read current data
-                    f.seek(0)
-                    current_data = json.load(f)
-
-                    # Replace (not merge): callers pass the full desired mapping,
-                    # so a deleted entry must not survive by merging onto disk.
-                    current_data['sku_mapping'] = mappings
-                    current_data['last_updated'] = datetime.now().astimezone().isoformat()
-                    current_data['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
-
-                    # Write back (truncate and write)
-                    f.seek(0)
-                    f.truncate()
-                    json.dump(current_data, f, indent=2, ensure_ascii=False)
-
-                    logger.info(f"Successfully saved SKU mapping to packer_config for {client_id}")
-
-                # Invalidate caches
-                cache_key = f"sku_{client_id}"
-                self._sku_cache.pop(cache_key, None)
-                config_cache_key = f"config_{client_id}"
-                self._config_cache.pop(config_cache_key, None)
-
-                return True
-
-            except (OSError, FileLockError):
-                # File is locked by another process
-                if attempt < max_retries - 1:
-                    logger.warning(f"packer_config locked, retry {attempt + 1}/{max_retries}")
-                    time.sleep(retry_delay)
-                else:
-                    logger.exception(f"Could not acquire lock on packer_config after {max_retries} attempts")
-                    raise ProfileManagerError(
-                        "Configuration is locked by another user. Please try again in a moment."
-                    )
-
-            except Exception as e:
-                logger.exception("Error saving SKU mapping")
-                raise ProfileManagerError(f"Failed to save SKU mapping: {e}")
-
-        return False
-
-    def _save_sku_mapping_simple(self, client_id: str, mappings: dict[str, str]) -> bool:
-        """
-        Simple save without file locking (fallback).
-        Saves to packer_config.json
-
-        Args:
-            client_id: Client identifier
-            mappings: Dictionary mapping barcode to SKU
-
-        Returns:
-            True if saved successfully
-        """
-        packer_config_path = self.clients_dir / f"CLIENT_{client_id}" / "packer_config.json"
-
         try:
-            # Create backup
-            if packer_config_path.exists():
-                self._create_backup(client_id, packer_config_path, "packer_config")
+            with self._packer_config_locked(client_id) as path:
+                config = {"client_id": client_id, "sku_mapping": {}}
+                if path.exists():
+                    with open(path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                mapping = dict(config.get("sku_mapping") or {})
+                legacy = path.with_name("sku_mapping.json")
+                if not mapping and legacy.exists():
+                    with open(legacy, "r", encoding="utf-8") as f:
+                        mapping = dict(json.load(f).get("mappings", {}))
+                change(mapping)
+                config["sku_mapping"] = mapping
+                config["last_updated"] = datetime.now().astimezone().isoformat()
+                config["updated_by"] = os.environ.get("COMPUTERNAME", "Unknown")
+                atomic_write_json(path, config, indent=2, ensure_ascii=False)
+        except (OSError, ValueError, FileLockError) as e:
+            logger.exception(f"Could not save SKU mapping for {client_id}")
+            raise ProfileManagerError(
+                f"Could not save the SKU mapping to the file server: {e}"
+            ) from e
+        finally:
+            self._sku_cache.pop(f"sku_{client_id}", None)
+            self._config_cache.pop(f"config_{client_id}", None)
+        logger.info(f"Saved SKU mapping for {client_id}: {len(mapping)} entries")
+        return mapping
 
-            # Load current config and merge mappings
-            current_config = {}
-            if packer_config_path.exists():
-                with open(packer_config_path, 'r', encoding='utf-8') as f:
-                    current_config = json.load(f)
+    def save_sku_mapping(self, client_id: str, mappings: dict[str, str]) -> bool:
+        """Replace the whole SKU mapping. Raises ProfileManagerError on failure.
 
-            # Replace (not merge): callers pass the full desired mapping, so a
-            # deleted entry must not survive by merging onto disk.
-            current_config['sku_mapping'] = mappings
-            current_config['last_updated'] = datetime.now().astimezone().isoformat()
-            current_config['updated_by'] = os.environ.get('COMPUTERNAME', 'Unknown')
+        For a caller that owns the full table. One PC's edits go through
+        update_sku_mapping(), which cannot erase another PC's.
+        """
+        def replace(mapping):
+            mapping.clear()
+            mapping.update(mappings)
 
-            # Save
-            with open(packer_config_path, 'w', encoding='utf-8') as f:
-                json.dump(current_config, f, indent=2, ensure_ascii=False)
+        self._change_sku_mapping(client_id, replace)
+        return True
 
-            # Invalidate caches
-            cache_key = f"sku_{client_id}"
-            self._sku_cache.pop(cache_key, None)
-            config_cache_key = f"config_{client_id}"
-            self._config_cache.pop(config_cache_key, None)
+    def update_sku_mapping(
+        self, client_id: str, add: dict[str, str] | None = None, remove=()
+    ) -> dict[str, str]:
+        """Apply one PC's edits to the mapping on disk now; return the whole mapping.
 
-            logger.info(f"Saved SKU mapping to packer_config for {client_id} (simple mode)")
-            return True
+        Built from a cached or minutes-old copy, a full replace erased what other
+        PCs had mapped meanwhile (AUDIT-02-3).
+        """
+        def edit(mapping):
+            for barcode in remove:
+                mapping.pop(barcode, None)
+            mapping.update(add or {})
 
-        except Exception:
-            logger.exception("Error saving SKU mapping (simple)")
-            return False
+        return self._change_sku_mapping(client_id, edit)
 
     # ========================================================================
     # SESSION MANAGEMENT
@@ -670,47 +614,6 @@ class ProfileManager:
         # Generate new session name with timestamp
         timestamp = datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M")
         return client_sessions / timestamp
-
-    def get_incomplete_sessions(self, client_id: str) -> list[Path]:
-        """
-        Get list of incomplete sessions for a client.
-
-        A session is incomplete if it has a session_info.json file
-        (which is removed when the session ends gracefully).
-
-        Args:
-            client_id: Client identifier
-
-        Returns:
-            List of Path objects for incomplete session directories
-        """
-        client_sessions_dir = self.sessions_dir / f"CLIENT_{client_id}"
-
-        if not client_sessions_dir.exists():
-            logger.debug(f"No sessions directory for client {client_id}")
-            return []
-
-        incomplete_sessions = []
-
-        try:
-            for session_dir in client_sessions_dir.iterdir():
-                if not session_dir.is_dir():
-                    continue
-
-                # Check if session has session_info.json (incomplete session marker)
-                session_info_path = session_dir / "session_info.json"
-                if session_info_path.exists():
-                    incomplete_sessions.append(session_dir)
-
-            # Sort by modification time (newest first)
-            incomplete_sessions.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
-            logger.debug(f"Found {len(incomplete_sessions)} incomplete sessions for client {client_id}")
-            return incomplete_sessions
-
-        except Exception:
-            logger.exception(f"Error getting incomplete sessions for {client_id}")
-            return []
 
     def list_clients(self) -> list[str]:
         """

@@ -37,10 +37,10 @@ def _df():
     )
 
 
-def test_totals_count_orders_lines_and_distinct_skus():
+def test_totals_count_orders_units_and_distinct_skus():
     totals = session_totals(_df(), [])
     assert totals["orders"] == 2
-    assert totals["items"] == 3
+    assert totals["items"] == 6  # units (2 + 1 + 3), not lines
     assert totals["unique_skus"] == 2
 
 

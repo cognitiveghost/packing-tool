@@ -17,7 +17,7 @@ import pandas as pd
 
 
 def session_totals(df: pd.DataFrame, completed_orders: list[str]) -> dict[str, int]:
-    """Orders, completed orders, lines, distinct SKUs and percent complete."""
+    """Orders, completed orders, units, distinct SKUs and percent complete."""
     if df is None or df.empty:
         return {
             "orders": 0,
@@ -32,7 +32,8 @@ def session_totals(df: pd.DataFrame, completed_orders: list[str]) -> dict[str, i
     return {
         "orders": total_orders,
         "completed": completed,
-        "items": len(df),
+        # Units, as every other "items" figure counts them (AUDIT-01-6)
+        "items": int(pd.to_numeric(df["Quantity"], errors="coerce").fillna(0).sum()),
         "unique_skus": int(df["SKU"].nunique()),
         "progress_pct": int(completed / total_orders * 100) if total_orders else 0,
     }
@@ -63,9 +64,14 @@ def sku_summary(
     if df is None or df.empty:
         return []
 
+    # One row per SKU: packed units are looked up by SKU, so a SKU listed under
+    # two product names must not be two rows (AUDIT-01-4).
     totals = (
-        df.groupby(["SKU", "Product_Name"])
-        .agg({"Quantity": lambda x: pd.to_numeric(x, errors="coerce").sum()})
+        df.groupby("SKU")
+        .agg({
+            "Product_Name": "first",
+            "Quantity": lambda x: pd.to_numeric(x, errors="coerce").sum(),
+        })
         .reset_index()
     )
 
