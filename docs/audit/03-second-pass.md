@@ -23,7 +23,7 @@ start, not the time an item takes. That puts it near the time per order.
 
 | id | severity | summary | where | proof test | status |
 |---|---|---|---|---|---|
-| AUDIT-03-1 | medium | `avg_time_per_item` averages `time_from_order_start_seconds`, so it reports roughly half an order's duration, not the time per unit packed | `packing_tool/packer_logic.py:103-111` | `test_avg_time_per_item_is_order_time_over_units` | open |
+| AUDIT-03-1 | medium | `avg_time_per_item` averages `time_from_order_start_seconds`, so it reports roughly half an order's duration, not the time per unit packed | `packing_tool/packer_logic.py:103-111` | `test_avg_time_per_item_is_order_time_over_units` | fixed |
 
 ### AUDIT-03-1 — Avg time per item (medium)
 

@@ -4,8 +4,6 @@ Report: docs/audit/03-second-pass.md. The AUDIT-03-k test fails because of
 the bug it names and is marked xfail(strict=True); the fix removes the marker.
 """
 
-import pytest
-
 from packing_tool.packer_logic import compute_order_timing_metrics
 
 
@@ -17,7 +15,6 @@ def _order(duration, units, offsets):
     }
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-03-1: averages scan offsets, not time per item")
 def test_avg_time_per_item_is_order_time_over_units():
     orders = [
         _order(30, 3, [10, 20, 30]),  # 10 s per item
