@@ -88,9 +88,9 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     Shared by PackerLogic.generate_session_summary (live session, in-memory
     metadata) and the Session Browser's partial-summary builder (incomplete
     session, reconstructed from packing_state.json on disk) — both feed it
-    the same order dict shape: duration_seconds, items (with
-    time_from_order_start_seconds), time_to_first_scan_seconds, corrections,
-    extra_scans_count, unknown_scans_count.
+    the same order dict shape: duration_seconds, items_count, items,
+    time_to_first_scan_seconds, corrections, extra_scans_count,
+    unknown_scans_count.
 
     Does not include orders_per_hour/items_per_hour: those depend on
     duration_seconds and a total-orders/items count that differ by caller.
@@ -100,15 +100,16 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     fastest_order_seconds = min(durations) if durations else 0
     slowest_order_seconds = max(durations) if durations else 0
 
+    # Time per unit packed: the timed orders' seconds over their units
+    # (AUDIT-03-1). Averaging each scan's offset from its order's start
+    # reported about half an order's time instead.
+    timed = [o for o in orders_with_timing if o.get('duration_seconds')]
+    units = sum(o.get('items_count', 0) for o in timed)
+    avg_time_per_item = round(sum(o['duration_seconds'] for o in timed) / units, 1) if units else 0
+
     all_items = []
     for order in orders_with_timing:
         all_items.extend(order.get('items', []))
-    item_times = [
-        item['time_from_order_start_seconds']
-        for item in all_items
-        if 'time_from_order_start_seconds' in item
-    ]
-    avg_time_per_item = round(sum(item_times) / len(item_times), 1) if item_times else 0
 
     first_scan_latencies = [
         o['time_to_first_scan_seconds']
