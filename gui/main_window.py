@@ -52,6 +52,7 @@ from gui.statistics_widget import StatisticsWidget
 from gui.theme import current_tokens, toggle_theme
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
+from packing_tool import APP_NAME, __version__
 from packing_tool.exceptions import (
     PackingStateUnreadableError,
 )
@@ -214,7 +215,7 @@ class MainWindow(QMainWindow):
                 Use a dev config (e.g. config.dev.ini) to point at a local mock server.
         """
         super().__init__()
-        self.setWindowTitle("Packer's Assistant")
+        self.setWindowTitle(f"{APP_NAME} {__version__}")
 
         from shared.theme import restore_window_geometry
 
@@ -233,6 +234,7 @@ class MainWindow(QMainWindow):
             try:
                 self.profile_manager = ProfileManager(config_path)
                 logger.info("ProfileManager initialized successfully")
+                logger.info("%s %s", APP_NAME, __version__)
                 break
             except NetworkError as e:
                 logger.exception("Failed to initialize ProfileManager")

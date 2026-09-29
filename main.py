@@ -1,15 +1,16 @@
-"""Packer's Assistant — entry point."""
+"""Packer Assistant — entry point."""
 import sys
 
 from PySide6.QtWidgets import QApplication
 
 from gui.main_window import DEFAULT_CONFIG_PATH, MainWindow
 from gui.theme import load_saved_theme
+from packing_tool import APP_NAME
 from shared.logger import install_crash_logging
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Packer's Assistant")
+    parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument(
         '--config',
         default=DEFAULT_CONFIG_PATH,
