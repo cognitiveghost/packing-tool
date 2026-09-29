@@ -1,4 +1,4 @@
 pyinstaller
 pytest
 pytest-qt
-ruff~=0.16.0
+ruff~=0.16.9
