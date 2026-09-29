@@ -113,3 +113,53 @@ def test_a_registry_entry_loads_its_details_from_disk(qtbot, tmp_path):
     assert record["pc_name"] == "WH-PC-02"
     assert (record["completed_orders"], record["total_orders"]) == (9, 14)
     assert record["total_items_packed"] == 62
+
+
+def _page_from_list_payload(qtbot, tmp_path, summary: dict):
+    """Build the detail page from the Session Browser's own payload."""
+    import json
+
+    from gui.session_browser.sessions_list_widget import SessionsListWidget
+
+    work_dir = tmp_path / "2026-09-29_1" / "packing" / "DHL_Orders"
+    work_dir.mkdir(parents=True)
+    (work_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    widget = SessionsListWidget(registry_manager=None, session_history_manager=None)
+    qtbot.addWidget(widget)
+    widget._client_id = "M"
+    payloads = []
+    widget.session_details_requested.connect(payloads.append)
+    widget._open_details_for_entry(
+        {
+            "session_id": "2026-09-29_1",
+            "status": "completed",
+            "work_dir": str(work_dir),
+            "packing_list_name": "Registry_Name",
+        }
+    )
+    page = SessionDetailPage(payloads[0])
+    qtbot.addWidget(page)
+    return page
+
+
+def _overview_texts(page) -> list[str]:
+    from PySide6.QtWidgets import QLabel
+
+    return [label.text() for label in page.overview_tab.findChildren(QLabel)]
+
+
+def test_the_overview_names_the_packing_list_from_the_summary(qtbot, tmp_path):
+    """session_summary.json carries packing_list_name and no path; the card
+    used to read only the path and showed Unknown for every session."""
+    page = _page_from_list_payload(
+        qtbot, tmp_path, {"session_id": "2026-09-29_1", "packing_list_name": "DHL_Orders"}
+    )
+    assert page.details["record"]["packing_list_name"] == "DHL_Orders"
+    assert "DHL_Orders" in _overview_texts(page)
+
+
+def test_the_overview_falls_back_to_the_registry_name(qtbot, tmp_path):
+    page = _page_from_list_payload(qtbot, tmp_path, {"session_id": "2026-09-29_1"})
+    assert page.details["record"]["packing_list_name"] == "Registry_Name"
+    assert "Registry_Name" in _overview_texts(page)

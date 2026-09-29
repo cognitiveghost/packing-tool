@@ -154,7 +154,8 @@ class SessionDetailPage(QWidget):
                     "session_id": session_summary.get("session_id", session_id),
                     "client_id": session_summary.get("client_id", client_id),
                     "packing_list_path": session_summary.get("packing_list_path", ""),
-                    "packing_list_name": session_summary.get("packing_list_name", ""),
+                    "packing_list_name": session_summary.get("packing_list_name")
+                    or self.session_data.get("packing_list_name", ""),
                     "worker_id": session_summary.get("worker_id", ""),
                     "worker_name": session_summary.get("worker_name", ""),
                     "pc_name": session_summary.get("pc_name", ""),
@@ -174,7 +175,8 @@ class SessionDetailPage(QWidget):
                     "session_id": session_info.get("session_id", session_id),
                     "client_id": session_info.get("client_id", client_id),
                     "packing_list_path": session_info.get("packing_list_path", ""),
-                    "packing_list_name": session_info.get("packing_list_name", ""),
+                    "packing_list_name": session_info.get("packing_list_name")
+                    or self.session_data.get("packing_list_name", ""),
                     "worker_id": session_info.get("worker_id", ""),
                     "worker_name": session_info.get("worker_name", ""),
                     "pc_name": session_info.get("pc_name", ""),

@@ -46,8 +46,13 @@ class OverviewTab(QWidget):
         card.add_row("Session ID", record.get("session_id", "Unknown"), mono=True)
         card.add_row("Client", f"CLIENT_{record.get('client_id', 'Unknown')}")
 
+        # session_summary.json carries the name and no path.
         packing_list_path = record.get("packing_list_path")
-        list_name = Path(packing_list_path).stem if packing_list_path else "Unknown"
+        list_name = (
+            record.get("packing_list_name")
+            or (Path(packing_list_path).stem if packing_list_path else "")
+            or "Unknown"
+        )
         card.add_row("Packing list", list_name)
 
         worker_name = record.get("worker_name", "")
