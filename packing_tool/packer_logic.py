@@ -124,6 +124,7 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     total_corrections = sum(o.get('corrections', 0) for o in orders_with_timing)
     total_extra_scans = sum(o.get('extra_scans_count', 0) for o in orders_with_timing)
     total_unknown_scans = sum(o.get('unknown_scans_count', 0) for o in orders_with_timing)
+    # Manual and forced confirms both count: every unit packed without a scan.
     total_manual_confirms = sum(
         item.get('quantity', 1)
         for item in all_items

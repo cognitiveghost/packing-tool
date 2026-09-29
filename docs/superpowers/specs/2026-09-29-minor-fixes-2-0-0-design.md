@@ -74,8 +74,8 @@ out of this task's scope.
 - `ruff.toml`: `target-version = "py314"` at top level, then apply the 19 fixes.
 - Pin with `~=` on today's release versions (owner's choice), so patch releases flow and Dependabot raises every
   minor/major as a CI-tested PR:
-  `PySide6~=6.11.2`, `pandas~=3.0.6`, `openpyxl~=3.1.5`, `pyinstaller~=6.22.3`; dev: `pytest~=9.1.1`,
-  `pytest-qt~=4.5.0`, `ruff~=0.16.9` (unchanged). The PySide6 metapackage comment block stays.
+  `PySide6~=6.11.2`, `pandas~=3.0.6`, `openpyxl~=3.1.5`; dev (where pyinstaller already lived):
+  `pyinstaller~=6.22.3`, `pytest~=9.1.1`, `pytest-qt~=4.5.0`, `ruff~=0.16.9` (unchanged). The PySide6 metapackage comment block stays.
 - `tests/test_excepthook.py::test_a_thread_crash_is_logged_too`: filter the `PytestUnhandledThreadExceptionWarning`
   it provokes on purpose (the crash hook chains to pytest's own hook, which warns). That leaves 0 warnings.
 - The PR gets the `windows-build` label so the Windows exe is built on 3.14 before merge.

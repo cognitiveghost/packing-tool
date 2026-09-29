@@ -4,4 +4,3 @@ PySide6~=6.11.2        # Keep the METAPACKAGE, not PySide6-Essentials: QtWebEngi
                        # tests/test_webengine_available.py guards this.
 pandas~=3.0.6
 openpyxl~=3.1.5
-pyinstaller~=6.22.3

@@ -185,7 +185,7 @@ class OrdersTab(QWidget):
                 order_item.setText(5, flags if flags else "✓ ok")
 
                 # Colour the flags cell if there are quality issues
-                if any(s in flags for s in ('⟲', 'manual', 'forced', '+', '?')):
+                if any(s in flags for s in ('⟲', '+', '?', *_METHOD_FLAG.values())):
                     order_item.setForeground(5, QColor(200, 160, 0))
 
             # Make order row bold
