@@ -253,3 +253,12 @@ def test_an_unreadable_lock_nobody_renews_goes_stale_by_its_file_age(lock_manage
     assert info["unreadable"] is True
     assert lock_manager.force_release_lock(session_dir)
     assert lock_manager.acquire_lock("M", session_dir)[0]
+
+
+def test_a_lock_records_the_running_app_version():
+    """Lock files say which build held the session; it used to be a
+    hardcoded "1.3.0" whatever the release."""
+    from packing_tool import __version__
+    from packing_tool.session_lock_manager import SessionLockManager
+
+    assert SessionLockManager(None).app_version == __version__

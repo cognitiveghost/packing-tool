@@ -230,3 +230,9 @@ def test_ending_a_session_clears_the_session_tooltip(window):
     assert window.command_bar.session_label.text() == "No session"
     assert window.command_bar.session_label.toolTip() == ""
     assert window.sb_session_label.text() == "—"
+
+
+def test_the_title_names_the_app_and_its_version(window):
+    from packing_tool import APP_NAME, __version__
+
+    assert window.windowTitle() == f"{APP_NAME} {__version__}"

@@ -1,76 +1,122 @@
-name: Build and Release Executable
+name: Test, Build and Release
 
 permissions:
-  contents: write
+  contents: read
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
-      - master
-      - develop
+    # 'labeled' so applying the windows-build label triggers a build on an
+    # already-open PR. The default types do not include it.
+    types: [opened, synchronize, reopened, labeled]
+  # The Release button: Actions -> this workflow -> Run workflow, on main.
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      prerelease:
+        description: Mark the release as a pre-release
+        type: boolean
+        default: false
 
 jobs:
-  sanity-check:
-    name: Sanity Check
-    runs-on: windows-latest
-
+  verify:
+    name: Run Tests
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository code
+      - name: Check out code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: |
+          # QtWebEngine's runtime (NSS and X client libs), the same set as
+          # shopify-fulfillment-tool's CI, so the packer document tests drive
+          # a real Chromium on every PR.
+          sudo apt-get update && sudo apt-get install -y libegl1 libnss3 libnspr4 libxcomposite1 libxdamage1 libxrandr2 libxkbfile1 libxtst6 libxkbcommon0 libgbm1 libasound2t64 libxcb-dri3-0
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint (ruff)
+        # No --exclude shared: this repo owns shared/.
         run: ruff check .
-
-      - name: Compile all sources
-        shell: bash
-        run: python -m py_compile gui/*.py gui/session_browser/*.py packing_tool/*.py shared/*.py main.py
-
       - name: Import main module
         run: python -c "import main"
-
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: python -m pytest
 
-  build-windows:
-    name: Build Windows Executable
-    runs-on: windows-latest
-    needs: sanity-check
-    if: github.event_name != 'pull_request'
-
+  version:
+    name: Next Version
+    needs: [verify]
+    # Releases come from main only. On any other branch this job skips, and
+    # so do build and release below.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
-      - name: Check out repository code
+      - name: Check out code with tags
         uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Pick the next version from the tags
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          version=$(python scripts/release_version.py next "$BUMP")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  build:
+    name: Build Executable
+    needs: [verify, version]
+    runs-on: windows-latest
+    # A release (version succeeded), or a PR carrying the windows-build label:
+    # Windows-only questions (frozen bundles, RDP) cannot be answered from the
+    # Ubuntu dev machine, and the repo is public so the minutes are free.
+    # !cancelled() because version is skipped on PRs, and a skipped need would
+    # otherwise skip this job too.
+    if: >-
+      !cancelled() && needs.verify.result == 'success' && (
+        needs.version.result == 'success' ||
+        (github.event_name == 'pull_request' &&
+         contains(github.event.pull_request.labels.*.name, 'windows-build')))
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Stamp the release version
+        # PR gate builds skip this and say "dev" in the title.
+        if: env.VERSION != ''
+        run: python scripts/release_version.py stamp packing_tool/__init__.py $env:VERSION
       - name: Build executable with PyInstaller
         run: pyinstaller main.spec
-
       - name: Verify bundled assets shipped
-        # A missing gui/assets does not degrade: icon() raises during
+        # A missing shared/assets does not degrade: icon() raises during
         # MainWindow construction, and --windowed means the user double-clicks
         # an exe that silently never opens.
         #
@@ -79,34 +125,60 @@ jobs:
         # supposed to collect the helper process, and if it silently does not,
         # the only symptom is a dead view discovered over RDP after a full
         # build and a several-hundred-MB download. Fail here instead.
+        #
+        # qico.dll is Qt's .ico reader: without it brand_icon() loads nothing
+        # and the window and taskbar show a blank icon.
         shell: pwsh
         run: |
-          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html") {
-            if (-not (Get-ChildItem -Path "dist\Packers-Assistant" -Recurse -Filter $name)) {
+          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html", "packer-assistant.ico", "qico.dll") {
+            if (-not (Get-ChildItem -Path "dist\PackerAssistant" -Recurse -Filter $name)) {
               throw "PyInstaller did not bundle $name -- the app would not start."
             }
           }
-
-      - name: Zip artifact
+      - name: Zip the bundle
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\Packers-Assistant\*" -DestinationPath "Packers-Assistant-v${{ github.ref_name }}.zip"
-
-      # Without this a workflow_dispatch run builds the zip and throws it
-      # away, so nobody can download the bundle to check it actually launches
-      # -- which is the reason the dispatch trigger exists.
-      - name: Upload build artifact
+          $name = if ($env:VERSION) { "PackerAssistant-$env:VERSION" } else { "PackerAssistant-gate" }
+          Compress-Archive -Path "dist\PackerAssistant\*" -DestinationPath "$name.zip"
+      - name: Upload the bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Packers-Assistant-${{ github.ref_name }}
-          path: Packers-Assistant-v${{ github.ref_name }}.zip
+          name: bundle
+          path: PackerAssistant-*.zip
+          # Already a zip; re-compressing several hundred MB buys nothing.
+          compression-level: 0
 
-      - name: Upload Release Asset
-        if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
+  release:
+    name: Publish Release
+    # Runs only when version and build both succeeded, i.e. on the Release
+    # button. A release made with GITHUB_TOKEN would not trigger another
+    # workflow, which is why the build lives in this one.
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Download the bundle
+        uses: actions/download-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: Packers-Assistant-v${{ github.ref_name }}.zip
-          asset_name: Packers-Assistant-v${{ github.ref_name }}.zip
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          name: bundle
+      - name: Checksum
+        run: sha256sum "PackerAssistant-$VERSION.zip" > "PackerAssistant-$VERSION.zip.sha256"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: PackerAssistant-${{ needs.version.outputs.version }}.zip
+      - name: Create the release
+        # Last, so a failed build or attestation leaves no tag behind.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_KIND: ${{ inputs.prerelease && '--prerelease' || '--latest' }}
+        run: >
+          gh release create "$VERSION"
+          "PackerAssistant-$VERSION.zip" "PackerAssistant-$VERSION.zip.sha256"
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+          --title "$VERSION" --generate-notes $RELEASE_KIND

@@ -41,3 +41,6 @@ test_*.log
 # Local virtualenv (worktrees symlink the main checkout's)
 .venv
 .venv/
+
+# Claude Code per-machine settings
+.claude/settings.local.json

@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from packing_tool import __version__
 from shared.atomic_write import atomic_write_json
 
 LOCK_READ_ATTEMPTS = 3
@@ -48,7 +49,7 @@ class SessionLockManager:
         self.hostname = socket.gethostname()
         self.username = self._get_username()
         self.process_id = os.getpid()
-        self.app_version = "1.3.0"
+        self.app_version = __version__
 
     def _get_username(self) -> str:
         """

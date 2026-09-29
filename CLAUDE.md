@@ -1,9 +1,9 @@
-# CLAUDE.md — Packer's Assistant
+# CLAUDE.md — Packer Assistant
 
 ## Project Overview
 Desktop PySide6 app for the warehouse-floor stage of order fulfillment: scans barcodes to verify
 packed items against packing lists created by the sibling **shopify-fulfillment-tool** repo.
-Windows-only in production; development happens on Linux. Version per `README.md:3` (currently 1.3.2.0, pre-release).
+Windows-only in production; development happens on Linux.
 
 ---
 
@@ -26,8 +26,7 @@ python -m pytest
 ## Shared Module (`shared/`)
 
 `shared/` (theme, logger, stats, file locking, atomic writes, session IDs) is used identically by
-this repo and `../shopify-fulfillment-tool`. **This copy is the canonical source** — see
-`docs/superpowers/specs/2026-07-25-shared-unification-design.md`.
+this repo and `../shopify-fulfillment-tool`. **This copy is the canonical source.**
 
 - Edit shared behavior **here**, directly.
 - After editing, propagate it: run `python scripts/sync_shared.py` from `../shopify-fulfillment-tool` (it one-way-copies from `../packing-tool/shared/` into itself).
@@ -41,6 +40,15 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 
 Rules:
 - **Always run `graphify update .` right after modifying code** — a stale graph gives wrong answers about `shared/` ownership silently, with no error. Since this repo is the canonical source for `shared/`, a stale graph here is also what feeds wrong assumptions on the shopify-fulfillment-tool side.
+
+---
+
+## Releases
+
+The git tag is the version. In the repo `packing_tool/__init__.py` holds `__version__ = "dev"`; the release build
+stamps the tag into it (`scripts/release_version.py`). Never hand-edit `__version__` or write a version into docs.
+To release: Actions → Test, Build and Release → Run workflow on `main` → pick the bump. Never create a release in
+the GitHub UI — nothing builds for it.
 
 ---
 
@@ -69,6 +77,9 @@ Issues live in GitHub Issues on `cognitiveghost/packing-tool` (uses the `gh` CLI
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+Doc paths cited in code comments that no longer exist (shipped specs, plans, audits, mockups) are in git history:
+`git log --all -- <path>`.
 
 ---
 
