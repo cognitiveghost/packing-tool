@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 from gui.main_window import DEFAULT_CONFIG_PATH, MainWindow
 from gui.theme import load_saved_theme
 from packing_tool import APP_NAME
+from shared.icons import brand_icon
 from shared.logger import install_crash_logging
 
 if __name__ == "__main__":
@@ -23,6 +24,7 @@ if __name__ == "__main__":
     install_crash_logging()
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(brand_icon("packer-assistant"))
     load_saved_theme(app)
     window = MainWindow(config_path=args.config)
     window.show()
