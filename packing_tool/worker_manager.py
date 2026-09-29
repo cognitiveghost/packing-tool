@@ -47,7 +47,7 @@ class WorkerProfile:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'WorkerProfile':
+    def from_dict(cls, data: dict) -> WorkerProfile:
         """Create from dictionary with backward compatibility"""
         # Provide defaults for new fields
         defaults = {

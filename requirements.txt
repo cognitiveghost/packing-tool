@@ -1,6 +1,6 @@
-PySide6                # Keep the METAPACKAGE, not PySide6-Essentials: QtWebEngine
+PySide6~=6.11.2        # Keep the METAPACKAGE, not PySide6-Essentials: QtWebEngine
                        # (Packer Mode's order document, ADR 0001) ships in
                        # PySide6-Addons, which only the metapackage pulls in.
                        # tests/test_webengine_available.py guards this.
-pandas
-openpyxl
+pandas~=3.0.6
+openpyxl~=3.1.5

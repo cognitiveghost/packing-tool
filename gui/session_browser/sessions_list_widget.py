@@ -14,7 +14,7 @@ Filter / search works purely on already-loaded table data (no server I/O).
 
 import csv
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from PySide6.QtCore import QDate, Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -228,7 +228,7 @@ def _fmt_age(ts_str: str | None) -> str:
     if dt is None:
         return "—"
     seconds = max(
-        0.0, (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+        0.0, (datetime.now(UTC) - dt.astimezone(UTC)).total_seconds()
     )
     minutes = int(seconds // 60)
     if minutes < 60:
@@ -262,7 +262,7 @@ def _fmt_touched(entry: dict) -> str:
     if ts_str:
         dt = parse_timestamp(ts_str)
         if dt:
-            age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+            age = datetime.now(UTC) - dt.astimezone(UTC)
             time_part = (
                 dt.strftime("%H:%M")
                 if age.total_seconds() < 86400

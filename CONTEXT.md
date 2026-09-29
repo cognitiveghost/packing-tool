@@ -20,7 +20,9 @@
 
 **Extras** — items scanned into an order that the order does not contain; the packer keeps or removes each one.
 
-**Force confirm** — marking an item packed without a matching scan.
+**Manual confirm** — marking one unit of an item packed from its row, without a scan (`confirmation_method` *manual*).
+
+**Force confirm** — marking the rest of an item's quantity packed at once, without a scan (*force_confirmed*; shown as *forced*). The summary's `total_manual_confirms` counts both.
 
 **Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
 

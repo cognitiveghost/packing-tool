@@ -154,7 +154,8 @@ class SessionDetailPage(QWidget):
                     "session_id": session_summary.get("session_id", session_id),
                     "client_id": session_summary.get("client_id", client_id),
                     "packing_list_path": session_summary.get("packing_list_path", ""),
-                    "packing_list_name": session_summary.get("packing_list_name", ""),
+                    "packing_list_name": session_summary.get("packing_list_name")
+                    or self.session_data.get("packing_list_name", ""),
                     "worker_id": session_summary.get("worker_id", ""),
                     "worker_name": session_summary.get("worker_name", ""),
                     "pc_name": session_summary.get("pc_name", ""),
@@ -169,16 +170,21 @@ class SessionDetailPage(QWidget):
                     ),
                     "total_items_packed": session_summary.get("total_items", 0),
                 }
-            elif session_info:
+            elif session_info or packing_state:
+                # The Shopify flow writes no per-list session_info.json, so a
+                # list still being packed has only packing_state.json.
                 record = {
                     "session_id": session_info.get("session_id", session_id),
                     "client_id": session_info.get("client_id", client_id),
                     "packing_list_path": session_info.get("packing_list_path", ""),
-                    "packing_list_name": session_info.get("packing_list_name", ""),
+                    "packing_list_name": session_info.get("packing_list_name")
+                    or self.session_data.get("packing_list_name", ""),
                     "worker_id": session_info.get("worker_id", ""),
                     "worker_name": session_info.get("worker_name", ""),
-                    "pc_name": session_info.get("pc_name", ""),
-                    "start_time": session_info.get("started_at", ""),
+                    "pc_name": session_info.get("pc_name")
+                    or packing_state.get("pc_name", ""),
+                    "start_time": session_info.get("started_at")
+                    or packing_state.get("started_at", ""),
                     "end_time": None,
                     "duration_seconds": 0,
                     "total_orders": packing_state.get("progress", {}).get(

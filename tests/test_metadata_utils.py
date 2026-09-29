@@ -62,6 +62,10 @@ def test_parse_timestamp_none_and_empty_return_none():
     assert parse_timestamp("") is None
 
 
+def test_parse_timestamp_garbage_returns_none():
+    assert parse_timestamp("not a timestamp") is None
+
+
 # ---------------------------------------------------------------------------
 # Regression test: session_manager.update_session_metadata() used to write
 # naive timestamps (`datetime.now().isoformat()`), while the rest of the

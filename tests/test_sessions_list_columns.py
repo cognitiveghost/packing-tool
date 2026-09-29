@@ -6,6 +6,8 @@ column -- B1 draws "9 / 14 orders" in it on every row -- not a rename of
 Packing List, which survives in the preview panel and both exports.
 """
 
+from datetime import UTC
+
 from gui.session_browser.sessions_list_widget import (
     COLUMN_HEADERS,
     _fmt_age,
@@ -58,8 +60,8 @@ def test_a_list_nobody_has_started_shows_a_dash_not_a_zero_over_zero():
 
 def test_last_touched_drops_the_clock_once_the_row_is_not_todays():
     """B1 writes "13d ago" on an old row; "09:40" there reads as this morning."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    old = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=13)).isoformat()
     touched = _fmt_touched({"worker_name": "W-001", "last_updated": old})
     assert touched.endswith("13d ago")
