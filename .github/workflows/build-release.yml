@@ -32,9 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Install dependencies
@@ -66,12 +66,12 @@ jobs:
       version: ${{ steps.next.outputs.version }}
     steps:
       - name: Check out code with tags
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Pick the next version from the tags
@@ -100,9 +100,9 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Install dependencies
@@ -141,7 +141,7 @@ jobs:
           $name = if ($env:VERSION) { "PackerAssistant-$env:VERSION" } else { "PackerAssistant-gate" }
           Compress-Archive -Path "dist\PackerAssistant\*" -DestinationPath "$name.zip"
       - name: Upload the bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle
           path: PackerAssistant-*.zip
@@ -163,13 +163,13 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - name: Download the bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: bundle
       - name: Checksum
         run: sha256sum "PackerAssistant-$VERSION.zip" > "PackerAssistant-$VERSION.zip.sha256"
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: PackerAssistant-${{ needs.version.outputs.version }}.zip
       - name: Create the release
