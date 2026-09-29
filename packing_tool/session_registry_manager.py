@@ -29,7 +29,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from shared.atomic_write import atomic_write_json
@@ -677,7 +677,7 @@ class SessionRegistryManager:
             last_updated = parse_timestamp(last_updated_str)
             if last_updated:
                 age_seconds = (
-                    datetime.now(timezone.utc) - last_updated.astimezone(timezone.utc)
+                    datetime.now(UTC) - last_updated.astimezone(UTC)
                 ).total_seconds()
                 if age_seconds > ABANDONED_SECONDS:
                     return "abandoned"
@@ -716,7 +716,7 @@ class SessionRegistryManager:
             if heartbeat is None:
                 return None
             age = (
-                datetime.now(timezone.utc) - heartbeat.astimezone(timezone.utc)
+                datetime.now(UTC) - heartbeat.astimezone(UTC)
             ).total_seconds()
             return age
         except Exception:

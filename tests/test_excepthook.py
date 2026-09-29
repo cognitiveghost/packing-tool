@@ -48,6 +48,7 @@ def test_the_previous_hook_still_runs(caplog):
     assert seen == [ValueError], "the hook that was there before must still run"
 
 
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
 def test_a_thread_crash_is_logged_too(caplog):
     previous = threading.excepthook
     try:

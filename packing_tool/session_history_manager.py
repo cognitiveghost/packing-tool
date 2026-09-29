@@ -6,7 +6,7 @@ completed packing sessions, enabling historical reporting and analytics.
 """
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -284,9 +284,8 @@ class SessionHistoryManager:
             # If no end time from state, use file modification time
             if not end_time:
                 try:
-                    from datetime import timezone
                     mtime = state_file.stat().st_mtime
-                    end_time = datetime.fromtimestamp(mtime, tz=timezone.utc)
+                    end_time = datetime.fromtimestamp(mtime, tz=UTC)
                     if start_time:
                         duration_seconds = (end_time - start_time).total_seconds()
                 except Exception as mtime_exc:
@@ -340,17 +339,16 @@ class SessionHistoryManager:
         Session IDs are typically in format: YYYYMMDD_HHMMSS
         Returns timezone-aware datetime (UTC).
         """
-        from datetime import timezone
         try:
             # Try standard format: YYYYMMDD_HHMMSS
             # Session IDs carry no offset, so %z isn't available; made aware below.
             dt = datetime.strptime(session_id, "%Y%m%d_%H%M%S")  # noqa: DTZ007
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=UTC)
         except ValueError:
             try:
                 # Try alternative formats
                 dt = datetime.strptime(session_id, "%Y%m%d-%H%M%S")  # noqa: DTZ007
-                return dt.replace(tzinfo=timezone.utc)
+                return dt.replace(tzinfo=UTC)
             except ValueError:
                 logger.debug(f"Could not parse timestamp from session ID: {session_id}")
                 return None
