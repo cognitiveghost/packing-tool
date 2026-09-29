@@ -87,3 +87,18 @@ def test_concurrent_writers_do_not_drop_each_others_entries(registry):
     for t in threads:
         t.join()
     assert len(registry.get_available_lists("M")) == 30
+
+
+def test_two_packing_lists_in_one_shopify_session_are_two_entries(registry):
+    """Entries are keyed session_id::packing_list_name, so each list of one
+    Shopify session is its own Session Browser row with its own status."""
+    _start(registry)
+    _start(registry, packing_list_name="PostOne_Orders", work_dir="w2")
+    registry.register_session_complete("M", "2026-09-24_1", "DHL_Orders",
+                                       {"total_orders": 14, "completed_orders": 14})
+
+    by_list = {e["packing_list_name"]: e for e in registry.get_sessions("M")}
+    assert set(by_list) == {"DHL_Orders", "PostOne_Orders"}
+    assert by_list["DHL_Orders"]["status"] == "completed"
+    assert by_list["PostOne_Orders"]["status"] == "in_progress"
+    assert by_list["PostOne_Orders"]["work_dir"] == "w2"
