@@ -20,6 +20,11 @@ from gui.theme import current_tokens
 
 logger = logging.getLogger(__name__)
 
+# How an item record got packed, when it was not a scan. The Confirm button
+# writes "manual" (one unit per click); Force writes "force_confirmed" (the
+# rest of the line). Anything else is a scan.
+_METHOD_FLAG = {"manual": "manual", "force_confirmed": "forced"}
+
 
 class OrdersTab(QWidget):
     """Tab showing orders tree with items and timing"""
@@ -180,7 +185,7 @@ class OrdersTab(QWidget):
                 order_item.setText(5, flags if flags else "✓ ok")
 
                 # Colour the flags cell if there are quality issues
-                if any(s in flags for s in ('⟲', 'manual', '+', '?')):
+                if any(s in flags for s in ('⟲', 'manual', 'forced', '+', '?')):
                     order_item.setForeground(5, QColor(200, 160, 0))
 
             # Make order row bold
@@ -199,8 +204,8 @@ class OrdersTab(QWidget):
                     item_node = QTreeWidgetItem(order_item)
 
                     sku = item.get('sku', 'Unknown')
-                    method = item.get('confirmation_method', 'scanned')
-                    prefix = "" if method == 'force_confirmed' else "→ "
+                    flag = _METHOD_FLAG.get(item.get('confirmation_method', 'scanned'))
+                    prefix = "" if flag else "→ "
                     item_node.setText(0, f"  {prefix}{sku}")
 
                     time_from_start = item.get('time_from_order_start_seconds', 0)
@@ -213,8 +218,8 @@ class OrdersTab(QWidget):
                     item_node.setText(3, self._format_timestamp(item.get('scanned_at', '')))
 
                     # Show method in flags column
-                    if method == 'force_confirmed':
-                        item_node.setText(5, "manual")
+                    if flag:
+                        item_node.setText(5, flag)
                         item_node.setForeground(5, QColor(200, 120, 0))
                     else:
                         item_node.setText(5, "✓ scan")
@@ -260,10 +265,8 @@ class OrdersTab(QWidget):
         extra_scans = order.get('extra_scans_count', 0)
         unknown_scans = order.get('unknown_scans_count', 0)
         items = order.get('items', [])
-        has_force = any(i.get('confirmation_method') == 'force_confirmed' for i in items)
-
-        if has_force:
-            parts.append("manual")
+        methods = {i.get('confirmation_method') for i in items}
+        parts.extend(flag for method, flag in _METHOD_FLAG.items() if method in methods)
         if corrections:
             parts.append(f"⟲{corrections}")
         if extra_scans:

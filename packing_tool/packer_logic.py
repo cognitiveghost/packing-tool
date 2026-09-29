@@ -127,7 +127,7 @@ def compute_order_timing_metrics(orders_with_timing: list[dict]) -> dict[str, An
     total_manual_confirms = sum(
         item.get('quantity', 1)
         for item in all_items
-        if item.get('confirmation_method') == 'manual'
+        if item.get('confirmation_method') in ('manual', 'force_confirmed')
     )
     avg_corrections_per_order = (
         round(total_corrections / len(orders_with_timing), 2) if orders_with_timing else 0
