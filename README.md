@@ -57,7 +57,7 @@ Do not create releases by hand in the GitHub UI: nothing builds for them.
 
 - `gui/`: Qt UI; `gui/web/` is the order document (QtWebEngine)
 - `packing_tool/`: sessions, scanning logic, locks, state
-- `shared/`: code shared with Fulfilment Tool. **This repo is its canonical source** (see `CLAUDE.md`)
+- `shared/`: code shared with Fulfilment Tool, mirrored from its canonical copy in shopify-fulfillment-tool by `scripts/sync_shared.py` (see `CLAUDE.md`)
 - `docs/adr/`: decisions; `CONTEXT.md`: the domain glossary
 
 ## Links

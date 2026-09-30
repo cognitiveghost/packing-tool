@@ -25,12 +25,18 @@ python -m pytest
 
 ## Shared Module (`shared/`)
 
-`shared/` (theme, logger, stats, file locking, atomic writes, session IDs) is used identically by
-this repo and `../shopify-fulfillment-tool`. **This copy is the canonical source.**
+`shared/` (theme, components, icons, fonts, navrail, logger, stats, file locking, atomic writes,
+session IDs) is used identically by this repo and `../shopify-fulfillment-tool`. **That repo's copy is
+the canonical source** (its `docs/adr/0017-fulfilment-owns-shared.md`); this one is a pinned mirror.
 
-- Edit shared behavior **here**, directly.
-- After editing, propagate it: run `python scripts/sync_shared.py` from `../shopify-fulfillment-tool` (it one-way-copies from `../packing-tool/shared/` into itself).
-- Do not assume `shopify-fulfillment-tool/shared/` is safe to edit — it's a synced copy and gets overwritten on the next sync.
+- **Never hand-edit files under `shared/`**. The next sync overwrites them, CI fails the PR, and a
+  hook blocks the edit.
+- To change shared behavior: edit it in `shopify-fulfillment-tool`, commit and push, then from this
+  repo run `python scripts/sync_shared.py [/path/to/shopify-fulfillment-tool]` (the path is needed from
+  a worktree). It mirrors `shared/` and writes the commit to `scripts/shared_synced_from.txt`.
+- This repo may lag behind on purpose: sync when Packing Tool is ready for what changed. CI checks
+  `shared/` against the pinned commit, not against the other repo's `main`.
+- The `shared/` unit tests live in shopify-fulfillment-tool. The tests here cover this app's use of it.
 
 ---
 
@@ -39,7 +45,7 @@ this repo and `../shopify-fulfillment-tool`. **This copy is the canonical source
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
-- **Always run `graphify update .` right after modifying code** — a stale graph gives wrong answers about `shared/` ownership silently, with no error. Since this repo is the canonical source for `shared/`, a stale graph here is also what feeds wrong assumptions on the shopify-fulfillment-tool side.
+- **Always run `graphify update .` right after modifying code** — a stale graph gives wrong answers about `shared/` ownership silently, with no error. `shared/` changes land here via `scripts/sync_shared.py`, which graphify cannot see until you re-run it.
 
 ---
 

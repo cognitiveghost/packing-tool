@@ -46,8 +46,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint (ruff)
-        # No --exclude shared: this repo owns shared/.
-        run: ruff check .
+        # shared/ is a synced copy of shopify-fulfillment-tool's; it is linted there.
+        run: ruff check . --exclude shared
       - name: Import main module
         run: python -c "import main"
       - name: Run tests
@@ -55,9 +55,40 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest
 
+  shared-sync-check:
+    name: Check shared/ matches shopify-fulfillment-tool at the synced commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read the synced commit
+        id: pin
+        run: |
+          sha=$(tr -d '[:space:]' < scripts/shared_synced_from.txt)
+          if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::scripts/shared_synced_from.txt must hold one full commit SHA; run scripts/sync_shared.py."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out shopify-fulfillment-tool at that commit (canonical shared/ source)
+        uses: actions/checkout@v7
+        with:
+          repository: cognitiveghost/shopify-fulfillment-tool
+          ref: ${{ steps.pin.outputs.sha }}
+          path: fulfilment-ref
+          persist-credentials: false
+      - name: Diff shared/ against the canonical copy
+        run: |
+          if ! diff -r -x __pycache__ shared fulfilment-ref/shared; then
+            echo "::error::shared/ differs from shopify-fulfillment-tool/shared/ at ${{ steps.pin.outputs.sha }}. Never hand-edit packing-tool/shared/: change it in shopify-fulfillment-tool, then run scripts/sync_shared.py."
+            exit 1
+          fi
+
   version:
     name: Next Version
-    needs: [verify]
+    needs: [verify, shared-sync-check]
     # Releases come from main only. On any other branch this job skips, and
     # so do build and release below.
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
