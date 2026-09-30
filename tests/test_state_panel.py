@@ -97,3 +97,56 @@ def test_no_variant_says_no_data(qapp):
     anything" from "your filter is too tight" from "the server is unreachable"."""
     panel = StatePanel.nothing_loaded("No orders loaded", "Choose a file.", "Open…")
     assert not any("No data" in text for text in _labels(panel))
+
+
+# Audit 2026-09-30 S1: a cause that wraps was clipped, because the card was
+# centred with Qt.AlignCenter and so sized from sizeHint(), never from its
+# labels' heightForWidth().
+
+_WRAPPING = "Pick a client in the bar above. Sessions, stock and reports all belong to one client."
+
+
+def _shown(panel, qapp, size=(1300, 700)):
+    panel.resize(*size)
+    panel.show()
+    qapp.processEvents()
+    return panel
+
+
+def _clipped(panel):
+    return [
+        label.text()
+        for label in panel.card.findChildren(QLabel)
+        if label.height() < label.heightForWidth(label.width())
+    ]
+
+
+@pytest.mark.parametrize("repeat", [1, 3, 6])
+def test_a_wrapping_cause_is_never_clipped(qapp, repeat):
+    panel = _shown(StatePanel.nothing_loaded("Choose a client to begin", " ".join([_WRAPPING] * repeat), ""), qapp)
+    assert _clipped(panel) == []
+
+
+def test_a_long_detail_line_is_never_clipped(qapp):
+    detail = "\\\\warehouse-fs01\\fulfilment\\clients\\CLIENT_ACME\\sessions\\" * 4
+    panel = _shown(StatePanel.failed("The server can't be reached", _WRAPPING, detail, "Server connection…"), qapp)
+    assert _clipped(panel) == []
+
+
+def test_the_button_stays_inside_the_card_below_wrapped_text(qapp):
+    panel = _shown(StatePanel.nothing_loaded("No sessions yet", _WRAPPING * 2, "New session"), qapp)
+    assert _clipped(panel) == []
+    assert panel.button.geometry().bottom() <= panel.card.height()
+
+
+def test_the_card_regrows_when_its_font_grows(qapp):
+    # The route a theme or density change takes (ADR 0003): the label's
+    # stylesheet is re-run with a new font_css. setFont() would be overridden
+    # by the stylesheet, so it would not test anything.
+    panel = _shown(StatePanel.nothing_loaded("Choose a client to begin", _WRAPPING, ""), qapp)
+    for label in panel.card.findChildren(QLabel):
+        label.setStyleSheet(label.styleSheet() + " font-size: 20pt;")
+    # Two passes: the first delivers the font change, the second the relayout.
+    qapp.processEvents()
+    qapp.processEvents()
+    assert _clipped(panel) == []
