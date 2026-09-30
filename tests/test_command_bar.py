@@ -7,6 +7,7 @@ isVisible() is False for everything.
 import pytest
 
 from gui.command_bar import BAR_HEIGHT, PAGES, CommandBar
+from shared import theme as shared_theme
 from shared.theme import current_theme_name, current_tokens, set_current
 
 
@@ -85,9 +86,11 @@ def test_an_unknown_page_fails_loudly(bar):
 
 
 def test_the_bar_repaints_on_a_theme_switch(bar):
-    before = current_theme_name() or "light"
+    before = current_theme_name()
     set_current("dark" if before == "light" else "light")
     try:
         assert current_tokens().surface_raised in bar.styleSheet()
     finally:
-        set_current(before)
+        # Put back exactly what was there: set_current() cannot express "no
+        # theme applied yet", and leaving "light" behind broke a later test.
+        shared_theme._current = before
