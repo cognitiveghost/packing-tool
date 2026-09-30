@@ -1,7 +1,8 @@
 """A guard, not a unit test. Without it the next dialog someone adds reaches
 for a hex string and the palette escapes the theme one widget at a time.
 
-The checker's own behaviour is tested in tests/test_style_lint.py; the
+The checker's own behaviour is tested in shopify-fulfillment-tool's
+tests/test_style_lint.py (shared/ is canonical there); the
 build_stylesheet product is checked in tests/test_theme.py. This file only
 asserts the repo's own widget code is clean.
 """

@@ -23,9 +23,16 @@ def source(tmp_path):
     (root / "shared" / "components" / "card.py").write_text("Y = 2\n", encoding="utf-8")
     (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
     _git(root, "init", "-q")
-    _git(root, "add", "-A")
-    _git(root, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "init")
+    _commit(root, "init")
     return root
+
+
+def _commit(root, message):
+    _git(root, "add", "-A")
+    _git(
+        root, "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "-c", "commit.gpgsign=false", "commit", "-q", "-m", message,
+    )
 
 
 @pytest.fixture
@@ -96,3 +103,19 @@ def test_a_missing_source_is_refused(tmp_path, dest):
 
     assert _files(shared) == ["stale.py"]
     assert not pin.exists()
+
+
+def test_a_source_behind_the_last_synced_commit_is_refused(source, dest):
+    shared, pin = dest
+    old = _git(source, "rev-parse", "HEAD")
+    (source / "shared" / "theme.py").write_text("X = 2\n", encoding="utf-8")
+    _commit(source, "newer")
+    pin.write_text(_git(source, "rev-parse", "HEAD") + "\n", encoding="utf-8")
+    _git(source, "checkout", "-q", old)
+
+    assert sync_shared.main([str(source)]) == 1
+    assert _files(shared) == ["stale.py"]
+
+    assert sync_shared.main([str(source), "--force"]) == 0
+    assert (shared / "theme.py").read_text(encoding="utf-8") == "X = 1\n"
+    assert pin.read_text(encoding="utf-8") == old + "\n"

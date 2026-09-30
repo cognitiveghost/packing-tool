@@ -65,7 +65,13 @@ jobs:
           persist-credentials: false
       - name: Read the synced commit
         id: pin
-        run: echo "sha=$(tr -d '[:space:]' < scripts/shared_synced_from.txt)" >> "$GITHUB_OUTPUT"
+        run: |
+          sha=$(tr -d '[:space:]' < scripts/shared_synced_from.txt)
+          if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::scripts/shared_synced_from.txt must hold one full commit SHA; run scripts/sync_shared.py."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Check out shopify-fulfillment-tool at that commit (canonical shared/ source)
         uses: actions/checkout@v7
         with:
