@@ -35,3 +35,4 @@ def test_both_bars_share_one_definition_of_the_bar(qapp):
     tokens = current_tokens()
     assert "PackerBar" in bar_css(tokens, "QWidget#PackerBar")
     assert bar_css(tokens).startswith("CommandBar {")
+    assert f"background-color: {tokens.surface_sunken}" in bar_css(tokens)
