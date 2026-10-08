@@ -53,3 +53,90 @@
 /* --- a page's content ---------------------------------------------------- */
 
 .app-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* --- Packing: totals strip, complete banner, filter line, index ---------- */
+
+.app-strip-packing { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr); }
+.app-pct { font-size: var(--type-display-size); font-weight: 700; }
+.app-strong { font-weight: 700; }
+
+.app-complete {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--kit-radius-card);
+  background: var(--status-success-bg);
+}
+.app-complete > .glyph { width: 32px; height: 32px; color: var(--status-success); }
+.app-complete-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-complete-title {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  color: var(--status-success);
+}
+.app-complete .btn { padding: 0 20px; }
+
+.app-filter-line { flex: none; display: flex; align-items: center; gap: 12px; min-height: 44px; }
+
+.app-index {
+  --tbl-cols: minmax(200px, 1.1fr) minmax(0, 2fr) 120px 170px 110px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-head-first { padding-left: 30px; }
+.app-rows { flex: 1; min-height: 0; overflow: auto; }
+
+/* An order row is a button: it opens and closes its items. */
+.app-order {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.app-order[aria-expanded="true"] { background: var(--surface-raised); }
+.app-order:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.app-order-no { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.app-order-no > .glyph { width: 20px; height: 20px; color: var(--text-secondary); }
+.app-order-label { font-family: var(--font-family-mono); font-weight: 700; }
+.app-cut {
+  padding-right: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-order-summary { color: var(--text-secondary); }
+.app-qty { padding-right: 24px; text-align: right; font-family: var(--font-family-mono); }
+.tbl-head .app-qty { font-family: inherit; }
+
+.app-item { background: var(--surface-raised); }
+.app-item.hit {
+  padding-left: 12px;
+  border-left: 4px solid var(--selection-border);
+  background: var(--selection-bg);
+}
+.app-item-sku { padding-left: 30px; font-family: var(--font-family-mono); }
+
+.app-no-match {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+.app-no-match > .glyph { width: 32px; height: 32px; color: var(--text-secondary); stroke-width: 1.5; }
+.app-no-match-title { font-size: var(--type-display-size); font-weight: 700; }
+.app-no-match-text { color: var(--text-secondary); }
+.app-no-match-query { color: var(--text); }
+.app-no-match .btn { margin-top: 4px; padding: 0 20px; }

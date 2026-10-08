@@ -72,7 +72,54 @@
     </div>
   </div>
 
-  <div class="app-page" id="packing" hidden></div>
+  <div class="app-page" id="packing" hidden>
+    <section class="card strip app-strip-packing">
+      <div class="strip-cell">
+        <span class="strip-label">Orders complete</span>
+        <span class="strip-line"><span class="strip-value" id="tot-done"></span><span class="strip-of" id="tot-orders"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-label">Items packed</span>
+        <span class="strip-line"><span class="strip-value" id="tot-packed"></span><span class="strip-of" id="tot-units"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-label">Orders skipped</span>
+        <span class="strip-line"><span class="strip-value" id="tot-skipped"></span><span class="strip-of" id="tot-skipped-note"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="app-pct" id="tot-pct"></span></span>
+        <div class="track"><div class="track-fill" id="tot-fill"></div></div>
+        <span class="strip-note" id="tot-left"></span>
+      </div>
+    </section>
+
+    <section class="app-complete" id="complete" hidden>
+      <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+      <div class="app-complete-body">
+        <div class="app-complete-title">Packing list complete</div>
+        <div id="complete-text"></div>
+      </div>
+      <button type="button" class="btn primary" id="complete-end" data-action="endSession">End session</button>
+    </section>
+
+    <div class="app-filter-line" id="filter-line" hidden>
+      <span><span id="filter-text"></span><span class="mono app-strong" id="filter-query"></span></span>
+      <button type="button" class="btn ghost" id="filter-clear" data-action="clearFilter">Clear filter</button>
+    </div>
+
+    <section class="card app-index">
+      <div class="tbl-head">
+        <span class="app-head-first">Order / Item</span><span>Product</span><span class="app-qty">Quantity</span><span>Status</span><span>Courier</span>
+      </div>
+      <div class="app-no-match" id="no-match" hidden>
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <div class="app-no-match-title">No orders match</div>
+        <div class="app-no-match-text">Nothing in this packing list contains “<span class="mono app-no-match-query" id="no-match-query"></span>”.</div>
+        <button type="button" class="btn secondary" id="no-match-clear" data-action="clearFilter">Clear filter</button>
+      </div>
+      <div class="app-rows" id="rows"></div>
+    </section>
+  </div>
   <div class="app-page" id="statistics" hidden></div>
 
   <div class="toast-wrap">

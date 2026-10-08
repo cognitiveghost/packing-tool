@@ -89,6 +89,144 @@ function renderFrame() {
   els.failedText.textContent = session.text || "";
 }
 
+// --- Packing ------------------------------------------------------------------
+
+const ORDER_BADGE = {
+  packed: ["Packed", "badge success"],
+  in_progress: ["In progress", "badge info"],
+  not_started: ["Not started", "badge neutral"],
+};
+const ITEM_BADGE = {
+  complete: ["Complete", "badge success"],
+  partial: ["Partial", "badge info"],
+  pending: ["Pending", "badge neutral"],
+};
+const SVG_NS = "http://www.w3.org/2000/svg";
+const CHEVRON_DOWN = "m6 9 6 6 6-6";
+const CHEVRON_RIGHT = "m9 18 6-6-6-6";
+
+function glyph(d) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "glyph");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", d);
+  svg.appendChild(path);
+  return svg;
+}
+
+function badge(pair) {
+  return el("span", pair[1], pair[0]);
+}
+
+// Text that an ellipsis may cut keeps its whole self in the tooltip.
+function cut(cls, text) {
+  const node = el("span", "app-cut " + cls, text);
+  node.title = text;
+  return node;
+}
+
+function isOpen(order) {
+  return order.number in view.toggled ? view.toggled[order.number] : !!order.open;
+}
+
+function orderRow(order) {
+  const open = isOpen(order);
+  const row = el("button", "tbl-row app-order");
+  row.type = "button";
+  row.dataset.order = order.number;
+  row.setAttribute("aria-expanded", String(open));
+
+  const first = el("span", "app-order-no");
+  first.appendChild(glyph(open ? CHEVRON_DOWN : CHEVRON_RIGHT));
+  first.appendChild(el("span", "app-order-label", order.label));
+  if (order.skipped) first.appendChild(el("span", "badge warning", "Skipped"));
+  row.appendChild(first);
+
+  row.appendChild(cut("app-order-summary", order.summary));
+  row.appendChild(el("span", "app-qty", order.packed + " / " + order.units));
+  const status = el("span", "app-status");
+  status.appendChild(badge(ORDER_BADGE[order.status] || ORDER_BADGE.not_started));
+  row.appendChild(status);
+  row.appendChild(el("span", "app-courier", order.courier));
+  return row;
+}
+
+function itemRow(item) {
+  const row = el("div", "tbl-row app-item" + (item.hit ? " hit" : ""));
+  row.appendChild(cut("app-item-sku", item.sku));
+  row.appendChild(cut("", item.product));
+  row.appendChild(el("span", "app-qty", item.packed + " / " + item.required));
+  const status = el("span", "app-status");
+  status.appendChild(badge(ITEM_BADGE[item.state] || ITEM_BADGE.pending));
+  row.appendChild(status);
+  row.appendChild(el("span"));
+  return row;
+}
+
+function renderPacking() {
+  syncSession();
+  const packing = view.bridge.packing || {};
+  const totals = packing.totals || {};
+  const query = packing.query || "";
+  // What the packer opened by hand belongs to one filter text.
+  if (query !== view.query) {
+    view.query = query;
+    view.toggled = {};
+  }
+  const orders = totals.orders || 0;
+  const done = totals.done || 0;
+  const pct = totals.pct || 0;
+
+  els.totDone.textContent = done;
+  els.totOrders.textContent = "of " + orders;
+  els.totPacked.textContent = totals.packed || 0;
+  els.totUnits.textContent = "of " + (totals.units || 0);
+  els.totSkipped.textContent = totals.skipped || 0;
+  els.totSkippedNote.textContent = totals.skipped ? "still Not started" : "none";
+  els.totPct.textContent = pct + "%";
+  els.totFill.style.width = pct + "%";
+  els.totLeft.textContent = totals.complete
+    ? "All orders packed"
+    : plural(orders - done, "order", "orders") + " left · " + (totals.in_progress || 0) + " in progress";
+
+  show(els.complete, !!totals.complete);
+  els.completeText.textContent = done + " of " + orders + " orders packed.";
+
+  const hits = packing.hits || 0;
+  show(els.filterLine, !!query && hits > 0);
+  els.filterText.textContent = hits + " of " + orders + " orders contain ";
+  els.filterQuery.textContent = query;
+  show(els.noMatch, !!query && hits === 0);
+  els.noMatchQuery.textContent = query;
+  show(els.rows, !(query && hits === 0));
+
+  // ponytail: the whole index is rebuilt on every push. Fine at a few hundred
+  // orders; patch rows in place if a list ever reaches thousands.
+  const rows = document.createDocumentFragment();
+  (packing.groups || []).forEach(function (group) {
+    const head = el("div", "tbl-group");
+    head.appendChild(el("span", "tbl-group-label", group.label));
+    head.appendChild(el("span", "tbl-group-count", group.count));
+    head.appendChild(el("span", "tbl-group-note", group.note));
+    rows.appendChild(head);
+    group.orders.forEach(function (order) {
+      rows.appendChild(orderRow(order));
+      if (isOpen(order)) order.items.forEach(function (item) { rows.appendChild(itemRow(item)); });
+    });
+  });
+  els.rows.replaceChildren(rows);
+}
+
+function toggleOrder(number) {
+  const current = (view.bridge.packing.groups || [])
+    .flatMap(function (group) { return group.orders; })
+    .find(function (order) { return order.number === number; });
+  if (!current) return;
+  view.toggled[number] = !isOpen(current);
+  renderPacking();
+}
+
 // --- toast --------------------------------------------------------------------
 
 function hideToast() {
@@ -117,8 +255,13 @@ const ACTIONS = {
 };
 
 function onClick(event) {
-  const target = event.target.closest("[data-action]");
-  if (target && !target.disabled) ACTIONS[target.dataset.action](view.bridge);
+  const action = event.target.closest("[data-action]");
+  if (action) {
+    if (!action.disabled) ACTIONS[action.dataset.action](view.bridge);
+    return;
+  }
+  const order = event.target.closest("[data-order]");
+  if (order) toggleOrder(order.dataset.order);
 }
 
 const IDS = {
@@ -131,6 +274,12 @@ const IDS = {
   stepList: "step-list", stepId: "step-id",
   failed: "failed", failedTitle: "failed-title", failedText: "failed-text",
   packing: "packing", statistics: "statistics",
+  totDone: "tot-done", totOrders: "tot-orders", totPacked: "tot-packed", totUnits: "tot-units",
+  totSkipped: "tot-skipped", totSkippedNote: "tot-skipped-note", totPct: "tot-pct",
+  totFill: "tot-fill", totLeft: "tot-left",
+  complete: "complete", completeText: "complete-text",
+  filterLine: "filter-line", filterText: "filter-text", filterQuery: "filter-query",
+  noMatch: "no-match", noMatchQuery: "no-match-query", rows: "rows",
   toast: "toast", toastText: "toast-text", toastClose: "toast-close",
 };
 
@@ -154,6 +303,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   [bridge.pageChanged, bridge.coveredChanged, bridge.shellChanged, bridge.sessionChanged]
     .forEach(function (signal) { signal.connect(renderFrame); });
   renderFrame();
+  bridge.packingChanged.connect(renderPacking);
+  renderPacking();
   els.root.addEventListener("click", onClick);
 
   // After the first render, so the first report is of a drawn page.
