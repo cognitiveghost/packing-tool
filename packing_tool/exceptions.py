@@ -246,3 +246,22 @@ class PackingStateUnreadableError(PackingToolError):
     read. The session must not open: starting fresh would let the first
     scan overwrite every order already packed (Phase 12 Bundle 2, A1).
     """
+
+
+class PackingListInvalidError(ValueError):
+    """A packing list lacks something every order needs.
+
+    A ValueError, unlike the rest of this module: load_packing_list_json has
+    always raised ValueError here, and callers and tests catch that.
+
+    Attributes:
+        missing: the field or column names that are absent.
+        found: the names that are there.
+        kind: "field" (an order's JSON key) or "column".
+    """
+
+    def __init__(self, message: str, missing, found, kind: str):
+        super().__init__(message)
+        self.missing = list(missing)
+        self.found = list(found)
+        self.kind = kind

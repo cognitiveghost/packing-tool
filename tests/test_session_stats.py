@@ -65,9 +65,17 @@ def test_an_empty_session_does_not_divide_by_zero():
 
 def test_courier_totals_count_orders_per_courier():
     assert courier_totals(_df()) == [
-        {"courier": "DPD", "orders": 1},
-        {"courier": "GLS", "orders": 1},
+        {"courier": "DPD", "orders": 1, "done": 0},
+        {"courier": "GLS", "orders": 1, "done": 0},
     ]
+
+
+def test_courier_totals_count_the_completed_orders():
+    df = _df()
+    dpd_order = df[df["Courier"] == "DPD"]["Order_Number"].iloc[0]
+    totals = {row["courier"]: row for row in courier_totals(df, [dpd_order])}
+    assert totals["DPD"]["done"] == 1
+    assert totals["GLS"]["done"] == 0
 
 
 def test_a_session_with_no_courier_column_has_no_courier_totals():

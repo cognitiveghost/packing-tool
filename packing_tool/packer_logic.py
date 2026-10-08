@@ -20,7 +20,7 @@ import pandas as pd  # Excel file handling and data manipulation
 from PySide6.QtCore import QObject, Signal
 
 from packing_tool.async_state_writer import AsyncStateWriter
-from packing_tool.exceptions import PackingStateUnreadableError
+from packing_tool.exceptions import PackingListInvalidError, PackingStateUnreadableError
 from packing_tool.json_cache import invalidate_json_cache
 from shared.atomic_write import atomic_write_json
 
@@ -1524,7 +1524,9 @@ class PackerLogic(QObject):
             if missing_fields:
                 error_msg = f"Missing required fields in order data: {missing_fields}"
                 logger.error(error_msg)
-                raise ValueError(error_msg)
+                raise PackingListInvalidError(
+                    error_msg, missing_fields, sorted(order), "field"
+                )
 
             order_number = order['order_number']
             courier = order['courier']
@@ -1565,7 +1567,9 @@ class PackerLogic(QObject):
         if missing_cols:
             error_msg = f"Missing required columns in packing list: {missing_cols}"
             logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise PackingListInvalidError(
+                error_msg, missing_cols, list(df.columns), "column"
+            )
 
         # Store as packing_list_df and processed_df
         self.packing_list_df = df
