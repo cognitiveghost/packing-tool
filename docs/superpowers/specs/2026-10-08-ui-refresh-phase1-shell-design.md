@@ -232,7 +232,6 @@ and title bar, so a 1366×768 minimum could not fit the screen it is designed fo
 | 13 | Collapsed connection glyph: the dot sits in a `surface_sunken` ring | no ring | the dot is a child label over a `QToolButton`; a ring is a second widget for 2px, left for the web tier |
 | 14 | Banner glyph centred on the two lines | aligned with the title line | reads as the title's icon when the sentence wraps at 1280px |
 | 15 | Collapsed theme button shows the current theme's glyph | the glyph of the theme it switches to | section 6.2: a single button is an action, and its tooltip says "Switch to ..." |
-| 16 | Retry while unreachable keeps the banner until the answer | the banner goes and Open/End session are live while the check runs (at most `ConnectionTimeout` seconds), as the mockup's own `retry` state does | one state machine with three states; a session action tried in that window fails into the same check |
 
 ## 8. For shared/
 
