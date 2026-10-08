@@ -4,7 +4,8 @@ MainWindow is expensive to construct, so this module builds one and shares it.
 """
 
 import pytest
-from PySide6.QtWidgets import QTabWidget
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QStatusBar, QTabWidget
 
 from gui.main_window import (
     PAGE_BROWSER,
@@ -137,20 +138,25 @@ def test_there_is_no_toolbar_and_no_menu_bar(window):
 def test_the_bar_carries_the_session_actions(window):
     bar = window.command_bar
     assert window.packer_mode_button is bar.start_packing_button
-    assert window.sku_mapping_button is bar.sku_mapping_button
     assert window.toolbar_end_btn is bar.end_session_button
+    assert not hasattr(window, "sku_mapping_button")
 
 
-def test_the_old_menu_actions_live_in_the_overflow(window):
+def test_the_overflow_keeps_only_server_connection_and_exit(window):
+    """Worker, SKU mapping and the theme moved to the sidebar footer."""
     labels = [a.text() for a in window.command_bar.overflow.actions() if a.text()]
-    assert labels == [
-        "SKU mapping…",
-        "Select worker…",
-        "Server connection…",
-        "Toggle dark/light theme",
-        "Exit",
-    ]
-    assert "Session Browser" not in labels  # a destination, reached by the rail
+    assert labels == ["Server connection…", "Exit"]
+
+
+def test_the_sidebar_footer_reaches_what_the_overflow_used_to(window, monkeypatch):
+    calls = []
+    monkeypatch.setattr(window, "open_sku_mapping_dialog", lambda: calls.append("sku"))
+    monkeypatch.setattr(window, "_select_worker", lambda: calls.append("worker"))
+    monkeypatch.setattr(window, "_switch_theme", lambda name: calls.append(name))
+    window.sidebar.skuMappingRequested.emit()
+    window.sidebar.switchWorkerRequested.emit()
+    window.sidebar.themeRequested.emit("dark")
+    assert calls == ["sku", "worker", "dark"]
 
 
 def test_ctrl_e_still_ends_the_session_through_the_bar_button(window, monkeypatch):
@@ -168,9 +174,9 @@ def test_ctrl_e_still_ends_the_session_through_the_bar_button(window, monkeypatc
 
 def test_the_bar_follows_the_page(window):
     window.session_tabs.setCurrentIndex(PAGE_BROWSER)
-    assert window.command_bar.session_label.isHidden()
+    assert window.command_bar.filter_input.isHidden()
     window.session_tabs.setCurrentIndex(PAGE_PACKING)
-    assert not window.command_bar.session_label.isHidden()
+    assert not window.command_bar.filter_input.isHidden()
 
 
 def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monkeypatch):
@@ -206,30 +212,52 @@ def test_the_message_line_is_gone(window):
     assert not hasattr(window, "status_label")
 
 
-def test_the_status_bar_is_the_artboards_strip(window):
-    bar = window.statusBar()
-    assert bar.minimumHeight() == bar.maximumHeight() == 40
-    assert window.sb_worker_label.text() == window.current_worker_name
-    assert window.sb_session_label.text() == "—"
+def test_there_is_no_status_bar(window):
+    """ADR 0002. findChild, not statusBar(): statusBar() creates one."""
+    assert window.findChild(QStatusBar) is None
+    for name in ("sb_session_label", "sb_worker_label", "sb_summary_label",
+                 "sb_browser_label"):
+        assert not hasattr(window, name)
 
 
-def test_sku_mapping_is_reachable_without_a_session(window):
-    """The bar hides its SKU mapping button until a session opens, but mappings
-    are per client -- the old toolbar button was always there."""
-    assert window.logic is None
-    action = next(
-        a for a in window.command_bar.overflow.actions() if a.text() == "SKU mapping…"
-    )
-    assert action.isEnabled()
+def test_the_worker_is_in_the_sidebar_footer(window):
+    assert window.sidebar.worker_name.toolTip() == window.current_worker_name
+
+
+def test_the_destinations_are_the_mockups_three(window):
+    assert [label for _i, label, _t in RAIL_ITEMS] == ["Packing", "Statistics", "Sessions"]
+    tips = [window.nav_rail.button(i).toolTip() for i in range(3)]
+    assert tips == ["Packing  Ctrl+1", "Statistics  Ctrl+2", "Sessions  Ctrl+3"]
+    assert window.nav_rail is window.sidebar.rail
+
+
+def test_the_collapse_button_collapses_and_the_choice_is_remembered(window):
+    settings = QSettings("PackingTool", "Shell")
+    assert window.sidebar.is_expanded()
+    window.command_bar.sidebar_button.click()
+    try:
+        assert not window.sidebar.is_expanded()
+        assert window.command_bar.sidebar_button.toolTip() == "Expand sidebar"
+        assert settings.value("sidebar_expanded", True, type=bool) is False
+    finally:
+        window.command_bar.sidebar_button.click()
+    assert window.sidebar.is_expanded()
+    assert settings.value("sidebar_expanded", True, type=bool) is True
+
+
+def test_the_window_is_designed_for_1366_by_768(window):
+    assert (window.minimumWidth(), window.minimumHeight()) == (1280, 680)
+
+
+
 
 
 def test_ending_a_session_clears_the_session_tooltip(window):
     window._show_session("2026-09-01_1042", "packing_list_A")
     assert window.command_bar.session_label.toolTip() == "packing_list_A"
     window._show_session(None)
-    assert window.command_bar.session_label.text() == "No session"
+    assert window.command_bar.session_label.text() == ""
     assert window.command_bar.session_label.toolTip() == ""
-    assert window.sb_session_label.text() == "—"
 
 
 def test_the_title_names_the_app_and_its_version(window):
