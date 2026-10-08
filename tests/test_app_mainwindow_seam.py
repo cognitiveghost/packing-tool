@@ -1,7 +1,10 @@
 """MainWindow and the app document: what crosses, and when (spec sections 7 and 8)."""
 
-from PySide6.QtWidgets import QTabWidget, QTreeWidget
+import json
 
+from PySide6.QtWidgets import QMessageBox, QTabWidget, QTreeWidget
+
+from gui.app_bridge import session_payload
 from gui.main_window import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS
 from shared.components.toast import Toast
 
@@ -129,3 +132,97 @@ def test_a_toast_goes_to_the_page_when_it_is_showing(main_window, qtbot):
         assert raised == ["Saved."]
     finally:
         main_window.hide()
+
+
+def _broken_list(session_factory):
+    orders = [("#1", "DHL", [{"sku": "A", "quantity": 1, "product_name": "A"}])]
+    session_dir, work_dir, list_path = session_factory(client_id="TESTCL", orders=orders)
+    data = json.loads(list_path.read_text(encoding="utf-8"))
+    del data["orders"][0]["courier"]
+    list_path.write_text(json.dumps(data), encoding="utf-8")
+    return session_dir, work_dir, list_path
+
+
+def test_a_failed_start_is_shown_in_the_page_and_not_in_a_message_box(
+    main_window, session_factory, monkeypatch
+):
+    boxes = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: boxes.append(a))
+    session_dir, work_dir, list_path = _broken_list(session_factory)
+    seen = []
+    bridge = _bridge(main_window)
+    bridge.sessionChanged.connect(lambda: seen.append(bridge.session["state"]))
+
+    started = main_window.start_shopify_packing_session(
+        packing_list_path=list_path, work_dir=work_dir, session_path=session_dir,
+        client_id="TESTCL", packing_list_name="DHL_Orders",
+    )
+
+    assert started is False
+    assert boxes == []
+    assert seen[0] == "opening" and seen[-1] == "failed"
+    session = bridge.session
+    assert session["title"] == "Packing list could not be loaded"
+    assert session["text"] == "DHL_Orders has an order with no courier. Found: items, order_number."
+    assert session["list"] == "DHL_Orders"
+    assert main_window.logic is None
+    assert main_window.current_work_dir is None
+    assert not main_window.command_bar.open_session_button.isHidden()
+
+
+def test_the_worker_steps_reach_the_page(main_window):
+    bridge = _bridge(main_window)
+    bridge.set_session(session_payload("opening", list_name="L", session_id="S", step=1))
+    main_window._on_start_step(2)
+    assert (bridge.session["step"], bridge.session["stepName"]) == (2, "Reading saved progress")
+    assert (bridge.session["list"], bridge.session["id"]) == ("L", "S")
+
+
+def test_a_late_step_does_not_replace_a_failure(main_window):
+    bridge = _bridge(main_window)
+    main_window._show_start_failure("Session could not be opened", "Locked by PACK-02", "L")
+    main_window._on_start_step(3)
+    assert bridge.session["state"] == "failed"
+
+
+def test_close_returns_to_no_session(main_window):
+    bridge = _bridge(main_window)
+    main_window._show_start_failure("Session could not be opened", "Locked by PACK-02", "L")
+    bridge.closeFailure()
+    assert bridge.session["state"] == "none"
+
+
+def test_retry_starts_again_with_the_same_arguments(main_window, monkeypatch, tmp_path):
+    started = []
+    monkeypatch.setattr(
+        main_window, "start_shopify_packing_session",
+        lambda **kwargs: started.append(kwargs) or False,
+    )
+    main_window._start_or_resume_from_browser(
+        "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
+        work_dir=tmp_path, resumed=True,
+    )
+    assert len(started) == 1
+    _bridge(main_window).retryStart()
+    assert len(started) == 2
+    assert started[1] == started[0]
+
+
+def test_retry_with_nothing_to_retry_does_nothing(main_window):
+    main_window._last_start = None
+    _bridge(main_window).retryStart()  # must not raise
+    assert _bridge(main_window).session["state"] == "none"
+
+
+def test_changing_client_drops_a_failure(main_window):
+    main_window._show_start_failure("Session could not be opened", "Locked by PACK-02", "L")
+    # The fixture starts on the first client listed; switch to the other one.
+    other = "TESTCL" if main_window.current_client_id == "OTHERCL" else "OTHERCL"
+    main_window.client_combo.setCurrentIndex(main_window.client_combo.findData(other))
+    assert _bridge(main_window).session["state"] == "none"
+
+
+def test_a_failed_start_leaves_the_packing_page_showing(main_window):
+    main_window.session_tabs.setCurrentIndex(PAGE_STATISTICS)
+    main_window._show_start_failure("Session could not be opened", "x", "L")
+    assert main_window.session_tabs.currentIndex() == PAGE_PACKING

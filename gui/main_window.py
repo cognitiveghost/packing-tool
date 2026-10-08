@@ -39,7 +39,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.app_bridge import packing_payload, session_payload, statistics_payload
+from gui.app_bridge import (
+    packing_payload,
+    session_payload,
+    start_failure,
+    statistics_payload,
+)
 from gui.app_pages import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS, AppPages
 from gui.command_bar import PAGES, CommandBar
 from gui.components.connection_banner import ConnectionBanner
@@ -52,9 +57,6 @@ from gui.theme import apply_theme, current_tokens
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
-from packing_tool.exceptions import (
-    PackingStateUnreadableError,
-)
 from packing_tool.profile_manager import NetworkError, ProfileManager
 from packing_tool.progress_publisher import ProgressPublisher
 from packing_tool.session_history_manager import SessionHistoryManager
@@ -222,6 +224,7 @@ class MainWindow(QMainWindow):
         self._lock_io = threading.Lock()
         self._heartbeat_busy = False
         self._pages_stale = False
+        self._last_start = None
         self._heartbeat_lost.connect(self._on_heartbeat_lost)
         # ok / checking / down (spec 2026-10-08 section 6.5). Checked on Retry
         # and after a failed session action, never on a timer (owner decision).
@@ -371,6 +374,8 @@ class MainWindow(QMainWindow):
         pages.clearFilterRequested.connect(lambda: self.search_input.clear())
         pages.chooseClientRequested.connect(lambda: self.client_combo.showPopup())
         pages.pageRequested.connect(self._show_named_page)
+        pages.retryStartRequested.connect(lambda: self._retry_start())
+        pages.closeFailureRequested.connect(lambda: self._close_failure())
         # load_available_clients() ran before this widget existed, so the
         # client it settled on (restored last_client, if any) never reached
         # the browser -- push it now that there is somewhere to push it.
@@ -717,6 +722,7 @@ class MainWindow(QMainWindow):
         logger.info(f"Client changed to: {client_id}")
 
         self.current_client_id = client_id
+        self._close_failure()
 
         # Save as last selected client
         self.settings.setValue("last_client", client_id)
@@ -912,6 +918,40 @@ class MainWindow(QMainWindow):
             "up to now are saved.",
         )
 
+    def _on_start_step(self, step: int):
+        """Frame 3b: the worker says which step it is on.
+
+        The signal is queued from the worker's thread, so it can arrive after
+        the start has already ended. Only an opening session takes a step.
+        """
+        bridge = self.session_tabs.bridge
+        session = bridge.session
+        if session.get("state") == "opening":
+            bridge.set_session(
+                session_payload(
+                    "opening",
+                    list_name=session.get("list", ""),
+                    session_id=session.get("id", ""),
+                    step=step,
+                )
+            )
+
+    def _show_start_failure(self, title: str, text: str, list_name: str):
+        """Frame 3c: a session that did not open says why, on the Packing page."""
+        self.session_tabs.bridge.set_session(
+            session_payload("failed", list_name=list_name, title=title, text=text)
+        )
+        self._push_pages()
+        self.session_tabs.setCurrentIndex(PAGE_PACKING)
+
+    def _retry_start(self):
+        if self._last_start is not None:
+            self._start_or_resume_from_browser(**self._last_start)
+
+    def _close_failure(self):
+        if self.session_tabs.bridge.session.get("state") == "failed":
+            self.session_tabs.bridge.set_session(session_payload())
+
     def _cleanup_failed_session_start(self):
         """
         Clean up resources after failed session start.
@@ -1064,17 +1104,23 @@ class MainWindow(QMainWindow):
 
         Returns:
             bool: True if session started successfully, False otherwise
-
-        Raises:
-            FileNotFoundError: If packing list file not found
-            json.JSONDecodeError: If packing list JSON is invalid
-            ValueError: If packing data is invalid
-            RuntimeError: If barcode generation fails
         """
         try:
             logger.info(f"Starting Shopify packing session: {packing_list_path}")
             logger.info(f"Work directory: {work_dir}")
             logger.info(f"Session path: {session_path}")
+
+            pages = self.session_tabs.bridge
+            pages.set_session(
+                session_payload(
+                    "opening",
+                    list_name=packing_list_name,
+                    session_id=session_path.name,
+                    step=1,
+                )
+            )
+            # The lock is taken on this thread: let the page hear about step 1.
+            QApplication.processEvents()
 
             # 1. Validate packing list file exists
             if not packing_list_path.exists():
@@ -1091,7 +1137,8 @@ class MainWindow(QMainWindow):
             )
             if not success:
                 if error_msg is None:
-                    # User chose not to force-release
+                    # User chose not to force-release: not a failure.
+                    pages.set_session(session_payload())
                     return False
                 raise RuntimeError(error_msg)
 
@@ -1102,16 +1149,7 @@ class MainWindow(QMainWindow):
             logger.info("Heartbeat timer started")
 
             # 5 & 7. Initialize PackerLogic + load packing list in background thread
-            # so the UI remains responsive (progress dialog animates while server is slow).
-            progress = QProgressDialog("Loading packing list…", None, 0, 0, self)
-            progress.setWindowTitle("Please Wait")
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setCancelButton(None)
-            progress.setMinimumDuration(0)
-            progress.setValue(0)
-            progress.show()
-            QApplication.processEvents()
-
+            # so the UI stays responsive and the page names the step it is on (frame 3b).
             start_worker = SessionStartWorker(
                 client_id=client_id,
                 profile_manager=self.profile_manager,
@@ -1119,10 +1157,10 @@ class MainWindow(QMainWindow):
                 packing_list_path=packing_list_path,
                 parent=self,
             )
+            start_worker.step.connect(self._on_start_step)
             start_worker.start()
             while not start_worker.wait(50):
                 QApplication.processEvents()
-            progress.close()
 
             if start_worker.error is not None:
                 raise start_worker.error
@@ -1211,56 +1249,13 @@ class MainWindow(QMainWindow):
             logger.info("Shopify packing session started successfully")
             return True
 
-        except PackingStateUnreadableError:
-            logger.exception("Packing state unreadable; session not opened")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self,
-                "Could not read saved progress",
-                f"The saved progress for {packing_list_name} could not be read, "
-                "so the list was not opened. Nothing was changed. Check the "
-                "connection to the server and open it again.",
-            )
-            return False
-
-        except FileNotFoundError as e:
-            logger.exception("Packing list file not found")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "File Not Found", f"Packing list file not found:\n{e!s}"
-            )
-            return False
-
-        except json.JSONDecodeError as e:
-            logger.exception("Invalid JSON in packing list")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Invalid JSON", f"Packing list contains invalid JSON:\n{e!s}"
-            )
-            return False
-
-        except ValueError as e:
-            logger.exception("Invalid packing data")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Invalid Data", f"Packing list contains invalid data:\n{e!s}"
-            )
-            return False
-
-        except RuntimeError as e:
-            logger.exception("Failed to start session")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Session Start Failed", f"Failed to start packing session:\n{e!s}"
-            )
-            return False
-
         except Exception as e:
-            logger.exception("Unexpected error starting session")
+            # Every failed start is frame 3c, with its own sentence
+            # (gui.app_bridge.start_failure); no message box.
+            logger.exception("Session start failed")
             self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Error", f"Unexpected error starting packing session:\n{e!s}"
-            )
+            title, text = start_failure(e, packing_list_name)
+            self._show_start_failure(title, text, packing_list_name)
             return False
 
     def end_session(self):
@@ -2164,6 +2159,15 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._last_start = {
+            "client_id": client_id,
+            "packing_list_name": packing_list_name,
+            "session_path": session_path,
+            "packing_list_path": packing_list_path,
+            "work_dir": work_dir,
+            "resumed": resumed,
+        }
+
         # The browser is a page now, so there is no dialog to accept -- the
         # equivalent is going back to the page the work happens on.
         self.session_tabs.setCurrentIndex(PAGE_PACKING)
@@ -2194,10 +2198,10 @@ class MainWindow(QMainWindow):
                 # The usual way a packer first meets an outage: the work
                 # folder cannot be made on a share that has gone away.
                 logger.exception("Could not create the packing work directory")
-                QMessageBox.critical(
-                    self,
-                    "Session Error",
-                    f"Could not start packing {packing_list_name}:\n\n{e}",
+                self._show_start_failure(
+                    "Session could not be opened",
+                    f"The work folder for {packing_list_name} could not be made: {e}.",
+                    packing_list_name,
                 )
                 self.check_connection()
                 return
