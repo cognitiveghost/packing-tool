@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
 from gui.command_bar import PAGES, CommandBar
 from gui.components.connection_banner import ConnectionBanner
 from gui.components.sidebar import Sidebar
-from gui.packer_bridge import session_end_payload
+from gui.packer_bridge import order_label, session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
@@ -83,6 +83,7 @@ from shared.theme import (
     on_theme_changed,
     theme_notifier,
 )
+from shared.web_page import when_painted
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ RAIL_ITEMS = (
 )
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
+
+# How long a finished order stays on screen before Packer Mode resets.
+ORDER_CLEAR_MS = 3000
 
 # T1's three order states. All three are the system's reading of the packing
 # list, so none carries the solid mark -- F5's mark means a *packer declared*
@@ -290,6 +294,7 @@ class MainWindow(QMainWindow):
         self.current_session_path = None  # Path to current Shopify session
         self.current_packing_list = None  # Name of selected packing list
         self._progress_publisher = None  # ProgressPublisher for the open Shopify session
+        self._leaving_packer_mode = False  # see _leave_packer_mode()
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -1069,7 +1074,12 @@ class MainWindow(QMainWindow):
             return False
 
     def _on_lock_lost(self, work_dir: Path):
-        """Another PC holds this list's lock: stop writing, then leave it."""
+        """Another PC holds this list's lock: stop writing, then leave it.
+
+        In Packer Mode the page says so and blocks (frame 6j), and the session
+        is torn down when the packer exits. On any other page: teardown, then
+        a message box, as before.
+        """
         _locked, info = self.lock_manager.is_locked(work_dir)
         holder = (info or {}).get("locked_by") or "Another PC"
         list_name = getattr(self, "current_packing_list", None) or work_dir.name
@@ -1077,6 +1087,16 @@ class MainWindow(QMainWindow):
         self.logic.stop_writing()
         if self._progress_publisher is not None:
             self._progress_publisher.stop()
+        widget = self.packer_mode_widget
+        # Not while it is leaving: the panel would paint on a page about to be
+        # covered, and the packer would land on a dead session with no word.
+        if self.stacked_widget.currentWidget() is widget and not self._leaving_packer_mode:
+            # The lock is gone and stays gone: nothing left to renew, and a
+            # second report must not land on the panel.
+            if hasattr(self, "heartbeat_timer"):
+                self.heartbeat_timer.stop()
+            self.packer_mode_widget.show_takeover(holder, list_name)
+            return
         self._teardown_session()
         QMessageBox.critical(
             self,
@@ -1816,7 +1836,7 @@ class MainWindow(QMainWindow):
 
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
-            self.stacked_widget.setCurrentWidget(self.session_widget)
+            self._leave_packer_mode()
 
         logger.info("Session ended and all variables cleared")
 
@@ -1850,16 +1870,44 @@ class MainWindow(QMainWindow):
     def switch_to_packer_mode(self):
         """Switches the view to the Packer Mode widget."""
         self.stacked_widget.setCurrentWidget(self.packer_mode_widget)
+        self.packer_mode_widget.resume_scanner()
         self.packer_mode_widget.set_focus_to_scanner()
 
     def switch_to_session_view(self):
         """Switches the view back to the main session widget (tabbed interface)."""
+        if self.packer_mode_widget.taken_over:
+            # Another PC holds the list (frame 6j): there is no session left
+            # here to come back to.
+            self._teardown_session()
+            return
         if self.logic:
             self.logic.clear_current_order()
-        if self.packer_mode_widget:
-            self.packer_mode_widget.clear_screen()
-        self.stacked_widget.setCurrentWidget(self.session_widget)
+        self.packer_mode_widget.clear_screen()
+        self._leave_packer_mode()
         self._rebuild_order_tree_if_stale()
+
+    def _leave_packer_mode(self):
+        """Leave Packer Mode once its page has painted what it was last sent.
+
+        A hidden QWebEngineView keeps its last painted frame and shows it when
+        it comes back, until a new one is ready. So the frame it keeps must be
+        the cleared one: callers clear the page first, and this waits for the
+        page's report (150 ms at most). The scanner is paused meanwhile, so a
+        scan cannot open an order on a page about to be covered;
+        switch_to_packer_mode gives it back.
+        """
+        widget = self.packer_mode_widget
+
+        def switch():
+            self._leaving_packer_mode = False
+            self.stacked_widget.setCurrentWidget(self.session_widget)
+
+        if self.stacked_widget.currentWidget() is widget and widget.isVisible():
+            self._leaving_packer_mode = True
+            widget.pause_scanner()
+            when_painted(widget.bridge, switch)
+        else:
+            switch()
 
     def on_scanner_input(self, text: str, confirmation_method: str = "scanned"):
         """
@@ -1887,6 +1935,12 @@ class MainWindow(QMainWindow):
                     self.logic.current_order_state,
                     metadata=order_metadata,
                     sku_map=self.logic.sku_map,
+                )
+                count = len(items)
+                self.packer_mode_widget.show_notification(
+                    f"Order {order_label(order_number_from_scan)} · {count} "
+                    f"{'item' if count == 1 else 'items'}",
+                    "status_info",
                 )
                 completed = len(
                     self.logic.session_packing_state.get("completed_orders", [])
@@ -2020,8 +2074,7 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.update_session_progress(
                 completed, len(self.logic.orders_data)
             )
-        self.packer_mode_widget.scanner_input.setEnabled(False)
-        QTimer.singleShot(3000, self.packer_mode_widget.clear_screen)
+        self.packer_mode_widget.clear_screen_later(ORDER_CLEAR_MS)
         self._publish_progress()
 
     def _publish_progress(self):

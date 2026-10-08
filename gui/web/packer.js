@@ -1,7 +1,8 @@
-// Packer Mode's order document (Bundle 4). The page renders what the bridge
-// sends and decides nothing: item state and row actions are decided in
-// gui/packer_bridge.py. Spec:
-// docs/superpowers/specs/2026-09-18-phase10-bundle4-web-seam-design.md
+// Packer Mode's order document. The page renders what the bridge sends and
+// decides nothing: item state and row actions are decided in
+// gui/packer_bridge.py. Every string from the bridge goes in through
+// textContent. Spec:
+// docs/superpowers/specs/2026-10-08-ui-refresh-phase2-packer-mode-design.md
 "use strict";
 
 const els = {};
@@ -11,10 +12,25 @@ function onTheme() {
   els.themeVars.textContent = state.bridge.themeCss;
 }
 
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function button(label, action, kind) {
+  const btn = el("button", "btn compact " + kind, label);
+  btn.type = "button";
+  btn.dataset.action = action;
+  return btn;
+}
+
 function renderFeedback() {
   const fb = state.bridge.feedback || {};
   els.feedbackText.textContent = fb.text || "";
   els.feedbackRaw.textContent = fb.raw || "";
+  els.feedbackRawBox.hidden = !fb.raw;
   els.feedback.className = "feedback" + (fb.role ? " feedback--" + fb.role : "");
 }
 
@@ -26,100 +42,140 @@ function flash(role) {
   els.docMain.dataset.flash = role;
 }
 
-const CHIP = {
-  complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
-  partial: { text: "Partial", cls: "chip chip--warning chip--tint chip--hollow" },
-  pending: { text: "Pending", cls: "chip chip--neutral chip--hollow" },
-  unknown: { text: "No match", cls: "chip chip--danger chip--tint chip--hollow" },
+const BADGE = {
+  complete: { text: "Complete", cls: "badge success" },
+  partial: { text: "Partial", cls: "badge info" },
+  pending: { text: "Pending", cls: "badge neutral" },
 };
 
-function span(cls, text) {
-  const el = document.createElement("span");
-  el.className = cls;
-  el.textContent = text;
-  return el;
-}
-
 function orderLabel(order) {
-  // Same rule as packer_bridge.order_label, including the empty case --
-  // a bare "#" is not a label, and the two sides disagreeing is how one
-  // of them ships it.
+  // Same rule as packer_bridge.order_label, including the empty case.
   const text = String(order == null ? "" : order);
   if (!text) return "No order";
   return text.startsWith("#") ? text : "#" + text;
 }
 
-function actionButton(label, action, row, sku) {
-  const btn = document.createElement("button");
-  btn.className = "btn btn--ghost";
-  btn.type = "button";
-  btn.textContent = label;
-  btn.dataset.action = action;
-  btn.dataset.row = row;
-  btn.dataset.sku = sku;
+// One of a row's four fixed slots. `present` false: the act never applies to
+// this row, and the slot is kept empty so the columns line up. `enabled`
+// false: it does not apply right now.
+function slot(label, action, r, kind, present, enabled, title) {
+  const btn = button(label, action, kind);
+  btn.dataset.row = r.row;
+  btn.dataset.sku = r.sku;
+  btn.disabled = !present || !enabled;
+  if (!present) btn.dataset.absent = "";
+  else if (title) btn.title = title;
   return btn;
 }
 
-function rowEl(cls, cells, buttons) {
-  const row = document.createElement("div");
-  row.className = cls;
-  cells.forEach(function (cell) {
-    row.appendChild(span(cell[0], cell[1]));
-  });
-  const actions = document.createElement("span");
-  actions.className = "row-actions";
-  buttons.forEach(function (btn) {
-    actions.appendChild(btn);
-  });
+function itemRow(r) {
+  const row = el(
+    "div",
+    "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : "")
+  );
+  row.appendChild(el("span", "sku-row__sku", r.sku));
+  row.appendChild(el("span", "sku-row__product", r.product));
+  const qty = el("span", "sku-row__qty");
+  qty.appendChild(el("span", "sku-row__num", String(r.packed)));
+  qty.appendChild(el("span", "sku-row__of", "of " + r.required));
+  row.appendChild(qty);
+  const badge = BADGE[r.state] || BADGE.pending;
+  const status = el("span", "sku-row__status");
+  status.appendChild(el("span", badge.cls, badge.text));
+  row.appendChild(status);
+  const actions = el("span", "row-actions");
+  actions.appendChild(slot("Confirm", "confirm", r, "secondary", true, r.confirm, "Confirm one unit"));
+  actions.appendChild(
+    slot("Force confirm", "force", r, "secondary", r.force_slot, r.force, "Confirm all remaining units")
+  );
+  actions.appendChild(slot("Undo", "undo", r, "ghost", true, r.undo, "Take one back"));
+  actions.appendChild(slot("Map SKU", "map", r, "ghost", r.map, true, ""));
   row.appendChild(actions);
   return row;
 }
 
+function unknownRow(r) {
+  const row = el("div", "sku-row sku-row--unknown");
+  row.appendChild(el("span", "badge danger", "No match"));
+  row.appendChild(el("span", "sku-row__code", r.sku));
+  row.appendChild(el("span", "sku-row__why", "Not a SKU or barcode this client knows"));
+  const btn = button("Map barcode…", "mapBarcode", "secondary");
+  btn.dataset.sku = r.sku;
+  row.appendChild(btn);
+  return row;
+}
+
+// The card says "No order open" until it has a row of any kind.
+function syncList() {
+  const empty =
+    els.skuList.children.length === 0 &&
+    els.unmatched.children.length === 0 &&
+    els.extras.hidden;
+  els.listEmpty.hidden = !empty;
+  els.listHead.hidden = empty;
+  els.listScroll.hidden = empty;
+}
+
 function renderItems() {
+  // Unmatched scans ride in the same property with state "unknown"; they are
+  // drawn under the extras, not among the items.
   const rows = state.bridge.items || [];
   els.skuList.textContent = "";
-  els.skuList.hidden = rows.length === 0;
+  els.unmatched.textContent = "";
   let changed = null;
   rows.forEach(function (r) {
-    const chip = CHIP[r.state] || CHIP.pending;
-    const buttons = [];
-    // Label "Force", not "Force confirm": three buttons have to share the
-    // row's 190px actions slot (spec S2).
-    if (r.confirm) buttons.push(actionButton("Confirm", "confirm", r.row, r.sku));
-    if (r.undo) buttons.push(actionButton("Undo", "undo", r.row, r.sku));
-    if (r.force) buttons.push(actionButton("Force", "force", r.row, r.sku));
-    if (r.map) buttons.push(actionButton("Map SKU", "map", r.row, r.sku));
-    if (r.mapBarcode) buttons.push(actionButton("Map SKU", "mapBarcode", r.row, r.sku));
-    const row = rowEl(
-      "sku-row sku-row--" + r.state + (r.just_changed ? " sku-row--just-changed" : ""),
-      [
-        ["sku-row__product", r.product],
-        ["sku-row__sku", r.sku],
-        [
-          "sku-row__qty" + (r.multi ? " sku-row__qty--multi" : ""),
-          r.state === "unknown" ? "—" : r.packed + " / " + r.required,
-        ],
-        [chip.cls, chip.text],
-      ],
-      buttons
-    );
+    if (r.state === "unknown") {
+      els.unmatched.appendChild(unknownRow(r));
+      return;
+    }
+    const row = itemRow(r);
     if (r.just_changed) changed = row;
     els.skuList.appendChild(row);
   });
+  els.skuList.hidden = els.skuList.children.length === 0;
+  syncList();
   if (changed) changed.scrollIntoView({ block: "nearest" });
 }
 
+function renderExtras() {
+  const rows = state.bridge.extras || [];
+  els.extrasRows.textContent = "";
+  els.extras.hidden = rows.length === 0;
+  rows.forEach(function (r) {
+    // An extra is a normalised SKU and a count: there is no product name.
+    const row = el("div", "extras-row");
+    row.appendChild(el("span", "sku-row__sku", r.sku));
+    row.appendChild(el("span", "sku-row__product", ""));
+    const qty = el("span", "sku-row__qty");
+    qty.appendChild(el("span", "sku-row__num", "× " + r.count));
+    row.appendChild(qty);
+    const status = el("span", "sku-row__status");
+    status.appendChild(el("span", "badge warning", "Extra"));
+    row.appendChild(status);
+    const actions = el("span", "row-actions");
+    ["keep", "remove"].forEach(function (action) {
+      const btn = button(action === "keep" ? "Keep" : "Remove", action, "secondary");
+      btn.dataset.sku = r.sku;
+      actions.appendChild(btn);
+    });
+    row.appendChild(actions);
+    els.extrasRows.appendChild(row);
+  });
+  syncList();
+}
+
 function renderBanner() {
+  // The order number itself is in the Qt bar above the page.
   const b = state.bridge.banner || {};
   const chips = b.chips || [];
-  els.banner.textContent = "";
-  els.banner.hidden = !b.order && chips.length === 0 && !b.notes && !b.repeat;
-  if (b.order) els.banner.appendChild(span("doc-banner-order", orderLabel(b.order)));
-  if (b.repeat) els.banner.appendChild(span("chip chip--warning", "Repeat"));
+  els.bannerChips.textContent = "";
   chips.forEach(function (c) {
-    els.banner.appendChild(span("doc-banner-tag", c));
+    els.bannerChips.appendChild(el("span", "badge neutral", c));
   });
-  if (b.notes) els.banner.appendChild(span("doc-banner-notes", b.notes));
+  els.bannerNotesText.textContent = b.notes || "";
+  els.bannerNotes.hidden = !b.notes;
+  els.bannerRepeat.hidden = !b.repeat;
+  els.banner.hidden = chips.length === 0 && !b.notes && !b.repeat;
 }
 
 function renderProgress() {
@@ -135,49 +191,26 @@ function renderProgress() {
   els.summarySkus.textContent = (p.skus_packed || 0) + " / " + (p.skus_total || 0);
 }
 
-function renderExtras() {
-  const rows = state.bridge.extras || [];
-  els.extrasRows.textContent = "";
-  els.extras.hidden = rows.length === 0;
-  rows.forEach(function (r) {
-    // The extras row reuses the SKU row's grid, but there is no product name
-    // for a scan the order does not contain -- current_extra_items is
-    // normalised-SKU-to-count. So the SKU spans the product and SKU tracks
-    // (see .extras-row .sku-row__sku) and the status cell stays empty (P6).
-    els.extrasRows.appendChild(
-      rowEl(
-        "extras-row",
-        [["sku-row__sku", r.sku], ["sku-row__qty", "× " + r.count], ["", ""]],
-        [
-          actionButton("Keep", "keep", -1, r.sku),
-          actionButton("Remove", "remove", -1, r.sku),
-        ]
-      )
-    );
-  });
-}
-
-const HISTORY_CHIP = {
-  complete: { text: "Complete", cls: "chip chip--success chip--hollow" },
-  skipped: { text: "Skipped", cls: "chip chip--danger" },
-};
-
 function renderHistory() {
   const rows = state.bridge.history || [];
   els.historyRows.textContent = "";
   if (rows.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "history-row";
-    empty.appendChild(span("history-row__order", "No orders yet"));
+    const empty = el("div", "history-row");
+    empty.appendChild(el("span", "history-row__order side-empty", "No orders yet"));
     els.historyRows.appendChild(empty);
     return;
   }
   rows.forEach(function (r) {
-    const row = document.createElement("div");
-    row.className = "history-row";
-    row.appendChild(span("history-row__order", orderLabel(r.order)));
-    const chip = HISTORY_CHIP[r.status] || HISTORY_CHIP.complete;
-    row.appendChild(span(chip.cls, chip.text));
+    const skipped = r.status === "skipped";
+    const row = el("div", "history-row");
+    row.appendChild(el("span", "history-row__order", orderLabel(r.order)));
+    row.appendChild(
+      el(
+        "span",
+        "history-row__status" + (skipped ? " history-row__status--skipped" : ""),
+        skipped ? "Skipped" : "Packed"
+      )
+    );
     els.historyRows.appendChild(row);
   });
 }
@@ -186,32 +219,51 @@ function renderRollup() {
   const rows = state.bridge.skuRollup || [];
   els.rollupRows.textContent = "";
   if (rows.length === 0) {
-    els.rollupRows.appendChild(span("rollup-row__sku", "No items yet"));
+    els.rollupRows.appendChild(el("span", "side-empty", "No order open"));
     return;
   }
   rows.forEach(function (r) {
-    const row = document.createElement("div");
-    row.className = "rollup-row";
-    row.appendChild(span("rollup-row__sku", r.sku));
-    row.appendChild(span("rollup-row__qty", r.packed + " / " + r.required));
-    const chip = CHIP[r.state] || CHIP.pending;
-    row.appendChild(span(chip.cls, chip.text));
+    const row = el("div", "rollup-row");
+    row.appendChild(el("span", "dot dot--" + r.state));
+    row.appendChild(el("span", "rollup-row__sku", r.sku));
+    row.appendChild(el("span", "rollup-row__qty", r.packed + " / " + r.required));
     els.rollupRows.appendChild(row);
   });
 }
 
 function renderSessionEnd() {
   const s = state.bridge.sessionEnd || {};
-  const over = Boolean(s.title);
   // One class decides the whole swap; CSS hides the regions the panel
   // replaces, so there is no per-region bookkeeping to get out of step.
-  els.docMain.classList.toggle("doc-state", over);
+  els.docMain.classList.toggle("doc-state", Boolean(s.title));
   els.stateTitle.textContent = s.title || "";
   els.stateBody.textContent = s.body || "";
 }
 
-// One entry per action a row can offer. Both listeners share it, so a new
-// action is one line here rather than a branch in each cascade.
+function renderUnsaved() {
+  els.unsaved.hidden = !state.bridge.unsaved;
+}
+
+function renderQuestion() {
+  const q = state.bridge.question || {};
+  const open = q.sku !== undefined;
+  els.question.hidden = !open;
+  els.questionSku.textContent = open ? q.sku : "";
+  els.questionRemaining.textContent = open ? String(q.remaining) : "";
+  els.questionRest.textContent = open
+    ? " of " + q.required + " × " + q.product +
+      " as packed without scanning. This cannot be undone."
+    : "";
+}
+
+function renderTakeover() {
+  const t = state.bridge.takeover || {};
+  els.takeover.hidden = !t.holder;
+  els.takeoverHolder.textContent = t.holder || "";
+  els.takeoverList.textContent = t.list || "";
+}
+
+// One entry per action a button can ask for.
 const ACTIONS = {
   confirm: function (btn, bridge) { bridge.confirmItem(Number(btn.dataset.row)); },
   undo: function (btn, bridge) { bridge.undoItem(Number(btn.dataset.row)); },
@@ -222,13 +274,33 @@ const ACTIONS = {
   remove: function (btn, bridge) { bridge.removeExtra(btn.dataset.sku); },
   endSession: function (btn, bridge) { bridge.endSession(); },
   exitPacking: function (btn, bridge) { bridge.exitPacking(); },
+  answerYes: function (btn, bridge) { bridge.answerQuestion(true); },
+  answerNo: function (btn, bridge) { bridge.answerQuestion(false); },
 };
 
 function onActionClick(event) {
   const btn = event.target.closest("[data-action]");
-  const run = btn && ACTIONS[btn.dataset.action];
+  if (!btn || btn.disabled) return;
+  const run = ACTIONS[btn.dataset.action];
   if (run) run(btn, state.bridge);
 }
+
+const IDS = {
+  themeVars: "theme-vars", root: "pm", docMain: "doc-main",
+  feedback: "feedback", feedbackText: "feedback-text",
+  feedbackRaw: "feedback-raw", feedbackRawBox: "feedback-raw-box",
+  banner: "banner", bannerChips: "banner-chips", bannerNotes: "banner-notes",
+  bannerNotesText: "banner-notes-text", bannerRepeat: "banner-repeat",
+  listEmpty: "list-empty", listHead: "list-head", listScroll: "list-scroll",
+  skuList: "sku-list", extras: "extras", extrasRows: "extras-rows",
+  unmatched: "unmatched-rows",
+  progressFill: "progress-fill", progressNumbers: "progress-numbers",
+  summarySkus: "summary-skus", historyRows: "history-rows", rollupRows: "rollup-rows",
+  stateTitle: "state-title", stateBody: "state-body", unsaved: "unsaved",
+  question: "question", questionSku: "question-sku",
+  questionRemaining: "question-remaining", questionRest: "question-rest",
+  takeover: "takeover", takeoverHolder: "takeover-holder", takeoverList: "takeover-list",
+};
 
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
@@ -236,50 +308,40 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   // The test harness drives the page through this handle; nothing in the
   // page reads it.
   window.packerBridge = bridge;
-  els.themeVars = document.getElementById("theme-vars");
-  els.docMain = document.getElementById("doc-main");
-  els.feedback = document.getElementById("feedback");
-  els.feedbackText = document.getElementById("feedback-text");
-  els.feedbackRaw = document.getElementById("feedback-raw");
-  els.skuList = document.getElementById("sku-list");
-  els.banner = document.getElementById("banner");
-  els.progressFill = document.getElementById("progress-fill");
-  els.progressNumbers = document.getElementById("progress-numbers");
-  els.summarySkus = document.getElementById("summary-skus");
-  els.historyRows = document.getElementById("history-rows");
-  els.rollupRows = document.getElementById("rollup-rows");
-  els.extras = document.getElementById("extras");
-  els.extrasRows = document.getElementById("extras-rows");
-  els.stateTitle = document.getElementById("state-title");
-  els.stateBody = document.getElementById("state-body");
+  Object.keys(IDS).forEach(function (key) {
+    els[key] = document.getElementById(IDS[key]);
+  });
+
+  const renders = [
+    [bridge.feedbackChanged, renderFeedback],
+    [bridge.itemsChanged, renderItems],
+    [bridge.extrasChanged, renderExtras],
+    [bridge.bannerChanged, renderBanner],
+    [bridge.progressChanged, renderProgress],
+    [bridge.historyChanged, renderHistory],
+    [bridge.skuRollupChanged, renderRollup],
+    [bridge.sessionEndChanged, renderSessionEnd],
+    [bridge.unsavedChanged, renderUnsaved],
+    [bridge.questionChanged, renderQuestion],
+    [bridge.takeoverChanged, renderTakeover],
+  ];
 
   onTheme();
   bridge.themeCssChanged.connect(onTheme);
-  bridge.feedbackChanged.connect(renderFeedback);
   bridge.scanFlashed.connect(flash);
-  bridge.itemsChanged.connect(renderItems);
-  bridge.bannerChanged.connect(renderBanner);
-  bridge.progressChanged.connect(renderProgress);
-  bridge.historyChanged.connect(renderHistory);
-  bridge.skuRollupChanged.connect(renderRollup);
-  bridge.extrasChanged.connect(renderExtras);
-  bridge.sessionEndChanged.connect(renderSessionEnd);
+  renders.forEach(function (pair) {
+    pair[0].connect(pair[1]);
+    pair[1]();
+  });
+  // The flash frame's animation ends on a child; the event bubbles here.
   els.docMain.addEventListener("animationend", function () {
     delete els.docMain.dataset.flash;
   });
-  // Delegated from doc-main, not each region: the state panel's buttons live
-  // outside sku-list and extras-rows, and one listener at the shared ancestor
-  // covers all three without double-firing on a click that bubbles through
-  // more than one of them.
-  els.docMain.addEventListener("click", onActionClick);
+  // One listener at the root: the row buttons, the panel's buttons and the
+  // two taking-over panels are all under it.
+  els.root.addEventListener("click", onActionClick);
 
-  renderFeedback();
-  renderItems();
-  renderBanner();
-  renderProgress();
-  renderHistory();
-  renderRollup();
-  renderExtras();
-  renderSessionEnd();
+  // After the first renders, so the first report is of a drawn page.
+  reportPaints(bridge);
   document.documentElement.dataset.bridge = "ready";
 });

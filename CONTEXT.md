@@ -2,15 +2,15 @@
 
 **Packer Mode** — the full-screen packing flow: scan an order barcode, then scan each item until the order is complete.
 
-**Order document** — the web-rendered part of Packer Mode: metadata banner, scan feedback, SKU list, extras, history, summary and session progress.
+**Order document** — the web-rendered part of Packer Mode: the order card, the feedback band, the SKU list with its extras and unmatched scans, the side column (session progress, history, items by SKU, summary), the unsaved banner, and the two panels that take the page over (the Force confirm question, and "This list is open on another PC").
 
 **Qt chrome** — the Qt part of Packer Mode around the order document: scanner capture, Skip order, Exit packing, dev scan simulator.
 
 **Packer bridge** — the one `QWebChannel` object the order document talks to. State Python owns crosses as a notify property; what the page reports crosses as a slot.
 
-**Feedback band** — the order document's outcome row: what the last scan did, in its status colour, with the raw scanned text beside it.
+**Feedback band** — the order document's outcome row: what the last scan did, as one large sentence on a solid fill in its status colour, with the raw scanned text beside it. The unsaved warning is a banner above it, not part of it.
 
-**Scan flash** — the brief colour pulse on the order document's column edge that makes a scan's outcome visible from across the floor.
+**Scan flash** — the brief colour pulse on a 10px frame around the order document's main column that makes a scan's outcome visible from across the floor.
 
 **Item state** — an order item's packing state: *pending* (nothing packed), *partial* (some of the required quantity packed), *complete* (all of it).
 
@@ -22,7 +22,7 @@
 
 **Manual confirm** — marking one unit of an item packed from its row, without a scan (`confirmation_method` *manual*).
 
-**Force confirm** — marking the rest of an item's quantity packed at once, without a scan (*force_confirmed*; shown as *forced*). The summary's `total_manual_confirms` counts both.
+**Force confirm** — marking the rest of an item's quantity packed at once, without a scan (*force_confirmed*; shown as *forced*). Offered only on lines over 5 units. The order document asks first, with the scanner off until the packer answers; it cannot be undone. The summary's `total_manual_confirms` counts both.
 
 **Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
 
@@ -39,6 +39,8 @@
 **Toast** — a transient, non-blocking message at the window's bottom right for an outcome that needs no decision; failures use a dialog instead.
 
 **Floor density** — the density profile for warehouse use: 44px controls, 12pt body, 60px command bar.
+
+**Floor web kit** — `gui/web/floor.css`: floor density for web pages, loaded between `shared/web/kit.css` and a page's own sheet. It holds sizes and shared parts (buttons, badges, the banner, the scrim and dialog), never a page's layout.
 
 **Artboard** — a static HTML drawing of a screen under `docs/design/`; once the owner approves it, it is the brief the implementation follows.
 

@@ -3,53 +3,113 @@
 <head>
 <meta charset="utf-8">
 <title>Packer Mode</title>
-<!-- gui/packer_bridge.py writes theme_css_vars() over the marker before the
-     page loads, then packer.js keeps it current from the bridge. -->
+<!-- shared/web_page.mount_page writes theme_css_vars() over the marker in the
+     style element below before the page loads; packer.js keeps it current. -->
 <style id="theme-vars">/* theme-vars */</style>
+<link rel="stylesheet" href="../../shared/web/kit.css">
+<link rel="stylesheet" href="floor.css">
 <link rel="stylesheet" href="packer.css">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="../../shared/web/page.js"></script>
 <script src="packer.js" defer></script>
 </head>
 <body>
-<div class="doc">
+<!-- No input, textarea, select or contenteditable on this page, ever: the
+     scanner types into a Qt field and this view never takes the keyboard
+     (ADR 0001). -->
+<div class="pm" id="pm">
   <div class="doc-main" id="doc-main">
-    <div class="doc-banner" id="banner" hidden></div>
-    <div class="feedback" id="feedback">
+    <div class="pm-flash" id="flash"></div>
+
+    <div class="banner danger" id="unsaved" hidden>
+      <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span class="banner-title">Progress not saved — check the network</span>
+      <span class="banner-text">Scanning continues</span>
+    </div>
+
+    <div class="card pm-order" id="banner" hidden>
+      <span class="pm-order-chips" id="banner-chips"></span>
+      <span class="doc-banner-notes" id="banner-notes" hidden>
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span id="banner-notes-text"></span>
+      </span>
+      <span class="badge warning" id="banner-repeat" hidden>Repeat</span>
+    </div>
+
+    <div class="feedback feedback--info" id="feedback">
       <span class="feedback__text" id="feedback-text">Scan an order barcode</span>
-      <span class="feedback__raw" id="feedback-raw"></span>
+      <span class="feedback__raw" id="feedback-raw-box" hidden>
+        <span class="feedback__raw-label">Scanned</span>
+        <span class="feedback__raw-code" id="feedback-raw"></span>
+      </span>
     </div>
-    <div class="extras" id="extras" hidden>
-      <div class="extras-title">Extra items scanned</div>
-      <div id="extras-rows"></div>
+
+    <div class="card pm-list" id="list">
+      <div class="pm-empty" id="list-empty">No order open</div>
+      <div class="pm-head" id="list-head" hidden><span>SKU</span><span>Product</span><span>Packed</span><span>Status</span><span></span></div>
+      <div class="pm-rows" id="list-scroll" hidden>
+        <div id="sku-list" hidden></div>
+        <div id="extras" hidden>
+          <div class="pm-extras-title">Extra items scanned</div>
+          <div id="extras-rows"></div>
+        </div>
+        <div id="unmatched-rows"></div>
+      </div>
     </div>
-    <div class="sku-list" id="sku-list" hidden></div>
-    <div class="state-panel" id="state-panel">
+
+    <div class="card state-panel" id="state-panel">
+      <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
       <p class="state-panel-title" id="state-title"></p>
       <p class="state-panel-body" id="state-body"></p>
       <div class="state-panel-actions">
-        <button class="btn btn--primary" type="button" data-action="endSession">End session</button>
-        <button class="btn" type="button" data-action="exitPacking">Exit packing</button>
+        <button class="btn primary" type="button" data-action="endSession">End session</button>
+        <button class="btn secondary" type="button" data-action="exitPacking">Exit packing</button>
       </div>
     </div>
   </div>
-  <div class="side">
+
+  <aside class="side">
     <div class="side-block">
       <div class="side-block-title">Session progress</div>
       <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="progress-numbers" id="progress-numbers">0 / 0 orders &middot; 0 / 0 items</div>
     </div>
-    <div class="side-block history">
+    <div class="side-block">
       <div class="side-block-title">History</div>
-      <div id="history-rows"><div class="history-row"><span class="history-row__order">No orders yet</span></div></div>
+      <div class="history" id="history-rows"></div>
     </div>
     <div class="side-block">
       <div class="side-block-title">Items by SKU</div>
-      <div class="rollup" id="rollup-rows"></div>
+      <div id="rollup-rows"></div>
     </div>
     <div class="side-block">
       <div class="side-block-title">Summary</div>
       <div class="summary-line"><span>Unique SKUs packed</span><strong id="summary-skus">0 / 0</strong></div>
     </div>
+  </aside>
+
+  <div class="scrim" id="question" hidden>
+    <section class="dialog">
+      <p class="dialog-title"><span>Force confirm <span class="mono" id="question-sku"></span>?</span></p>
+      <p class="dialog-text">Marks the remaining <strong id="question-remaining"></strong><span id="question-rest"></span></p>
+      <div class="dialog-actions">
+        <button class="btn secondary" type="button" data-action="answerNo">Cancel</button>
+        <button class="btn critical" type="button" data-action="answerYes">Force confirm</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="scrim" id="takeover" hidden>
+    <section class="dialog danger">
+      <p class="dialog-title">
+        <svg class="glyph" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+        This list is open on another PC
+      </p>
+      <p class="dialog-text"><strong id="takeover-holder"></strong> has taken over <span class="mono" id="takeover-list"></span>. This PC has stopped packing it so the two don't overwrite each other's progress. Orders packed here up to now are saved.</p>
+      <div class="dialog-actions">
+        <button class="btn primary" type="button" data-action="exitPacking">Exit packing</button>
+      </div>
+    </section>
   </div>
 </div>
 </body>

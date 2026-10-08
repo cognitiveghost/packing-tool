@@ -3,7 +3,7 @@
 Spec: docs/superpowers/specs/2026-09-18-phase10-bundle4-web-seam-design.md
 """
 
-from gui.packer_bridge import item_rows
+from gui.packer_bridge import force_question, item_rows, unknown_rows
 
 ITEMS = [
     {"SKU": "TS-4409-B", "Product_Name": "Wireless Mouse", "Quantity": 3},
@@ -203,18 +203,35 @@ def test_a_state_entry_with_no_required_falls_back_to_the_packing_list():
     assert rows[0]["required"] == 3
 
 
-def test_multi_flags_a_line_that_needs_more_than_one_scan():
-    rows = item_rows(ITEMS, _state(0, 2, 8), {})
-    # Desk Lamp is 2/2 and Laptop Stand 8/8 -- done, so the cue is spent.
-    assert [r["multi"] for r in rows] == [True, False, False]
+def test_force_has_a_slot_only_above_the_threshold():
+    rows = item_rows(
+        [{"SKU": "A", "Quantity": 5}, {"SKU": "B", "Quantity": 6}],
+        [{"row": 1, "packed": 6, "required": 6}],
+        {},
+    )
+    # A 5-unit line never offers Force. A finished 6-unit line keeps the slot
+    # and loses the act.
+    assert [(r["force_slot"], r["force"]) for r in rows] == [(False, False), (True, False)]
 
 
-def test_a_single_unit_line_is_never_multi():
-    rows = item_rows([{"SKU": "A", "Product_Name": "A", "Quantity": 1}], [], {})
-    assert rows[0]["multi"] is False
+def test_no_row_carries_the_old_multi_flag():
+    assert "multi" not in item_rows([{"SKU": "A", "Quantity": 3}], [], {})[0]
+    assert "multi" not in unknown_rows(["4006381333931"])[0]
 
 
-from gui.packer_bridge import unknown_rows
+def test_the_force_question_counts_what_is_left():
+    row = item_rows(
+        [{"SKU": "SPF-50", "Product_Name": "Sunscreen SPF 50", "Quantity": 8}],
+        [{"row": 0, "packed": 3, "required": 8}],
+        {},
+    )[0]
+    assert force_question(row) == {
+        "row": 0,
+        "sku": "SPF-50",
+        "product": "Sunscreen SPF 50",
+        "remaining": 5,
+        "required": 8,
+    }
 
 
 def test_an_unmatched_scan_becomes_a_row_that_offers_only_mapping():

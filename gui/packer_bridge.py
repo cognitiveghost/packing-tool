@@ -11,18 +11,18 @@ action rules are testable without a browser. They are the only place that
 decides an item's state; packer.js renders what they say.
 
 Spec: docs/superpowers/specs/2026-09-18-phase10-bundle4-web-seam-design.md
+UI refresh phase 2: docs/superpowers/specs/2026-10-08-ui-refresh-phase2-packer-mode-design.md
 """
 
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
-from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtCore import Property, Qt, Signal, Slot
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from gui.theme import current_tokens
 from packing_tool.packer_logic import normalize_sku
-from shared.theme import on_theme_changed, theme_css_vars
+from shared.web_page import PageBridge, mount_page
 
 # Force confirm is for quantities nobody wants to scan one at a time. Below
 # this it is a foot-gun with no upside, and today's UI already hides it.
@@ -77,7 +77,9 @@ def item_rows(
                 "undo": packed > 0,
                 "force": required > FORCE_CONFIRM_MIN_QTY and packed < required,
                 "map": normalize_sku(sku) not in mapped,
-                "multi": required > 1 and packed < required,
+                # Whether Force confirm has a slot on this row at all. `force`
+                # says whether it can be pressed now.
+                "force_slot": required > FORCE_CONFIRM_MIN_QTY,
                 "mapBarcode": False,
             }
         )
@@ -107,7 +109,7 @@ def unknown_rows(scans: list[str]) -> list[dict[str, Any]]:
             "packed": 0,
             "state": "unknown",
             "just_changed": False,
-            "multi": False,
+            "force_slot": False,
             "confirm": False,
             "undo": False,
             "force": False,
@@ -247,6 +249,17 @@ def session_end_payload(
 # document speaks in status roles, so the translation lives here rather than in
 # a dict on MainWindow. An unknown word raises: a silently-passed-through value
 # would emit a role no CSS rule matches.
+def force_question(row: dict[str, Any]) -> dict[str, Any]:
+    """What the Force confirm question says about one of item_rows()' rows."""
+    return {
+        "row": row["row"],
+        "sku": row["sku"],
+        "product": row["product"],
+        "remaining": row["required"] - row["packed"],
+        "required": row["required"],
+    }
+
+
 _FLASH_ROLES = {"green": "success", "orange": "warning", "red": "danger"}
 
 
@@ -257,14 +270,17 @@ def flash_role(color: str) -> str:
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 PAGE = WEB_DIR / "packer.html"
-THEME_MARKER = "/* theme-vars */"
 CHANNEL_NAME = "packer"
 
 
-class PackerBridge(QObject):
-    """The order document's one channel object."""
+class PackerBridge(PageBridge):
+    """The order document's one channel object.
 
-    themeCssChanged = Signal()
+    The theme, the revision and the painted report come from PageBridge
+    (shared/web_page.py). Every notify property declared here raises the
+    revision on its own.
+    """
+
     bannerChanged = Signal()
     feedbackChanged = Signal()
     itemsChanged = Signal()
@@ -273,6 +289,9 @@ class PackerBridge(QObject):
     historyChanged = Signal()
     progressChanged = Signal()
     sessionEndChanged = Signal()
+    unsavedChanged = Signal()
+    questionChanged = Signal()
+    takeoverChanged = Signal()
     # JS-facing: the scan cue (S4). The page draws it; Qt has no element left
     # on this screen to flash.
     scanFlashed = Signal(str)
@@ -287,10 +306,10 @@ class PackerBridge(QObject):
     endSessionRequested = Signal()
     exitPackingRequested = Signal()
     mapBarcodeRequested = Signal(str)
+    questionAnswered = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._theme_css = ""
         self._banner: dict = {}
         self._feedback: dict = {"text": "", "role": "", "raw": ""}
         self._items: list = []
@@ -299,13 +318,11 @@ class PackerBridge(QObject):
         self._history: list = []
         self._progress: dict = {}
         self._session_end: dict = {}
+        self._unsaved = False
+        self._question: dict = {}
+        self._takeover: dict = {}
 
     # --- out: Python -> JS -------------------------------------------------
-
-    def _get_theme_css(self) -> str:
-        return self._theme_css
-
-    themeCss = Property(str, _get_theme_css, notify=themeCssChanged)
 
     def _get_banner(self) -> dict:
         return self._banner
@@ -350,6 +367,24 @@ class PackerBridge(QObject):
     # items list, because waiting for the next order looks exactly the same.
     sessionEnd = Property("QVariantMap", _get_session_end, notify=sessionEndChanged)
 
+    def _get_unsaved(self) -> bool:
+        return self._unsaved
+
+    # State writes are failing (frame 6i).
+    unsaved = Property(bool, _get_unsaved, notify=unsavedChanged)
+
+    def _get_question(self) -> dict:
+        return self._question
+
+    # The open Force confirm question, force_question()'s payload; {} for none.
+    question = Property("QVariantMap", _get_question, notify=questionChanged)
+
+    def _get_takeover(self) -> dict:
+        return self._takeover
+
+    # Another PC holds the list: {"holder", "list"}; {} when this PC does.
+    takeover = Property("QVariantMap", _get_takeover, notify=takeoverChanged)
+
     # --- in: JS -> Python --------------------------------------------------
 
     @Slot(int)
@@ -388,12 +423,11 @@ class PackerBridge(QObject):
     def exitPacking(self) -> None:
         self.exitPackingRequested.emit()
 
-    # --- Python-facing API -------------------------------------------------
+    @Slot(bool)
+    def answerQuestion(self, confirmed) -> None:
+        self.questionAnswered.emit(bool(confirmed))
 
-    def set_theme_css(self, css: str) -> None:
-        if css != self._theme_css:
-            self._theme_css = css
-            self.themeCssChanged.emit()
+    # --- Python-facing API -------------------------------------------------
 
     def set_banner(self, payload: dict) -> None:
         self._banner = dict(payload or {})
@@ -430,6 +464,18 @@ class PackerBridge(QObject):
         self._session_end = dict(payload or {})
         self.sessionEndChanged.emit()
 
+    def set_unsaved(self, unsaved: bool) -> None:
+        self._unsaved = bool(unsaved)
+        self.unsavedChanged.emit()
+
+    def set_question(self, payload: dict) -> None:
+        self._question = dict(payload or {})
+        self.questionChanged.emit()
+
+    def set_takeover(self, payload: dict) -> None:
+        self._takeover = dict(payload or {})
+        self.takeoverChanged.emit()
+
 
 def deny_focus(view: QWebEngineView) -> None:
     """Take the keyboard away from the view and from its focus proxy.
@@ -449,32 +495,16 @@ def deny_focus(view: QWebEngineView) -> None:
 def mount_packer_page(view: QWebEngineView) -> PackerBridge:
     """Load the order document into `view` and return the bridge it talks to.
 
-    The theme is written into the page before it loads, so the first paint is
-    already themed, then pushed through the bridge on every theme or density
-    change, so the document repaints without a reload. Both the bridge and the
-    channel are parented to `view` and die with it.
+    shared.web_page.mount_page writes the theme into the page before it loads,
+    keeps it current, and loads the page again if its render process dies. The
+    bridge is parented to `view` and dies with it.
 
     The view never takes keyboard focus (ADR 0001's scanner invariant); see
-    deny_focus().
+    deny_focus(). The focus proxy is created lazily with each loaded document,
+    a reloaded one included, so it is denied again every time a load finishes.
     """
     bridge = PackerBridge(view)
-    channel = QWebChannel(view)
-    channel.registerObject(CHANNEL_NAME, bridge)
-    view.page().setWebChannel(channel)
-
     deny_focus(view)
-
-    def _push_theme(_tokens) -> None:
-        # gui.theme's tokens, not the argument: only those carry the bundled
-        # Inter family the Qt tier renders in.
-        bridge.set_theme_css(theme_css_vars(current_tokens()))
-
-    on_theme_changed(view, _push_theme)  # runs once now, then on every change
-
-    html = PAGE.read_text(encoding="utf-8").replace(THEME_MARKER, bridge.themeCss)
-    view.setHtml(html, QUrl.fromLocalFile(str(WEB_DIR) + "/"))
-    # The focus proxy is created lazily -- often only once the view is shown
-    # and the page has actually loaded -- so the call above can run before it
-    # exists. Re-assert once loading finishes to catch that proxy too.
+    mount_page(view, bridge, PAGE, CHANNEL_NAME, tokens=current_tokens)
     view.page().loadFinished.connect(lambda _ok: deny_focus(view))
     return bridge

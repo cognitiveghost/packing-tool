@@ -2,10 +2,9 @@ import logging
 import os
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -14,24 +13,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.command_bar import BAR_HEIGHT, bar_css
+from gui.command_bar import BAR_HEIGHT, CONTROL_HEIGHT, bar_css
 from gui.packer_bridge import (
     banner_payload,
     flash_role,
+    force_question,
     item_rows,
     order_label,
     sku_rollup,
     summary_lines,
     unknown_rows,
 )
-from shared.components.confirm_dialog import ConfirmDialog
+from gui.theme import current_tokens
 from shared.theme import font_css, on_theme_changed
 
 logger = logging.getLogger(__name__)
 
 SCANNER_WIDTH = 280
 SIM_INPUT_WIDTH = 160
-UNSAVED_TEXT = "Progress not saved — check the network"
+# Mockup frame 6b. The type scale has no rung between 17 and 28pt.
+ORDER_NUMBER_PT = 24
 
 
 class PackerModeWidget(QWidget):
@@ -91,12 +92,22 @@ class PackerModeWidget(QWidget):
         self._items = []
         self._rows = []
         self._unknown = []
-        self._session_over = False
         self._sku_map = {}
         self._orders_done = 0
         self._orders_total = 0
         self._history = []
         self._unsaved = False
+        # Why the scanner is off, when it is: see _sync_scanner().
+        self._order_open = False
+        self._session_over = False
+        self._taken_over = False
+        self._paused = False
+        self._question: dict = {}
+        # The reset that follows a finished order. Here, not in MainWindow:
+        # showing an order and clearing the screen are what it races with.
+        self._clear_timer = QTimer(self)
+        self._clear_timer.setSingleShot(True)
+        self._clear_timer.timeout.connect(self.clear_screen)
 
         from gui.packer_bridge import mount_packer_page
 
@@ -112,6 +123,7 @@ class PackerModeWidget(QWidget):
         self.bridge.mapBarcodeRequested.connect(self._on_map_barcode)
         self.bridge.endSessionRequested.connect(self.end_session_requested.emit)
         self.bridge.exitPackingRequested.connect(self.exit_packing_mode.emit)
+        self.bridge.questionAnswered.connect(self._on_question_answered)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -129,19 +141,27 @@ class PackerModeWidget(QWidget):
         bar.setSpacing(8)
 
         self._order_label = QLabel("No order")
-        self._order_label.setObjectName("cmdbarSession")
+        self._order_label.setObjectName("packerOrder")
+        self._order_label.setMinimumWidth(120)
         bar.addWidget(self._order_label)
 
-        # The scanner field, A2: the shipped 1x1 hidden QLineEdit, grown to a
-        # field the packer can see. The global QSS already lands a QLineEdit on
-        # control_height, so it needs a width and nothing else -- and because
-        # it is still the widget the scanner types into, the visible focus ring
-        # and the disabled state are the real thing rather than a copy of it.
+        # The scanner field: the one widget on this screen that takes keys.
+        # Fixed height, because the 2px edge below would add to the global
+        # sheet's min-height.
         self.scanner_input = QLineEdit()
-        self.scanner_input.setFixedWidth(SCANNER_WIDTH)
-        self.scanner_input.setPlaceholderText("Ready to scan")
+        self.scanner_input.setObjectName("packerScanner")
+        self.scanner_input.setFixedSize(SCANNER_WIDTH, CONTROL_HEIGHT)
+        self.scanner_input.setPlaceholderText("Order number or SKU")
         self.scanner_input.returnPressed.connect(self._on_scan)
         bar.addWidget(self.scanner_input)
+
+        self._scanner_dot = QLabel()
+        self._scanner_dot.setObjectName("packerScannerDot")
+        self._scanner_dot.setFixedSize(12, 12)
+        bar.addWidget(self._scanner_dot)
+        self._scanner_state = QLabel("Ready to scan")
+        self._scanner_state.setObjectName("packerScannerState")
+        bar.addWidget(self._scanner_state)
 
         if self._sim_mode or os.environ.get("PACKER_DEV_SIM"):
             bar.addWidget(self._build_sim_group())
@@ -162,7 +182,8 @@ class PackerModeWidget(QWidget):
         root.addWidget(self.packer_bar)
         root.addWidget(self.document_view, 1)
 
-        on_theme_changed(self, self._apply_bar_theme)
+        on_theme_changed(self, self._restyle)
+        self._sync_scanner()
 
     def _build_sim_group(self) -> QWidget:
         """The dev scan simulator, inline in the bar (artboard P3-1920).
@@ -197,14 +218,68 @@ class PackerModeWidget(QWidget):
         layout.addWidget(button)
         return group
 
-    def _apply_bar_theme(self, tokens) -> None:
+    def _restyle(self, _tokens=None) -> None:
+        """The bar's sheet, for the current theme and the scanner's state.
+
+        gui.theme's tokens, not the argument on_theme_changed passes: only
+        those carry the bundled font family.
+        """
+        tokens = current_tokens()
+        off = not self.scanner_input.isEnabled()
+        if self._order_open and not self._session_over:
+            order = (
+                f"font-size: {ORDER_NUMBER_PT}pt; font-weight: bold;"
+                f" font-family: {tokens.font_family_mono}; color: {tokens.text};"
+            )
+        else:
+            order = f"{font_css('display', bold=True)} color: {tokens.text_secondary};"
+        dot = tokens.text_disabled if off else tokens.status_success_dot
+        state = tokens.text_secondary if off else tokens.status_success
         self.setStyleSheet(
             bar_css(tokens, "QWidget#PackerBar")
-            + f" QWidget#SimGroup {{ border: 1px dashed {tokens.status_warning};"
+            + f" QLabel#packerOrder {{ {order} background: transparent; }}"
+            f" QLineEdit#packerScanner {{ {font_css('heading', bold=False)}"
+            f" font-family: {tokens.font_family_mono}; }}"
+            f" QLineEdit#packerScanner:enabled {{ border: 2px solid {tokens.selection_border}; }}"
+            f" QLabel#packerScannerDot {{ background: {dot}; border-radius: 6px; }}"
+            f" QLabel#packerScannerState {{ {font_css('body', bold=True)} color: {state};"
+            " background: transparent; }"
+            f" QWidget#SimGroup {{ border: 1px dashed {tokens.status_warning};"
             f" border-radius: {tokens.radius}px; }}"
             f" QLabel#SimGroupLabel {{ color: {tokens.status_warning};"
             f" {font_css('caption', bold=True)} }}"
         )
+
+    def _sync_scanner(self) -> None:
+        """The one place that decides whether the scanner is on.
+
+        Off when the session is over, another PC took the list, a question is
+        open, or the widget is paused (a finished order held on screen, or the
+        window about to leave Packer Mode). Skip order follows it, and needs
+        an order.
+        """
+        off = (
+            self._session_over or self._taken_over or bool(self._question) or self._paused
+        )
+        self.scanner_input.setEnabled(not off)
+        self._scanner_state.setText("Scanner disabled" if off else "Ready to scan")
+        self.skip_order_button.setEnabled(self._order_open and not off)
+        self._restyle()
+        if not off:
+            self.set_focus_to_scanner()
+
+    @property
+    def taken_over(self) -> bool:
+        """Another PC holds this list's lock (see show_takeover)."""
+        return self._taken_over
+
+    def pause_scanner(self) -> None:
+        self._paused = True
+        self._sync_scanner()
+
+    def resume_scanner(self) -> None:
+        self._paused = False
+        self._sync_scanner()
 
     def showEvent(self, event):
         """Re-assert the scanner's claim on the keyboard every time we appear."""
@@ -234,7 +309,7 @@ class PackerModeWidget(QWidget):
         so all normal packing logic handles it unchanged.
         """
         text = self.sim_input.text().strip()
-        if text:
+        if text and self.scanner_input.isEnabled():
             self.sim_input.clear()
             self.barcode_scanned.emit(text)
 
@@ -256,24 +331,24 @@ class PackerModeWidget(QWidget):
         self.set_focus_to_scanner()
 
     def _on_force_confirm(self, row: int):
-        """Force-confirm every remaining unit of one item. Not undoable."""
-        if not 0 <= row < len(self._rows):
+        """Open the Force confirm question for one item (frame 6f).
+
+        The page draws it. The scanner is off until it is answered, so a scan
+        cannot answer it by accident.
+        """
+        if not 0 <= row < len(self._rows) or not self._rows[row]["force"]:
             return
-        item = self._rows[row]
-        remaining = item["required"] - item["packed"]
-        dialog = ConfirmDialog(
-            self,
-            title="Force confirm this item?",
-            body=(
-                f"{item['product']} ({item['sku']}): {remaining} of "
-                f"{item['required']} still unscanned. Forcing marks them packed "
-                "without a scan, and cannot be undone."
-            ),
-            verb="Force confirm",
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.force_confirm_requested.emit(row)
-        self.set_focus_to_scanner()
+        self._question = force_question(self._rows[row])
+        self.bridge.set_question(self._question)
+        self._sync_scanner()
+
+    def _on_question_answered(self, confirmed: bool):
+        """Cancel or Force confirm. Forcing is not undoable."""
+        question, self._question = self._question, {}
+        self.bridge.set_question({})
+        self._sync_scanner()
+        if confirmed and question:
+            self.force_confirm_requested.emit(question["row"])
 
     def _on_map_sku_requested(self, sku: str):
         """Emit map_sku_requested with the original SKU string."""
@@ -312,6 +387,12 @@ class PackerModeWidget(QWidget):
             metadata: Order-level metadata for the banner.
             sku_map: Normalised barcode -> SKU, for the Map SKU action.
         """
+        self._clear_timer.stop()
+        self._paused = False
+        # A question is about a row of the order it was asked on.
+        self._question = {}
+        self.bridge.set_question({})
+        self._order_open = True
         self._items = list(items)
         self._unknown = []
         self._sku_map = dict(sku_map or {})
@@ -324,8 +405,7 @@ class PackerModeWidget(QWidget):
         self.bridge.set_banner(banner_payload(order_number, metadata))
         self._order_label.setText(order_label(order_number))
         self._push_rows()
-        self.skip_order_button.setEnabled(True)
-        self.set_focus_to_scanner()
+        self._sync_scanner()
 
     def update_item_row(self, row: int, packed_count: int, is_complete: bool):
         """Update one item's packed count after a scan or a manual action.
@@ -396,6 +476,15 @@ class PackerModeWidget(QWidget):
         )
         self._push_feedback()
 
+    def clear_screen_later(self, ms: int):
+        """Hold the finished order on screen, scanner off, then reset.
+
+        Showing another order or clearing the screen before then cancels it.
+        """
+        self._paused = True
+        self._sync_scanner()
+        self._clear_timer.start(ms)
+
     def clear_screen(self):
         """Reset the document to waiting for the next order.
 
@@ -407,23 +496,26 @@ class PackerModeWidget(QWidget):
         this call 3s out, and it would otherwise wipe the panel that is
         the only way to end the session from this screen.
         """
+        self._clear_timer.stop()
         if self._session_over:
             return
         self._items = []
         self._rows = []
         self._unknown = []
         self._sku_map = {}
+        self._order_open = False
+        self._paused = False
+        self._question = {}
+        self.bridge.set_question({})
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
         self.bridge.set_sku_rollup([])
         self._order_label.setText("No order")
         self.scanner_input.clear()
-        self.scanner_input.setEnabled(True)
-        self.skip_order_button.setEnabled(False)
         self._raw_scan = ""
         self.show_notification("Scan an order barcode", "status_info")
         self._push_rows()
-        self.set_focus_to_scanner()
+        self._sync_scanner()
 
     def show_session_complete(self, payload: dict[str, str]):
         """Show the session's terminal state in place of the order document.
@@ -434,9 +526,7 @@ class PackerModeWidget(QWidget):
         self._session_over = True
         self.bridge.set_session_end(payload)
         self._order_label.setText("Session complete")
-        self.scanner_input.setPlaceholderText("Scanner disabled")
-        self.scanner_input.setEnabled(False)
-        self.skip_order_button.setEnabled(False)
+        self._sync_scanner()
 
     def reset_for_new_session(self):
         """Take the session-complete panel down and clear the whole document.
@@ -447,13 +537,27 @@ class PackerModeWidget(QWidget):
         """
         self._session_over = False
         self.bridge.set_session_end({})
-        self.scanner_input.setPlaceholderText("Ready to scan")
+        self._taken_over = False
+        self.bridge.set_takeover({})
         self._history = []
         self.bridge.set_history([])
         self._orders_done = 0
         self._orders_total = 0
         self._unsaved = False
+        self.bridge.set_unsaved(False)
         self.clear_screen()  # pushes progress through _push_rows()
+
+    def show_takeover(self, holder: str, list_name: str):
+        """Another PC took this list's lock: block the screen (frame 6j).
+
+        Nothing on the page works after this but Exit packing. Only
+        reset_for_new_session() takes it down.
+        """
+        self._taken_over = True
+        self._question = {}
+        self.bridge.set_question({})
+        self.bridge.set_takeover({"holder": str(holder), "list": str(list_name)})
+        self._sync_scanner()
 
     def show_unknown_scans(self, scans: list[str]):
         """Show this order's unmatched scans as rows under the item rows.
@@ -490,18 +594,14 @@ class PackerModeWidget(QWidget):
     def set_unsaved(self, unsaved: bool):
         """Show, or clear, that the packing state is not reaching disk.
 
-        Sticky across scans: every scan rewrites the band, and the warning
-        must survive that until a save succeeds (spec Q2).
+        A banner above the band (frame 6i), not part of it: scanning
+        continues and the band keeps reporting each scan.
         """
         self._unsaved = bool(unsaved)
-        self._push_feedback()
+        self.bridge.set_unsaved(self._unsaved)
 
     def _push_feedback(self):
-        text, role = self._feedback_text, self._feedback_role
-        if self._unsaved:
-            text = f"{UNSAVED_TEXT} · {text}" if text else UNSAVED_TEXT
-            role = "danger"
-        self.bridge.set_feedback(text, role, self._raw_scan)
+        self.bridge.set_feedback(self._feedback_text, self._feedback_role, self._raw_scan)
 
     def add_order_to_history(self, order_number: str, status: str = ""):
         """Add an order to the top of the session's history.
