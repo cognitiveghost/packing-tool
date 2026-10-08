@@ -96,6 +96,9 @@ RAIL_ITEMS = (
 
 PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
 
+# How long a finished order stays on screen before Packer Mode resets.
+ORDER_CLEAR_MS = 3000
+
 # T1's three order states. All three are the system's reading of the packing
 # list, so none carries the solid mark -- F5's mark means a *packer declared*
 # this state. T1 draws "In progress" as chip--warning chip--tint chip--hollow,
@@ -2020,8 +2023,7 @@ class MainWindow(QMainWindow):
             self.packer_mode_widget.update_session_progress(
                 completed, len(self.logic.orders_data)
             )
-        self.packer_mode_widget.scanner_input.setEnabled(False)
-        QTimer.singleShot(3000, self.packer_mode_widget.clear_screen)
+        self.packer_mode_widget.clear_screen_later(ORDER_CLEAR_MS)
         self._publish_progress()
 
     def _publish_progress(self):

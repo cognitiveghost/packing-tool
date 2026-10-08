@@ -148,3 +148,24 @@ def test_a_skipped_order_is_published(window):
     window._progress_publisher = RecordingPublisher()
     window._on_skip_order()
     assert window._progress_publisher.published == [([], 1)]
+
+
+def test_a_finished_orders_reset_does_not_close_the_order_opened_after_it(
+    window, qtbot, monkeypatch
+):
+    """_handle_order_completion schedules a reset 3 s out. An order opened in
+    the meantime (the simulator, a replayed scan, leaving and coming back) was
+    wiped from the screen while PackerLogic still held it open."""
+    monkeypatch.setattr("gui.main_window.ORDER_CLEAR_MS", 40)
+    window.logic = StubLogic("ORDER_COMPLETE")
+    widget = window.packer_mode_widget
+
+    window._handle_order_completion("1001")
+    widget.display_order(
+        [{"SKU": "A", "Product_Name": "A", "Quantity": 1, "Order_Number": "1002"}], []
+    )
+    qtbot.wait(200)
+
+    assert [r["sku"] for r in widget.bridge.items] == ["A"]
+    assert widget._order_label.text() == "#1002"
+    assert widget.scanner_input.isEnabled()

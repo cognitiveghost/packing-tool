@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QDialog,
@@ -97,6 +97,11 @@ class PackerModeWidget(QWidget):
         self._orders_total = 0
         self._history = []
         self._unsaved = False
+        # The reset that follows a finished order. Here, not in MainWindow:
+        # showing an order and clearing the screen are what it races with.
+        self._clear_timer = QTimer(self)
+        self._clear_timer.setSingleShot(True)
+        self._clear_timer.timeout.connect(self.clear_screen)
 
         from gui.packer_bridge import mount_packer_page
 
@@ -312,6 +317,8 @@ class PackerModeWidget(QWidget):
             metadata: Order-level metadata for the banner.
             sku_map: Normalised barcode -> SKU, for the Map SKU action.
         """
+        self._clear_timer.stop()
+        self.scanner_input.setEnabled(True)
         self._items = list(items)
         self._unknown = []
         self._sku_map = dict(sku_map or {})
@@ -396,6 +403,14 @@ class PackerModeWidget(QWidget):
         )
         self._push_feedback()
 
+    def clear_screen_later(self, ms: int):
+        """Hold the finished order on screen, scanner off, then reset.
+
+        Showing another order or clearing the screen before then cancels it.
+        """
+        self.scanner_input.setEnabled(False)
+        self._clear_timer.start(ms)
+
     def clear_screen(self):
         """Reset the document to waiting for the next order.
 
@@ -407,6 +422,7 @@ class PackerModeWidget(QWidget):
         this call 3s out, and it would otherwise wipe the panel that is
         the only way to end the session from this screen.
         """
+        self._clear_timer.stop()
         if self._session_over:
             return
         self._items = []
