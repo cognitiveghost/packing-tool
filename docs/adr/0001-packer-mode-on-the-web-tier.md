@@ -1,6 +1,7 @@
 # ADR 0001 — Packer Mode's document renders on the web tier
 
-- **Status:** accepted, 2026-09-17.
+- **Status:** accepted, 2026-09-17. Its "no third web screen" limit is replaced by
+  [ADR 0002](0002-every-screen-on-the-web-tier.md); the scanner invariant stands.
 - **Deciders:** repo owner
 - **Supersedes:** the scope line of shopify-fulfillment-tool ADR 0001
   ("Packing Tool stays entirely Qt").

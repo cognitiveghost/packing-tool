@@ -127,6 +127,14 @@ def test_ctrl_1_2_3_switch_pages(main_window):
     assert main_window.session_tabs.currentIndex() == PAGE_PACKING
 
 
+def test_the_shortcuts_do_nothing_in_packer_mode(main_window):
+    """The scanner owns Packer Mode: the page behind it must not change."""
+    main_window.switch_to_packer_mode()
+    _shortcut(main_window, "Ctrl+3").activated.emit()
+    assert main_window.session_tabs.currentIndex() == PAGE_PACKING
+    assert main_window.stacked_widget.currentWidget() is main_window.packer_mode_widget
+
+
 def test_the_shortcuts_do_nothing_without_a_client(config_ini, qapp, remembered):
     window = _window(config_ini, ["ALPHA", "BETA"])
     try:

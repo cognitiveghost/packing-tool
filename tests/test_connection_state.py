@@ -150,24 +150,66 @@ def test_end_session_is_disabled_while_down(main_window_with_list, qtbot, reach)
     assert window.packer_mode_button.isEnabled()  # Start packing stays live
 
 
-def test_a_check_that_outlives_the_window_does_not_raise(config_ini, qapp, reach):
-    """The worker thread emits on a QObject that may be gone."""
+def test_a_work_folder_that_cannot_be_made_reports_and_checks(
+    main_window, qtbot, reach, monkeypatch, tmp_path
+):
+    """Starting a new list on a dead share fails before the session start."""
+    from packing_tool.session_manager import SessionManager
+
+    def gone(self, **_kwargs):
+        raise OSError("share is gone")
+
+    monkeypatch.setattr(SessionManager, "get_packing_work_dir", gone)
+    said = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: said.append(a[1:]))
+    reach["ok"] = False
+    main_window._start_or_resume_from_browser(
+        "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
+    )
+    qtbot.waitUntil(lambda: main_window._connection_state == "down", timeout=3000)
+    assert len(said) == 1 and "share is gone" in said[0][1]
+    assert main_window.logic is None
+
+
+def test_a_failed_session_end_checks_the_server(
+    main_window_with_list, qtbot, reach, monkeypatch, tmp_path
+):
+    window = main_window_with_list
+    blocker = tmp_path / "not_a_folder"
+    blocker.write_text("")
+    window.current_work_dir = str(blocker)  # reports/ cannot be made under a file
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    reach["ok"] = False
+    window.end_session()
+    qtbot.waitUntil(lambda: window._connection_state == "down", timeout=3000)
+    assert not window.connection_banner.isHidden()
+
+
+def test_a_check_that_outlives_the_window_does_not_raise(
+    config_ini, qapp, monkeypatch
+):
+    """The worker thread emits on a QObject that is gone by then."""
     import threading
+
+    import shiboken6
 
     from packing_tool.profile_manager import ProfileManager
 
+    release = threading.Event()
+
+    def slow(_path, _timeout=5):
+        release.wait(3)
+        return True
+
+    monkeypatch.setattr(mw, "test_path_reachable", slow)
     ProfileManager(config_path=str(config_ini)).create_client_profile("ALPHA", "Alpha")
     window = mw.MainWindow(config_path=str(config_ini))
     errors = []
-    monkeypatch_hook = threading.excepthook
-    threading.excepthook = lambda args: errors.append(args.exc_value)
-    try:
-        window.check_connection()
-        window.deleteLater()
-        qapp.processEvents()
-        for thread in threading.enumerate():
-            if thread.name == "connection-check":
-                thread.join(3)
-    finally:
-        threading.excepthook = monkeypatch_hook
+    monkeypatch.setattr(threading, "excepthook", lambda args: errors.append(args.exc_value))
+    window.check_connection()
+    shiboken6.delete(window)
+    release.set()
+    for thread in threading.enumerate():
+        if thread.name == "connection-check":
+            thread.join(3)
     assert errors == []

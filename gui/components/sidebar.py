@@ -31,7 +31,6 @@ from shared.theme import current_tokens, font_css, on_theme_changed
 
 SIDEBAR_WIDTH = 200
 ITEM_HEIGHT = 44
-CONNECTION_STATES = ("ok", "checking", "down")
 # state -> (label, the status role whose colours it wears)
 _CONNECTION = {
     "ok": ("Server connected", "success"),
@@ -166,7 +165,8 @@ class Sidebar(QWidget):
         # Worker, collapsed: the avatar is the button.
         self.worker_rail_button = QToolButton(self.footer)
         self.worker_rail_button.setObjectName("WorkerRailButton")
-        self.worker_rail_button.setFixedSize(32, 32)
+        # A 44px target; the sheet's 6px margin draws the 32px avatar in it.
+        self.worker_rail_button.setFixedSize(ITEM_HEIGHT, ITEM_HEIGHT)
         self.worker_rail_button.clicked.connect(self.switchWorkerRequested.emit)
         footer.addWidget(self.worker_rail_button, 0, Qt.AlignHCenter)
 
@@ -360,7 +360,7 @@ class Sidebar(QWidget):
             f"#WorkerCard QLabel {{ background: transparent; }}"
             f"#WorkerAvatar {{ background-color: {t.surface_raised};"
             f" border: 1px solid {t.border_strong}; border-radius: 16px;"
-            f" color: {t.text}; {font_css('caption', bold=True)} }}"
+            f" margin: 6px; color: {t.text}; {font_css('caption', bold=True)} }}"
             f"#WorkerName {{ color: {t.text}; {font_css('body', bold=True)} }}"
             f"#WorkerLink {{ background: transparent; border: none; padding: 0;"
             f" min-height: 0; text-align: left; text-decoration: underline;"
@@ -368,7 +368,7 @@ class Sidebar(QWidget):
             f"#WorkerLink:hover {{ color: {t.text}; }}"
             f"#WorkerRailButton {{ background-color: {t.surface};"
             f" border: 1px solid {t.border_strong}; border-radius: 16px;"
-            f" color: {t.text}; {font_css('caption', bold=True)} }}"
+            f" margin: 6px; color: {t.text}; {font_css('caption', bold=True)} }}"
             f"#ThemeSegment {{ background-color: {t.surface_sunken};"
             f" border: 1px solid {t.border}; border-radius: 8px; }}"
             f"#ThemeSegment QToolButton {{ background-color: transparent;"

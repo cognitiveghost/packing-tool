@@ -105,15 +105,21 @@ def main(argv: list[str]) -> int:
 
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
-        # Before any QSettings is made: keep this PC's saved theme and client.
-        QSettings.setDefaultFormat(QSettings.IniFormat)
-        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(tmp / "settings"))
+        # Before any QSettings is made: keep this PC's saved theme, client and
+        # server path. Both formats, as tests/conftest.py does: QSettings(org,
+        # app) is NativeFormat, and a saved server path outranks config.ini.
+        for fmt in (QSettings.NativeFormat, QSettings.IniFormat):
+            QSettings.setPath(fmt, QSettings.UserScope, str(tmp / "settings"))
+        os.environ.pop("FULFILLMENT_SERVER_PATH", None)
 
         app = QApplication.instance() or QApplication(sys.argv[:1])
         from gui.theme import apply_theme, load_saved_theme
 
         load_saved_theme(app)
         window, open_session = build(tmp)
+        base = Path(window.profile_manager.base_path).resolve()
+        if not base.is_relative_to(tmp.resolve()):
+            raise RuntimeError(f"refusing to render against {base}: not the temp server")
         window.show()
         # The card and the banner show the mockup's path, not the temp folder.
         real_set = window.sidebar.set_connection

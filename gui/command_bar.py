@@ -28,6 +28,8 @@ from shared.icons import icon
 from shared.theme import font_css, on_theme_changed, set_button_role
 
 BAR_HEIGHT = 60
+# Floor density (ADR 0002). Set here: the app sheet does not size controls yet.
+CONTROL_HEIGHT = 44
 PAGES = ("packing", "statistics", "browser")
 _CLIENT_WIDTH = 250
 _FILTER_MIN, _FILTER_MAX = 170, 300
@@ -67,7 +69,7 @@ class CommandBar(QWidget):
         self.sidebar_button = QToolButton(self)
         self.sidebar_button.setObjectName("cmdbarSidebarToggle")
         self.sidebar_button.setAutoRaise(True)
-        self.sidebar_button.setFixedSize(44, 44)
+        self.sidebar_button.setFixedSize(CONTROL_HEIGHT, CONTROL_HEIGHT)
         self.sidebar_button.clicked.connect(self.sidebarToggled.emit)
         layout.addWidget(self.sidebar_button)
 
@@ -105,6 +107,14 @@ class CommandBar(QWidget):
             self.end_session_button,
         ):
             layout.addWidget(button)
+        for control in (
+            self.client_combo,
+            self.filter_input,
+            self.open_session_button,
+            self.start_packing_button,
+            self.end_session_button,
+        ):
+            control.setFixedHeight(CONTROL_HEIGHT)
 
         # The shortcut, drawn inside End session at its right edge. A child
         # label, because a QPushButton's text has one font.
@@ -119,7 +129,7 @@ class CommandBar(QWidget):
         self.overflow = OverflowMenu(self)
         self.overflow_button = overflow_button(self.overflow, self)
         self.overflow_button.setToolTip("More")
-        self.overflow_button.setFixedSize(44, 44)
+        self.overflow_button.setFixedSize(CONTROL_HEIGHT, CONTROL_HEIGHT)
         layout.addWidget(self.overflow_button)
 
         self._page = "packing"
@@ -141,6 +151,7 @@ class CommandBar(QWidget):
             f" border: none; border-radius: 8px; }}"
             f" QToolButton#cmdbarSidebarToggle:hover {{"
             f" background-color: {tokens.surface_raised}; }}"
+            f" QComboBox, QLineEdit {{ {font_css('body')} }}"
             f" QLabel#cmdbarKbd {{ background: transparent;"
             f" font-family: {tokens.font_family_mono}; {font_css('caption')} }}"
         )

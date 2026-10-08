@@ -227,12 +227,22 @@ and title bar, so a 1366×768 minimum could not fit the screen it is designed fo
 | 8 | Disabled filter and selector: dashed edge on `control_disabled_bg` | the app sheet's disabled input (solid `border_subtle` edge) | `build_stylesheet` gives the dashed treatment to buttons only |
 | 9 | Packing and Statistics content of frames 2a to 2e (page header, totals strip, index table) | today's Qt pages | phases 3 to 5 |
 | 10 | End session becomes primary when the list is complete (frame 3g) | stays secondary | belongs to Packing, phase 3 |
+| 11 | Destination icon and label 12px apart | about 3px | `NavRail`'s own sheet, as row 7 |
+| 12 | Checked Light/Dark segment edged in `border` | `border_subtle` | matches the current destination (row 7), so the two selected states agree |
+| 13 | Collapsed connection glyph: the dot sits in a `surface_sunken` ring | no ring | the dot is a child label over a `QToolButton`; a ring is a second widget for 2px, left for the web tier |
+| 14 | Banner glyph centred on the two lines | aligned with the title line | reads as the title's icon when the sentence wraps at 1280px |
+| 15 | Collapsed theme button shows the current theme's glyph | the glyph of the theme it switches to | section 6.2: a single button is an action, and its tooltip says "Switch to ..." |
+| 16 | Retry while unreachable keeps the banner until the answer | the banner goes and Open/End session are live while the check runs (at most `ConnectionTimeout` seconds), as the mockup's own `retry` state does | one state machine with three states; a session action tried in that window fails into the same check |
 
 ## 8. For shared/
 
 To raise on Fulfilment's side; nothing here blocks this phase.
 
-- `NavRail`: an item-height parameter (floor density needs 44px), and no plane on a disabled checked item.
+- `NavRail`: an item-height parameter (floor density needs 44px), the icon-to-label gap, and no plane on a
+  disabled checked item. Until then `FloorNavRail` overrides `_shape` and `_apply_theme`, and `Sidebar` reads
+  `rail._buttons` (to disable destinations) and `rail.layout()` (item spacing): four private touch points.
+- `build_stylesheet`: size `QPushButton`, `QComboBox` and `QLineEdit` from the density profile's
+  `control_content_height`. Today the command bar sets 44px on its own controls.
 - `Toast`: the mockup's inverse variant and a bottom-centre placement.
 - Icons: `package-check`, `scan-barcode`, `triangle-alert`, `search`.
 - `build_stylesheet`: the dashed disabled treatment for `QLineEdit` and `QComboBox`.

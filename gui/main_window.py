@@ -559,8 +559,10 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(lambda p=page: self._go_to_page(p))
 
     def _go_to_page(self, page: int):
-        """Ctrl+1/2/3. Nothing to go to until a client is chosen."""
-        if self.current_client_id:
+        """Ctrl+1/2/3. Nothing to go to until a client is chosen, and not
+        from Packer Mode: the page behind it would change unseen."""
+        in_shell = self.stacked_widget.currentWidget() is self.session_widget
+        if self.current_client_id and in_shell:
             self.session_tabs.setCurrentIndex(page)
 
     def _setup_order_tree(self):
@@ -2358,9 +2360,21 @@ class MainWindow(QMainWindow):
             )
 
         if work_dir is None:
-            work_dir = self.session_manager.get_packing_work_dir(
-                session_path=str(session_path), packing_list_name=packing_list_name
-            )
+            try:
+                work_dir = self.session_manager.get_packing_work_dir(
+                    session_path=str(session_path), packing_list_name=packing_list_name
+                )
+            except OSError as e:
+                # The usual way a packer first meets an outage: the work
+                # folder cannot be made on a share that has gone away.
+                logger.exception("Could not create the packing work directory")
+                QMessageBox.critical(
+                    self,
+                    "Session Error",
+                    f"Could not start packing {packing_list_name}:\n\n{e}",
+                )
+                self.check_connection()
+                return
             logger.info(f"Work directory created: {work_dir}")
 
         # Use unified session start method

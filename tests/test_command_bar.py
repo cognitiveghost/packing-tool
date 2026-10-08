@@ -29,6 +29,15 @@ def test_the_bar_is_floor_height(bar):
     assert bar.height() == BAR_HEIGHT == 60
 
 
+def test_its_controls_are_floor_height(bar):
+    """ADR 0002: 44px controls. The app sheet does not size them yet."""
+    for control in (
+        bar.client_combo, bar.filter_input, bar.open_session_button,
+        bar.start_packing_button, bar.end_session_button,
+    ):
+        assert control.height() == 44, control
+
+
 def test_the_controls_run_in_the_mockups_order(bar):
     layout = bar.layout()
     order = [layout.itemAt(i).widget() for i in range(layout.count())]
