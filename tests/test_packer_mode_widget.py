@@ -63,11 +63,12 @@ def test_the_bar_is_the_same_sixty_pixels_the_pages_use(widget):
     assert widget.packer_bar.height() == BAR_HEIGHT
 
 
-def test_the_scanner_is_visible_and_invites_a_scan(widget):
-    # A2: the shipped 1x1 hidden QLineEdit becomes a field the packer can see.
-    assert widget.scanner_input.placeholderText() == "Ready to scan"
-    assert widget.scanner_input.width() > 100
+def test_the_scanner_is_visible_and_says_it_is_ready(widget):
+    assert widget.scanner_input.placeholderText() == "Order number or SKU"
+    assert widget.scanner_input.width() == 280
+    assert widget.scanner_input.height() == 44
     assert widget.scanner_input.parent() is widget.packer_bar
+    assert widget._scanner_state.text() == "Ready to scan"
 
 
 def test_the_scanner_still_owns_the_keyboard(qtbot, widget):
@@ -159,20 +160,169 @@ def test_a_new_session_does_not_inherit_the_last_ones_history_or_counts(widget):
     assert widget.bridge.progress["orders_total"] == 0
 
 
-def test_unsaved_progress_keeps_the_band_red_and_the_outcome_readable(widget):
-    widget.set_unsaved(True)
+def test_unsaved_progress_is_its_own_state_and_leaves_the_band_alone(widget):
     widget.show_notification("Order #1001 packed. Scan the next order.", "status_success")
-    assert widget.bridge.feedback["role"] == "danger"
-    assert widget.bridge.feedback["text"] == (
-        "Progress not saved — check the network · Order #1001 packed. Scan the next order."
-    )
-
-    widget.set_unsaved(False)
+    widget.set_unsaved(True)
+    assert widget.bridge.unsaved is True
     assert widget.bridge.feedback["role"] == "success"
     assert widget.bridge.feedback["text"] == "Order #1001 packed. Scan the next order."
+    assert widget.scanner_input.isEnabled()  # scanning continues
+
+    widget.set_unsaved(False)
+    assert widget.bridge.unsaved is False
 
 
 def test_a_new_session_starts_saved(widget):
     widget.set_unsaved(True)
     widget.reset_for_new_session()
-    assert widget.bridge.feedback["role"] == "info"
+    assert widget.bridge.unsaved is False
+
+
+ORDER = [
+    {"SKU": "SPF-50", "Product_Name": "Sunscreen SPF 50", "Quantity": 8, "Order_Number": "10407"},
+    {"SKU": "LIP-RED", "Product_Name": "Lip balm, red", "Quantity": 2, "Order_Number": "10407"},
+]
+
+
+def _off(widget):
+    return (
+        not widget.scanner_input.isEnabled()
+        and widget._scanner_state.text() == "Scanner disabled"
+        and not widget.skip_order_button.isEnabled()
+    )
+
+
+def test_an_open_order_turns_skip_on_and_no_order_turns_it_off(widget):
+    assert not widget.skip_order_button.isEnabled()
+    widget.display_order(ORDER, [])
+    assert widget.skip_order_button.isEnabled()
+    assert widget._scanner_state.text() == "Ready to scan"
+    widget.clear_screen()
+    assert not widget.skip_order_button.isEnabled()
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_force_click_asks_first_and_turns_the_scanner_off(qtbot, widget):
+    widget.display_order(ORDER, [{"row": 0, "packed": 3, "required": 8}])
+    forced = []
+    widget.force_confirm_requested.connect(forced.append)
+
+    widget.bridge.forceItem(0)
+
+    assert forced == []
+    assert widget.bridge.question == {
+        "row": 0, "sku": "SPF-50", "product": "Sunscreen SPF 50", "remaining": 5, "required": 8,
+    }
+    assert _off(widget)
+
+
+def test_force_confirm_sends_the_row_and_gives_the_scanner_back(widget):
+    widget.display_order(ORDER, [])
+    forced = []
+    widget.force_confirm_requested.connect(forced.append)
+    widget.bridge.forceItem(0)
+
+    widget.bridge.answerQuestion(True)
+
+    assert forced == [0]
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
+    assert widget.skip_order_button.isEnabled()
+
+
+def test_cancel_sends_nothing_and_gives_the_scanner_back(widget):
+    widget.display_order(ORDER, [])
+    forced = []
+    widget.force_confirm_requested.connect(forced.append)
+    widget.bridge.forceItem(0)
+
+    widget.bridge.answerQuestion(False)
+
+    assert forced == []
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_force_click_on_a_row_that_is_not_there_asks_nothing(widget):
+    widget.display_order(ORDER, [])
+    widget.bridge.forceItem(7)
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
+
+
+def test_an_answer_with_no_question_open_does_nothing(widget):
+    widget.display_order(ORDER, [])
+    forced = []
+    widget.force_confirm_requested.connect(forced.append)
+    widget.bridge.answerQuestion(True)
+    assert forced == []
+
+
+def test_leaving_with_a_question_open_drops_it(widget):
+    widget.display_order(ORDER, [])
+    widget.bridge.forceItem(0)
+    widget.clear_screen()  # what Exit packing does
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_takeover_turns_everything_off_until_a_new_session(widget):
+    widget.display_order(ORDER, [])
+    widget.show_takeover("PC-2", "DHL_Orders")
+    assert widget.taken_over is True
+    assert widget.bridge.takeover == {"holder": "PC-2", "list": "DHL_Orders"}
+    assert _off(widget)
+
+    widget.clear_screen()  # a per-order reset does not give the list back
+    assert _off(widget)
+
+    widget.reset_for_new_session()
+    assert widget.taken_over is False
+    assert widget.bridge.takeover == {}
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_takeover_closes_an_open_question(widget):
+    widget.display_order(ORDER, [])
+    widget.bridge.forceItem(0)
+    widget.show_takeover("PC-2", "DHL_Orders")
+    assert widget.bridge.question == {}
+    widget.bridge.answerQuestion(True)  # a late click on the old question
+    assert _off(widget)
+
+
+def test_pause_and_resume(widget):
+    widget.display_order(ORDER, [])
+    widget.pause_scanner()
+    assert _off(widget)
+    widget.resume_scanner()
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_finished_session_stays_off_through_a_resume(widget):
+    widget.show_session_complete({"title": "Session complete", "body": "done."})
+    widget.resume_scanner()
+    assert _off(widget)
+
+
+def test_the_held_order_keeps_the_scanner_off_until_the_reset(qtbot, widget):
+    widget.display_order(ORDER, [])
+    widget.clear_screen_later(40)
+    assert _off(widget)
+    qtbot.wait(150)
+    assert widget.scanner_input.isEnabled()
+    assert widget.bridge.items == []
+
+
+def test_the_simulator_refuses_a_scan_while_the_scanner_is_off(qtbot):
+    w = PackerModeWidget(sim_mode=True)
+    qtbot.addWidget(w)
+    seen = []
+    w.barcode_scanned.connect(seen.append)
+    w.pause_scanner()
+    w.sim_input.setText("10407")
+    w._on_sim_scan()
+    assert seen == []
+    w.resume_scanner()
+    w._on_sim_scan()
+    assert seen == ["10407"]

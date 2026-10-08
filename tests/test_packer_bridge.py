@@ -274,10 +274,7 @@ def test_an_undo_click_asks_nothing_and_reaches_the_cancel_signal(qtbot):
     assert seen == [1]
 
 
-def test_a_force_click_confirms_first(qtbot, monkeypatch):
-    from PySide6.QtWidgets import QDialog
-
-    from gui import packer_mode_widget as module
+def test_a_force_click_opens_the_question_and_forces_only_on_yes(qtbot):
     from gui.packer_mode_widget import PackerModeWidget
 
     widget = PackerModeWidget()
@@ -286,16 +283,13 @@ def test_a_force_click_confirms_first(qtbot, monkeypatch):
     seen = []
     widget.force_confirm_requested.connect(seen.append)
 
-    monkeypatch.setattr(
-        module.ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Rejected
-    )
     widget.bridge.forceItem(1)
     assert seen == []
+    widget.bridge.answerQuestion(False)
+    assert seen == []
 
-    monkeypatch.setattr(
-        module.ConfirmDialog, "exec", lambda self: QDialog.DialogCode.Accepted
-    )
     widget.bridge.forceItem(1)
+    widget.bridge.answerQuestion(True)
     assert seen == [1]
 
 
