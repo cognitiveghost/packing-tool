@@ -457,7 +457,17 @@ class MainWindow(QMainWindow):
             self._shell_settings.value("sidebar_expanded", True, type=bool)
         )
 
-        main_layout.addWidget(self.session_tabs)
+        # Frame 2a: with no client chosen the pages give way to this.
+        self.no_client_panel = StatePanel(
+            "Choose a client to begin",
+            "Sessions, packing lists and SKU mapping all belong to one client.",
+            action_text="Choose a client",
+        )
+        self.no_client_panel.button.clicked.connect(
+            lambda: self.client_combo.showPopup()
+        )
+        main_layout.addWidget(self.no_client_panel, 1)
+        main_layout.addWidget(self.session_tabs, 1)
 
         self.packer_mode_widget = PackerModeWidget(sim_mode=self._sim_mode)
         self.packer_mode_widget.barcode_scanned.connect(self.on_scanner_input)
@@ -518,6 +528,15 @@ class MainWindow(QMainWindow):
         # Through click(), which is a no-op on the disabled no-session button.
         end_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
         end_shortcut.activated.connect(lambda: self.toolbar_end_btn.click())
+
+        for page, _item in enumerate(RAIL_ITEMS):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{page + 1}"), self)
+            shortcut.activated.connect(lambda p=page: self._go_to_page(p))
+
+    def _go_to_page(self, page: int):
+        """Ctrl+1/2/3. Nothing to go to until a client is chosen."""
+        if self.current_client_id:
+            self.session_tabs.setCurrentIndex(page)
 
     def _setup_order_tree(self):
         """Setup expandable order tree view."""
@@ -794,13 +813,14 @@ class MainWindow(QMainWindow):
                 self.client_combo.addItem(display_name, client_id)
                 logger.debug(f"Added client: {client_id}")
 
-            # Restore last selected client
+            # The remembered client; failing that the only one; failing that
+            # none, and the packer chooses (spec 2026-10-08 section 6.6).
             last_client = self.settings.value("last_client")
-            if last_client:
-                index = self.client_combo.findData(last_client)
-                if index >= 0:
-                    self.client_combo.setCurrentIndex(index)
-                    logger.info(f"Restored last selected client: {last_client}")
+            index = self.client_combo.findData(last_client) if last_client else -1
+            if index < 0 and len(clients) == 1:
+                index = 0
+            self.client_combo.setCurrentIndex(index)
+            logger.info(f"Client at startup: {self.client_combo.currentData()}")
 
             logger.info(f"Loaded {len(clients)} clients")
 
@@ -810,10 +830,21 @@ class MainWindow(QMainWindow):
 
         finally:
             self.client_combo.blockSignals(False)
+            self._sync_client_state()
 
         # Trigger selection if there's a valid item
         if self.client_combo.currentData():
             self.on_client_changed(self.client_combo.currentIndex())
+
+    def _sync_client_state(self):
+        """Enable or disable what needs a client (spec 2026-10-08 section 6.6)."""
+        chosen = bool(self.current_client_id)
+        self.sidebar.set_client_chosen(chosen)
+        self.command_bar.set_client_chosen(chosen)
+        self.no_client_panel.setVisible(not chosen)
+        # Nothing to choose from: the selector says "(No clients available)".
+        self.no_client_panel.button.setVisible(self.client_combo.isEnabled())
+        self.session_tabs.setVisible(chosen)
 
     def on_client_changed(self, index: int):
         """
@@ -837,6 +868,7 @@ class MainWindow(QMainWindow):
         if not client_id:
             logger.debug("No valid client selected")
             self.current_client_id = None
+            self._sync_client_state()
             return
 
         logger.info(f"Client changed to: {client_id}")
@@ -852,6 +884,7 @@ class MainWindow(QMainWindow):
         # is the only one, so it has to push the change.
         if hasattr(self, "session_browser"):
             self.session_browser.load_client(client_id)
+        self._sync_client_state()
 
     def flash_border(self, color: str):
         """Flash the order document's edge with the scan's outcome.
