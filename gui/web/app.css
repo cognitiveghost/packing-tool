@@ -140,3 +140,77 @@
 .app-no-match-text { color: var(--text-secondary); }
 .app-no-match-query { color: var(--text); }
 .app-no-match .btn { margin-top: 4px; padding: 0 20px; }
+
+/* --- Statistics: KPI strip, By courier, SKU summary ---------------------- */
+
+.app-strip-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.5fr); }
+
+.app-stats-row {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.75fr) minmax(0, 2fr);
+  gap: 16px;
+}
+
+.app-couriers {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 20px;
+  overflow: auto;
+}
+.app-courier-list { display: flex; flex-direction: column; gap: 18px; }
+.app-courier { display: flex; flex-direction: column; gap: 6px; }
+.app-courier-line { display: flex; align-items: baseline; gap: 8px; }
+.app-courier-name { flex: 1; min-width: 0; font-size: var(--type-heading-size); font-weight: 700; }
+.app-courier-of { color: var(--text-secondary); }
+.app-courier-left { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.app-skus {
+  --tbl-cols: 130px minmax(0, 1fr) 84px 84px 84px 120px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-skus-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.app-skus .tbl-head { height: 44px; padding: 0 12px; align-items: stretch; }
+.app-skus [role="columnheader"] { display: flex; }
+
+.app-sort {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.app-sort.num { justify-content: flex-end; }
+.app-sort:hover { background: var(--hover); }
+.app-sort:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+[aria-sort="ascending"] > .app-sort,
+[aria-sort="descending"] > .app-sort { color: var(--text); }
+
+.app-sku { min-height: 40px; height: 40px; padding: 0 12px; }
+.app-sku > span { padding: 0 8px; }
+.app-sku-code { font-family: var(--font-family-mono); white-space: nowrap; }
+.app-num { text-align: right; font-family: var(--font-family-mono); }
+.app-left { font-weight: 700; }
+.app-left.zero { font-weight: 400; color: var(--text-secondary); }

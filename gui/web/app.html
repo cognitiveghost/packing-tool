@@ -120,7 +120,42 @@
       <div class="app-rows" id="rows"></div>
     </section>
   </div>
-  <div class="app-page" id="statistics" hidden></div>
+  <div class="app-page" id="statistics" hidden>
+    <section class="card strip app-strip-stats">
+      <div class="strip-cell"><span class="strip-label">Orders</span><span class="strip-value" id="kpi-orders"></span><span class="strip-note" id="kpi-orders-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Completed</span><span class="strip-value" id="kpi-completed"></span><span class="strip-note" id="kpi-completed-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Items</span><span class="strip-value" id="kpi-items"></span><span class="strip-note" id="kpi-items-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Unique SKUs</span><span class="strip-value" id="kpi-skus"></span><span class="strip-note" id="kpi-skus-note"></span></div>
+      <div class="strip-cell">
+        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="strip-value" id="kpi-pct"></span></span>
+        <div class="track"><div class="track-fill" id="kpi-fill"></div></div>
+        <span class="strip-note" id="kpi-pct-note"></span>
+      </div>
+    </section>
+
+    <div class="app-stats-row">
+      <section class="card app-couriers">
+        <div class="app-strong">By courier</div>
+        <div class="app-courier-list" id="couriers"></div>
+      </section>
+
+      <section class="card app-skus">
+        <div class="app-skus-title">
+          <span class="app-strong spacer">SKU summary</span>
+          <span class="strip-note" id="sku-meta"></span>
+        </div>
+        <div class="tbl-head" role="row">
+          <span role="columnheader" data-col="sku"><button type="button" class="app-sort" data-sort="sku" title="Sort by SKU">SKU</button></span>
+          <span role="columnheader" data-col="product"><button type="button" class="app-sort" data-sort="product" title="Sort by Product">Product</button></span>
+          <span role="columnheader" data-col="total"><button type="button" class="app-sort num" data-sort="total" title="Sort by Total qty">Total qty</button></span>
+          <span role="columnheader" data-col="packed"><button type="button" class="app-sort num" data-sort="packed" title="Sort by Packed">Packed</button></span>
+          <span role="columnheader" data-col="left"><button type="button" class="app-sort num" data-sort="left" title="Sort by Left">Left</button></span>
+          <span role="columnheader" data-col="state"><button type="button" class="app-sort" data-sort="state" title="Sort by Status">Status</button></span>
+        </div>
+        <div class="app-rows" id="sku-rows"></div>
+      </section>
+    </div>
+  </div>
 
   <div class="toast-wrap">
     <div class="toast" id="toast" role="status" hidden>

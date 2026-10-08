@@ -227,6 +227,111 @@ function toggleOrder(number) {
   renderPacking();
 }
 
+// --- Statistics ---------------------------------------------------------------
+
+// Column: its label and the direction a first click sorts it.
+const SORT = {
+  sku: ["SKU", 1],
+  product: ["Product", 1],
+  total: ["Total qty", -1],
+  packed: ["Packed", -1],
+  left: ["Left", -1],
+  state: ["Status", 1],
+};
+const STATE_ORDER = { pending: 0, partial: 1, packed: 2 };
+const SKU_BADGE = {
+  packed: ["Packed", "badge success"],
+  partial: ["Partial", "badge info"],
+  pending: ["Pending", "badge neutral"],
+};
+
+function sortedSkus(skus) {
+  const key = view.sort.key;
+  const dir = view.sort.dir;
+  const value = function (row) { return key === "state" ? STATE_ORDER[row.state] : row[key]; };
+  return skus.slice().sort(function (a, b) {
+    const va = value(a);
+    const vb = value(b);
+    const order = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    return order * dir || a.sku.localeCompare(b.sku);
+  });
+}
+
+function percent(done, total) {
+  return (total ? Math.round(done / total * 100) : 0) + "%";
+}
+
+function courierBlock(courier) {
+  const left = courier.total - courier.done;
+  const block = el("div", "app-courier");
+  const line = el("div", "app-courier-line");
+  line.appendChild(el("span", "app-courier-name", courier.name));
+  line.appendChild(el("span", "app-courier-done", courier.done + " done"));
+  line.appendChild(el("span", "app-courier-of", "of " + courier.total));
+  block.appendChild(line);
+  const track = el("div", "track tall");
+  const fill = el("div", "track-fill");
+  fill.style.width = percent(courier.done, courier.total);
+  track.appendChild(fill);
+  block.appendChild(track);
+  block.appendChild(el("span", "app-courier-left",
+    left ? plural(left, "order", "orders") + " left" : "All packed"));
+  return block;
+}
+
+function skuRow(sku) {
+  const row = el("div", "tbl-row app-sku");
+  row.appendChild(el("span", "app-sku-code", sku.sku));
+  row.appendChild(cut("", sku.product));
+  row.appendChild(el("span", "app-num", sku.total));
+  row.appendChild(el("span", "app-num", sku.packed));
+  row.appendChild(el("span", "app-num app-left" + (sku.left ? "" : " zero"), sku.left));
+  const status = el("span");
+  status.appendChild(badge(SKU_BADGE[sku.state] || SKU_BADGE.pending));
+  row.appendChild(status);
+  return row;
+}
+
+function renderStatistics() {
+  syncSession();
+  const stats = view.bridge.statistics || {};
+  const couriers = stats.couriers || [];
+  const skus = stats.skus || [];
+  const pct = stats.pct || 0;
+
+  els.kpiOrders.textContent = stats.orders || 0;
+  els.kpiOrdersNote.textContent = plural(couriers.length, "courier", "couriers");
+  els.kpiCompleted.textContent = stats.completed || 0;
+  els.kpiCompletedNote.textContent = (stats.in_progress || "none") + " in progress";
+  els.kpiItems.textContent = stats.items || 0;
+  els.kpiItemsNote.textContent = (stats.packed || 0) + " packed";
+  els.kpiSkus.textContent = stats.unique_skus || 0;
+  els.kpiSkusNote.textContent = (stats.fully_packed || 0) + " fully packed";
+  els.kpiPct.textContent = pct + "%";
+  els.kpiFill.style.width = pct + "%";
+  els.kpiPctNote.textContent = (stats.completed || 0) + " of " + (stats.orders || 0) + " orders complete";
+
+  els.couriers.replaceChildren.apply(els.couriers, couriers.map(courierBlock));
+
+  const key = view.sort.key;
+  const dir = view.sort.dir;
+  els.skuMeta.textContent = plural(skus.length, "SKU", "SKUs") + " · sorted by " + SORT[key][0]
+    + (dir === -1 ? ", most first" : "");
+  els.sortHeads.forEach(function (head) {
+    const on = head.dataset.col === key;
+    if (on) head.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
+    else head.removeAttribute("aria-sort");
+    const button = head.firstElementChild;
+    button.textContent = SORT[head.dataset.col][0] + (on ? (dir === 1 ? " ↑" : " ↓") : "");
+  });
+  els.skuRows.replaceChildren.apply(els.skuRows, sortedSkus(skus).map(skuRow));
+}
+
+function sortBy(key) {
+  view.sort = { key: key, dir: view.sort.key === key ? -view.sort.dir : SORT[key][1] };
+  renderStatistics();
+}
+
 // --- toast --------------------------------------------------------------------
 
 function hideToast() {
@@ -261,7 +366,12 @@ function onClick(event) {
     return;
   }
   const order = event.target.closest("[data-order]");
-  if (order) toggleOrder(order.dataset.order);
+  if (order) {
+    toggleOrder(order.dataset.order);
+    return;
+  }
+  const sort = event.target.closest("[data-sort]");
+  if (sort) sortBy(sort.dataset.sort);
 }
 
 const IDS = {
@@ -280,6 +390,12 @@ const IDS = {
   complete: "complete", completeText: "complete-text",
   filterLine: "filter-line", filterText: "filter-text", filterQuery: "filter-query",
   noMatch: "no-match", noMatchQuery: "no-match-query", rows: "rows",
+  kpiOrders: "kpi-orders", kpiOrdersNote: "kpi-orders-note",
+  kpiCompleted: "kpi-completed", kpiCompletedNote: "kpi-completed-note",
+  kpiItems: "kpi-items", kpiItemsNote: "kpi-items-note",
+  kpiSkus: "kpi-skus", kpiSkusNote: "kpi-skus-note",
+  kpiPct: "kpi-pct", kpiFill: "kpi-fill", kpiPctNote: "kpi-pct-note",
+  couriers: "couriers", skuMeta: "sku-meta", skuRows: "sku-rows",
   toast: "toast", toastText: "toast-text", toastClose: "toast-close",
 };
 
@@ -293,6 +409,7 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
     els[key] = document.getElementById(IDS[key]);
   });
   els.stepBars = Array.from(document.querySelectorAll(".app-step-bar"));
+  els.sortHeads = Array.from(document.querySelectorAll("[role=columnheader]"));
 
   const onTheme = function () { els.themeVars.textContent = bridge.themeCss; };
   onTheme();
@@ -305,6 +422,8 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   renderFrame();
   bridge.packingChanged.connect(renderPacking);
   renderPacking();
+  bridge.statisticsChanged.connect(renderStatistics);
+  renderStatistics();
   els.root.addEventListener("click", onClick);
 
   // After the first render, so the first report is of a drawn page.

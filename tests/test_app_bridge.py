@@ -401,3 +401,112 @@ def test_a_new_session_drops_what_the_packer_toggled(page, qtbot):
     bridge.set_packing(packing_payload(ORDERS, {}))
     _settle(qtbot, bridge)
     assert _eval(qtbot, view, f"{row}.getAttribute('aria-expanded')") == "false"
+
+
+STATS = {
+    "orders": 4, "completed": 1, "items": 7, "unique_skus": 4, "pct": 25,
+    "in_progress": 1, "packed": 3, "fully_packed": 1,
+    "couriers": [
+        {"name": "DHL", "done": 0, "total": 2},
+        {"name": "DPD", "done": 2, "total": 2},
+    ],
+    "skus": [
+        {"sku": "CRM-50", "product": "Day cream", "total": 1, "packed": 0, "left": 1, "state": "pending"},
+        {"sku": "LIP-RED", "product": "Lip balm, red", "total": 3, "packed": 3, "left": 0, "state": "packed"},
+        {"sku": "LST-07", "product": "Lipstick, shade 07", "total": 1, "packed": 0, "left": 1, "state": "pending"},
+        {"sku": "SPF-50", "product": "Sunscreen", "total": 3, "packed": 1, "left": 2, "state": "partial"},
+    ],
+}
+
+
+def _open_statistics(bridge, qtbot, stats=STATS):
+    bridge.set_shell(client=True, clients=True, server_down=False)
+    bridge.set_session(session_payload(
+        "open", list_name="DHL_Orders", session_id="2026-10-07_1", orders=stats["orders"]))
+    bridge.set_statistics(stats)
+    bridge.set_page("statistics")
+    _settle(qtbot, bridge)
+
+
+def _sku_order(view, qtbot):
+    return _all(view, qtbot, ".app-sku .app-sku-code")
+
+
+def test_4b_the_kpi_strip(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    assert _shown(view, qtbot, "statistics")
+    assert (_text(view, qtbot, "kpi-orders"), _text(view, qtbot, "kpi-orders-note")) == ("4", "2 couriers")
+    assert (_text(view, qtbot, "kpi-completed"), _text(view, qtbot, "kpi-completed-note")) == ("1", "1 in progress")
+    assert (_text(view, qtbot, "kpi-items"), _text(view, qtbot, "kpi-items-note")) == ("7", "3 packed")
+    assert (_text(view, qtbot, "kpi-skus"), _text(view, qtbot, "kpi-skus-note")) == ("4", "1 fully packed")
+    assert _text(view, qtbot, "kpi-pct") == "25%"
+    assert _text(view, qtbot, "kpi-pct-note") == "1 of 4 orders complete"
+
+
+def test_4b_couriers_are_bars(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    assert _all(view, qtbot, ".app-courier-name") == ["DHL", "DPD"]
+    assert _all(view, qtbot, ".app-courier .track-fill", "e.style.width") == ["0%", "100%"]
+    assert _all(view, qtbot, ".app-courier-left") == ["2 orders left", "All packed"]
+    assert _all(view, qtbot, ".app-courier-done") == ["0 done", "2 done"]
+
+
+def test_4b_the_sku_table_is_sorted_by_left_most_first(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    assert _sku_order(view, qtbot) == ["SPF-50", "CRM-50", "LST-07", "LIP-RED"]
+    assert _text(view, qtbot, "sku-meta") == "4 SKUs · sorted by Left, most first"
+    assert _eval(
+        qtbot, view,
+        "document.querySelector('[data-col=\"left\"]').getAttribute('aria-sort')",
+    ) == "descending"
+    assert _all(view, qtbot, ".app-sku .badge") == ["Partial", "Pending", "Pending", "Packed"]
+    assert _all(view, qtbot, ".app-left.zero") == ["0"]
+
+
+def test_a_header_click_sorts_and_a_second_click_reverses(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    sort = "document.querySelector('.app-sort[data-sort=\"sku\"]')"
+    _eval(qtbot, view, f"({sort}.click(), true)")
+    assert _sku_order(view, qtbot) == ["CRM-50", "LIP-RED", "LST-07", "SPF-50"]
+    assert _text(view, qtbot, "sku-meta") == "4 SKUs · sorted by SKU"
+    _eval(qtbot, view, f"({sort}.click(), true)")
+    assert _sku_order(view, qtbot) == ["SPF-50", "LST-07", "LIP-RED", "CRM-50"]
+    # A push keeps the sort the packer chose.
+    bridge.set_statistics({**STATS, "completed": 2})
+    _settle(qtbot, bridge)
+    assert _sku_order(view, qtbot) == ["SPF-50", "LST-07", "LIP-RED", "CRM-50"]
+
+
+def test_sorting_by_status_goes_pending_partial_packed(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    _eval(qtbot, view, "(document.querySelector('.app-sort[data-sort=\"state\"]').click(), true)")
+    assert _all(view, qtbot, ".app-sku .badge") == ["Pending", "Pending", "Partial", "Packed"]
+
+
+def test_4c_complete_is_full_bars_and_grey_left(page, qtbot):
+    view, bridge = page
+    done = {
+        **STATS, "completed": 4, "pct": 100, "in_progress": 0, "packed": 7, "fully_packed": 4,
+        "couriers": [{"name": "DHL", "done": 2, "total": 2}, {"name": "DPD", "done": 2, "total": 2}],
+        "skus": [{**row, "packed": row["total"], "left": 0, "state": "packed"} for row in STATS["skus"]],
+    }
+    _open_statistics(bridge, qtbot, stats=done)
+    assert _all(view, qtbot, ".app-courier .track-fill", "e.style.width") == ["100%", "100%"]
+    assert _text(view, qtbot, "kpi-completed-note") == "none in progress"
+    assert _eval(qtbot, view, "document.querySelectorAll('.app-left.zero').length") == 4
+    assert _eval(qtbot, view, "document.getElementById('kpi-fill').style.width") == "100%"
+
+
+def test_statistics_keeps_nothing_of_an_ended_session(page, qtbot):
+    view, bridge = page
+    _open_statistics(bridge, qtbot)
+    bridge.set_session(session_payload())
+    bridge.set_statistics({})
+    _settle(qtbot, bridge)
+    assert _eval(qtbot, view, "document.querySelectorAll('.app-sku, .app-courier').length") == 0
+    assert _shown(view, qtbot, "stats-empty")
