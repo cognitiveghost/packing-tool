@@ -589,8 +589,13 @@ class MainWindow(QMainWindow):
         # The floor rung, not a literal: T1's row height comes off the active
         # density profile rather than a hardcoded pixel count.
         row_height = get_density_profile().row_height
-        self.order_tree.setStyleSheet(
-            f"QTreeWidget::item {{ height: {row_height}px; }}"
+        # Re-set on a theme switch: a widget with its own sheet keeps the palette
+        # it was polished with, so the alternate rows would stay the old theme's.
+        on_theme_changed(
+            self.order_tree,
+            lambda _tokens: self.order_tree.setStyleSheet(
+                f"QTreeWidget::item {{ height: {row_height}px; }}"
+            ),
         )
 
     def _order_status_chip(self, status: str) -> StatusChip:

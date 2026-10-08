@@ -345,7 +345,9 @@ class Sidebar(QWidget):
             f"#SidebarHeader, #SidebarFooter {{ background-color: {t.surface_sunken}; }}"
             f"#SidebarHeader {{ border-bottom: 1px solid {t.border_subtle}; }}"
             f"#SidebarFooter {{ border-top: 1px solid {t.border_subtle}; }}"
-            f"#SidebarMark {{ background-color: {t.accent_fill}; border-radius: 8px; }}"
+            # Id-on-id: `#SidebarHeader QLabel` below would otherwise win and clear it.
+            f"#SidebarHeader #SidebarMark {{ background-color: {t.accent_fill};"
+            f" border-radius: 8px; }}"
             f"#SidebarHeader QLabel {{ background: transparent; color: {t.text};"
             f" {font_css('body', bold=True)} }}"
             f"#FooterItem {{ background-color: transparent;"

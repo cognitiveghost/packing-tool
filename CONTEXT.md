@@ -26,7 +26,13 @@
 
 **Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
 
-**Command bar** — the 60px row above a screen, carrying what that screen is and what can be done to it. Above the pages it holds the client picker, session id, the page's actions and the ⋯ overflow menu; above Packer Mode it holds the order number, scanner capture, Skip order and Exit packing.
+**Command bar** — the 60px row above a screen, carrying what that screen is and what can be done to it. Above the pages it holds the sidebar toggle, the client selector, the open session's id, the page's actions and the ⋯ overflow menu (Server connection…, Exit); above Packer Mode it holds the order number, scanner capture, Skip order and Exit packing.
+
+**Sidebar** — the Qt column left of the pages: the app mark, the three destinations (Packing, Statistics, Sessions) and a footer with SKU mapping, the worker, Light/Dark and the connection card. 200px, collapsing to a 56px rail. With no client chosen its destinations are disabled.
+
+**Connection card** — the sidebar footer's statement of whether the file server answers: *Server connected*, *Reconnecting…* (while a check runs) or *Server unreachable* (with Retry). The server is checked on Retry and after a failed session action, never on a timer.
+
+**Connection banner** — the banner above the page while the server is unreachable: which path, since when, and Retry. While it shows, sessions cannot be opened or ended.
 
 **State panel** — the centred title, sentence and action a screen shows in place of its content when there is nothing to show or the work is done.
 
@@ -36,7 +42,7 @@
 
 **Artboard** — a static HTML drawing of a screen under `docs/design/`; once the owner approves it, it is the brief the implementation follows.
 
-**Session Browser** — the screen listing a client's packing sessions, and the detail page behind a selected one. Its client picker is the command bar's; it has no picker of its own.
+**Session Browser** — the screen listing a client's packing sessions, and the detail page behind a selected one. Its client picker is the command bar's; it has no picker of its own. Its destination in the sidebar is labelled "Sessions".
 
 **Session status** — one of seven states a session is in: *not started*, *active*, *paused*, *stale*, *completed*, *incomplete*, *abandoned*. A packer declares *paused* and *incomplete*; the system infers the rest.
 
