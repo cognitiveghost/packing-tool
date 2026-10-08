@@ -135,7 +135,7 @@ class RecordingPublisher:
 def test_a_completed_order_is_published(window, monkeypatch):
     window.logic = StubLogic("SKU_OK")
     window._progress_publisher = RecordingPublisher()
-    monkeypatch.setattr(window, "update_order_status", lambda *_: None)
+    monkeypatch.setattr(window, "_refresh_pages", lambda *_: None)
     window._handle_order_completion("1001")
     assert window._progress_publisher.published == [(["1001"], 0)]
 
