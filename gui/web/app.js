@@ -11,7 +11,7 @@ const view = {
   bridge: null,
   sessionId: null,
   query: null,
-  toggled: {},
+  toggled: Object.create(null),  // order numbers are data: no inherited keys
   sort: { key: "left", dir: -1 },
   toastTimer: 0,
 };
@@ -36,7 +36,7 @@ function syncSession() {
   const id = (view.bridge.session || {}).id || "";
   if (id === view.sessionId) return;
   view.sessionId = id;
-  view.toggled = {};
+  view.toggled = Object.create(null);
   view.sort = { key: "left", dir: -1 };
 }
 
@@ -148,7 +148,7 @@ function orderRow(order) {
   const status = el("span", "app-status");
   status.appendChild(badge(ORDER_BADGE[order.status] || ORDER_BADGE.not_started));
   row.appendChild(status);
-  row.appendChild(el("span", "app-courier", order.courier));
+  row.appendChild(el("span", "app-order-courier", order.courier));
   return row;
 }
 
@@ -172,7 +172,7 @@ function renderPacking() {
   // What the packer opened by hand belongs to one filter text.
   if (query !== view.query) {
     view.query = query;
-    view.toggled = {};
+    view.toggled = Object.create(null);
   }
   const orders = totals.orders || 0;
   const done = totals.done || 0;
@@ -225,6 +225,10 @@ function toggleOrder(number) {
   if (!current) return;
   view.toggled[number] = !isOpen(current);
   renderPacking();
+  // The redraw replaced the row: Enter or Space again must reach the new one.
+  const row = Array.from(els.rows.querySelectorAll(".app-order"))
+    .find(function (node) { return node.dataset.order === number; });
+  if (row) row.focus();
 }
 
 // --- Statistics ---------------------------------------------------------------

@@ -90,7 +90,10 @@
   overflow: hidden;
 }
 .app-head-first { padding-left: 30px; }
-.app-rows { flex: 1; min-height: 0; overflow: auto; }
+/* The head sits outside the scroller: both keep the scrollbar's gutter, so
+   a column stays under its heading when the rows scroll. */
+.app-rows { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.app-index > .tbl-head, .app-skus > .tbl-head { overflow: hidden; scrollbar-gutter: stable; }
 
 /* An order row is a button: it opens and closes its items. */
 .app-order {

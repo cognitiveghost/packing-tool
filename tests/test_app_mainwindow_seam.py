@@ -81,10 +81,8 @@ def test_a_scan_in_packer_mode_pushes_nothing_and_leaving_pushes_once(
     window.logic.current_order_state[0]["required"] = 2  # so the scan is not the last one
     window.on_scanner_input("TS-4409-B")
     assert pushes == []
-    assert window._pages_stale is True
     window.switch_to_session_view()
     assert pushes == [1]
-    assert window._pages_stale is False
     assert _bridge(window).packing["totals"]["packed"] == 1
 
 
@@ -168,6 +166,53 @@ def test_a_failed_start_is_shown_in_the_page_and_not_in_a_message_box(
     assert main_window.logic is None
     assert main_window.current_work_dir is None
     assert not main_window.command_bar.open_session_button.isHidden()
+
+
+def test_a_start_cannot_be_entered_while_one_is_running(
+    main_window, session_factory, monkeypatch, tmp_path
+):
+    # The start spins the event loop with nothing modal up: a second start
+    # from inside it (Open session, Retry) must be refused untouched.
+    session_dir, work_dir, list_path = _broken_list(session_factory)
+    nested = []
+    real_acquire = main_window._acquire_lock_with_stale_prompt
+
+    def acquire(*args):
+        # Where a click would land: inside the running start.
+        nested.append(main_window.start_shopify_packing_session(
+            packing_list_path=list_path, work_dir=work_dir, session_path=session_dir,
+            client_id="TESTCL", packing_list_name="Other",
+        ))
+        before = main_window._last_start
+        main_window._start_or_resume_from_browser(
+            "TESTCL", "Other", tmp_path, tmp_path / "Other.json", work_dir=tmp_path)
+        assert main_window._last_start is before
+        return real_acquire(*args)
+
+    monkeypatch.setattr(main_window, "_acquire_lock_with_stale_prompt", acquire)
+    bridge = _bridge(main_window)
+    lists = []
+    bridge.sessionChanged.connect(lambda: lists.append(bridge.session.get("list")))
+
+    main_window.start_shopify_packing_session(
+        packing_list_path=list_path, work_dir=work_dir, session_path=session_dir,
+        client_id="TESTCL", packing_list_name="DHL_Orders",
+    )
+
+    assert nested == [False]
+    assert "Other" not in lists  # the refused start never reached the page
+    assert _bridge(main_window).session["list"] == "DHL_Orders"
+    assert main_window._starting is False
+
+
+def test_the_window_does_not_close_under_a_running_start(main_window):
+    from PySide6.QtGui import QCloseEvent
+
+    main_window._starting = True
+    event = QCloseEvent()
+    main_window.closeEvent(event)
+    assert not event.isAccepted()
+    main_window._starting = False
 
 
 def test_the_worker_steps_reach_the_page(main_window):

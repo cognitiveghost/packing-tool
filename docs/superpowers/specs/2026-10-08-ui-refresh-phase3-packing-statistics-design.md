@@ -262,8 +262,8 @@ Opening, failed and no client draw as on Packing.
 ## 7. `MainWindow` and the bar
 
 **One push.** `_push_pages()` builds `session`, `packing` and `statistics` from `self.logic` and the filter
-text and sets them on the bridge. `_refresh_pages()` calls it when the shell is the visible page and marks
-the pages stale otherwise; leaving Packer Mode pushes before it switches. It replaces
+text and sets them on the bridge. `_refresh_pages()` calls it when the shell is the visible page and does
+nothing otherwise; leaving Packer Mode pushes before it switches. It replaces
 `_populate_order_tree`, `_refresh_order_tree`, `_rebuild_order_tree_if_stale`, `_update_statistics`,
 `setup_order_table` and `update_order_status`. So a scan in Packer Mode costs the pages nothing, which is
 better than today, where Statistics is recomputed on every scan.
@@ -299,9 +299,9 @@ turn over together.
   (`when_painted`, 150 ms at most) and then switches. Leaving sets `covered` back, with the push, before
   the switch. So the frame the hidden view keeps is the empty plane. A window that is not visible (the
   tests' `MainWindow`) switches at once, as `_leave_packer_mode` already does.
-- The view is also hidden while Sessions is showing. Nothing changes a session's state from there except
-  starting one, and the page that comes back then shows 3a for a frame before 3b. One known limit: a theme
-  changed on Sessions shows in the page area one frame late. Phase 4 ends it, when Sessions joins the
+- The view is also hidden while Sessions is showing, and it is not covered first. Known limits: a session
+  ended from there (the bar's *End session*, Ctrl+E) and another started shows the ended one's last frame
+  before 3b, and a theme changed on Sessions shows in the page area one frame late. Phase 4 ends it, when Sessions joins the
   document.
 
 **The freshness test,** once for Packing and once for Statistics, in a real Chromium on a shown

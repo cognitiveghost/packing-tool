@@ -24,7 +24,7 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl.styles import PatternFill
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -223,8 +223,8 @@ class MainWindow(QMainWindow):
         # a release would recreate a lock nobody holds (AUDIT-02-8).
         self._lock_io = threading.Lock()
         self._heartbeat_busy = False
-        self._pages_stale = False
         self._last_start = None
+        self._starting = False  # see start_shopify_packing_session()
         self._heartbeat_lost.connect(self._on_heartbeat_lost)
         # ok / checking / down (spec 2026-10-08 section 6.5). Checked on Retry
         # and after a failed session action, never on a timer (owner decision).
@@ -528,7 +528,6 @@ class MainWindow(QMainWindow):
         With no list open it empties both pages and leaves `session` alone:
         whoever closed, failed or is opening the session has said which.
         """
-        self._pages_stale = False
         bridge = self.session_tabs.bridge
         logic = self.logic
         if logic is None:
@@ -562,15 +561,13 @@ class MainWindow(QMainWindow):
         self.packer_mode_button.setEnabled(not complete)
 
     def _refresh_pages(self):
-        """Push now if the shell is on screen, else when it next is.
+        """Push now if the shell is on screen; leaving Packer Mode pushes.
 
         A push is every order and line; during packing the pages sit under
         Packer Mode where nobody is looking (AUDIT-02-7).
         """
         if self._shell_showing():
             self._push_pages()
-        else:
-            self._pages_stale = True
 
     def _toast(self, message: str, role: str = "success"):
         """A toast where it can be seen: a Qt child cannot paint over a web
@@ -1014,6 +1011,11 @@ class MainWindow(QMainWindow):
         Args:
             event: Qt close event
         """
+        if self._starting:
+            # The start worker is still running; closing now would leave its
+            # thread and the lock behind. The start ends in seconds.
+            event.ignore()
+            return
         logger.info("Application closing, performing cleanup...")
 
         try:
@@ -1106,6 +1108,11 @@ class MainWindow(QMainWindow):
         Returns:
             bool: True if session started successfully, False otherwise
         """
+        # The start spins the event loop while its worker runs, and nothing
+        # modal is up any more: a second start must not get in under it.
+        if self._starting:
+            return False
+        self._starting = True
         try:
             logger.info(f"Starting Shopify packing session: {packing_list_path}")
             logger.info(f"Work directory: {work_dir}")
@@ -1121,7 +1128,7 @@ class MainWindow(QMainWindow):
                 )
             )
             # The lock is taken on this thread: let the page hear about step 1.
-            QApplication.processEvents()
+            QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
             # 1. Validate packing list file exists
             if not packing_list_path.exists():
@@ -1160,8 +1167,10 @@ class MainWindow(QMainWindow):
             )
             start_worker.step.connect(self._on_start_step)
             start_worker.start()
+            # No clicks or keys until the session is open or has failed: the
+            # bar, the rail and the client selector are all live under 3b.
             while not start_worker.wait(50):
-                QApplication.processEvents()
+                QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
             if start_worker.error is not None:
                 raise start_worker.error
@@ -1235,8 +1244,7 @@ class MainWindow(QMainWindow):
                 packing_list_name,
             )
 
-            # 10. Setup order table
-            self._push_pages()
+            # 10. A clean Packer Mode document; enable_packing_mode pushes the pages
             self._open_packer_document()
 
             # 11. Update UI state
@@ -1258,6 +1266,8 @@ class MainWindow(QMainWindow):
             title, text = start_failure(e, packing_list_name)
             self._show_start_failure(title, text, packing_list_name)
             return False
+        finally:
+            self._starting = False
 
     def end_session(self):
         """
@@ -2158,6 +2168,8 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
+        if self._starting:
+            return
         if self._connection_state == "down":
             self._toast(
                 "Server unreachable. Sessions cannot be opened until it answers.",

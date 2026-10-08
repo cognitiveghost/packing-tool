@@ -33,7 +33,7 @@ The mockup draws the pages as one app with one frame around them.
 - One document means one script and one sheet that grow with each phase. `app.js` keeps a section per
   page, and the bridge keeps one named property per page's state, so a page's payload and its tests stay
   separable.
-- State is pushed to the document only while the shell is showing. A scan in Packer Mode marks it stale,
+- State is pushed to the document only while the shell is showing. A scan in Packer Mode pushes nothing,
   and leaving pushes once.
 - SKU mapping and Worker selection are dialogs, not pages of the shell. Phase 5 decides where they live.
 

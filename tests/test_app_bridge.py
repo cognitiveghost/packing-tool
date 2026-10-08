@@ -315,7 +315,7 @@ def test_3d_an_order_row_says_what_it_holds(page, qtbot):
     assert _eval(qtbot, view, f"{row}.querySelector('.app-order-summary').textContent") == "1 item · Sunscreen"
     assert _eval(qtbot, view, f"{row}.querySelector('.app-qty').textContent") == "0 / 3"
     assert _eval(qtbot, view, f"{row}.querySelector('.app-status .badge').textContent") == "Not started"
-    assert _eval(qtbot, view, f"{row}.querySelector('.app-courier').textContent") == "DHL"
+    assert _eval(qtbot, view, f"{row}.querySelector('.app-order-courier').textContent") == "DHL"
 
 
 def test_3d_a_click_opens_a_row_and_a_second_closes_it(page, qtbot):
@@ -390,6 +390,16 @@ def test_markup_in_a_product_name_is_text(page, qtbot):
     _open_packing(bridge, qtbot, orders=orders, state=state)
     assert _all(view, qtbot, ".app-item .app-item-sku") == ["<b>X</b>"]
     assert _eval(qtbot, view, "document.querySelectorAll('#rows img, #rows b').length") == 0
+
+
+def test_a_toggled_row_keeps_the_keyboard(page, qtbot):
+    # The redraw replaces the row: the new one must hold focus, or a second
+    # Enter goes nowhere.
+    view, bridge = page
+    _open_packing(bridge, qtbot)
+    row = "document.querySelector('.app-order[data-order=\"#11\"]')"
+    _eval(qtbot, view, f"({row}.click(), true)")
+    assert _eval(qtbot, view, "document.activeElement.dataset.order") == "#11"
 
 
 def test_a_new_session_drops_what_the_packer_toggled(page, qtbot):
