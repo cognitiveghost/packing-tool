@@ -1,0 +1,90 @@
+/* Floor density over the shared kit (ADR 0002): what a packer reads and
+   presses at arm's length. No page layout and no #id in here.
+
+   Control height (44px), body (12pt) and caption (10pt) already arrive as
+   theme_css_vars() in the floor profile, so this sheet holds only what
+   shared/web/kit.css sizes for the office. Sizes are from
+   docs/design/ui-refresh/mockups/Floor Components.html. Loaded after kit.css
+   and before the page's own sheet. Web-tier rules as in kit.css.
+
+   Phases 3 to 5 add table rows, inputs and the toast here when a page first
+   uses them. */
+
+/* --- buttons ------------------------------------------------------------- */
+
+.btn { padding: 0 18px; }
+
+/* The floor's smaller button, for a row of actions. Still a 40px target. */
+.btn.compact { height: 40px; padding: 0 12px; }
+
+/* A ghost button has no box, so at this distance it needs the underline. */
+.btn.ghost { text-decoration: underline; }
+
+/* --- badges -------------------------------------------------------------- */
+
+.badge {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  font-size: var(--type-body-size);
+}
+
+/* A neutral word carries a strong border so it reads without colour. */
+.badge.neutral { border-color: var(--border-strong); }
+
+/* --- banner -------------------------------------------------------------- */
+
+.banner { align-items: center; gap: 14px; padding: 12px 16px; }
+.banner.danger > .glyph { width: 24px; height: 24px; }
+.banner.danger .banner-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--type-heading-size);
+  color: var(--status-danger);
+}
+
+/* --- a panel that takes the page over ------------------------------------ */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-popover);
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+}
+
+.dialog {
+  width: 520px;
+  max-width: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--kit-radius-card);
+  box-shadow: var(--overlay-shadow);
+}
+.dialog.danger { width: 600px; border-color: var(--status-danger-border); }
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: var(--type-display-size);
+  font-weight: 700;
+}
+.dialog-title .glyph { width: 28px; height: 28px; }
+.dialog.danger .dialog-title { color: var(--status-danger); }
+
+.dialog-text { margin: 0; }
+.dialog.danger .dialog-text { font-size: var(--type-heading-size); }
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
