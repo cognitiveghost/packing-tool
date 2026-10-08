@@ -21,15 +21,18 @@ def test_the_panel_says_what_t2_says_and_its_button_opens_the_browser(main_windo
     assert main_window.session_tabs.currentIndex() == PAGE_BROWSER
 
 
-def test_each_page_shows_only_its_own_status_bar_sentence(main_window):
-    """One label held both the order summary and the session count; whichever
-    screen spoke last won, so Packing could read "7 of 7 sessions"."""
-    from gui.main_window import PAGE_BROWSER, PAGE_PACKING
+def test_the_order_summary_sits_above_the_tree(main_window_with_list):
+    """The status bar's sentence, on its own page until phase 3's totals strip."""
+    window = main_window_with_list
+    assert window.packing_summary_label.text() == "2 orders · 0 packed · 0 in progress"
+    assert not window.packing_summary_label.isHidden()
 
-    main_window.session_tabs.setCurrentIndex(PAGE_BROWSER)
-    assert not main_window.sb_browser_label.isHidden()
-    assert main_window.sb_summary_label.isHidden()
 
-    main_window.session_tabs.setCurrentIndex(PAGE_PACKING)
-    assert not main_window.sb_summary_label.isHidden()
-    assert main_window.sb_browser_label.isHidden()
+def test_no_list_means_no_summary_line(main_window):
+    assert main_window.packing_summary_label.isHidden()
+
+
+def test_the_session_count_sits_in_the_sessions_top_row(main_window):
+    browser = main_window.session_browser
+    browser.sessions_shown.emit(12, 40)
+    assert browser.count_label.text() == "12 of 40 sessions"

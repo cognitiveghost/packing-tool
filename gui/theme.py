@@ -2,7 +2,7 @@
 
 Kept as its own module (rather than importing shared.theme directly at
 every call site) so packing-tool/main.py's existing
-`from gui.theme import load_saved_theme, toggle_theme` keeps working unchanged.
+`from gui.theme import load_saved_theme` keeps working unchanged.
 """
 
 from PySide6.QtCore import QSettings
@@ -28,7 +28,6 @@ __all__ = [
     "apply_theme",
     "current_tokens",
     "load_saved_theme",
-    "toggle_theme",
 ]
 
 # A station that has not been told otherwise is a scan station (spec E2).
@@ -52,14 +51,6 @@ def load_saved_theme(app: QApplication) -> str:
     theme = settings.value("current_theme", THEME_DARK)
     apply_theme(app, theme)
     return theme
-
-
-def toggle_theme(app: QApplication) -> str:
-    settings = QSettings("PackingTool", "Theme")
-    current = settings.value("current_theme", THEME_DARK)
-    new_theme = THEME_LIGHT if current == THEME_DARK else THEME_DARK
-    apply_theme(app, new_theme)
-    return new_theme
 
 
 def current_tokens() -> ThemeTokens:

@@ -290,7 +290,7 @@ class SessionsListWidget(QWidget):
 
     resume_session_requested = Signal(dict)
     start_packing_requested = Signal(dict)
-    sessions_shown = Signal(int, int)  # (shown, total) -- for the status bar
+    sessions_shown = Signal(int, int)  # (shown, total) -- for the page's caption line
     session_details_requested = Signal(
         dict
     )  # entry data, for the browser's detail page

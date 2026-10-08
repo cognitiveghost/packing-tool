@@ -173,9 +173,8 @@ def main_window(config_ini, server_root, qapp):
     same config) before the window is constructed. Client IDs are capped at
     10 alphanumeric/underscore characters (see validate_client_id).
 
-    Two clients, not one: MainWindow auto-selects a client at startup
-    (restoring last_client, or whichever get_available_clients() lists
-    first), so a test that switches the command bar to a specific client
+    Two clients, not one: MainWindow restores the remembered client at startup,
+    and this fixture remembers the first one listed, so a test that switches the command bar to a specific client
     needs a second one to have actually started on -- otherwise
     setCurrentIndex(already-current-index) fires no signal at all.
     """
@@ -184,6 +183,14 @@ def main_window(config_ini, server_root, qapp):
     seed = ProfileManager(config_path=str(config_ini))
     seed.create_client_profile("TESTCL", "Test Client")
     seed.create_client_profile("OTHERCL", "Other Client")
+    # Two clients and nothing remembered would start on "Choose a client"
+    # (spec 2026-10-08 section 6.6). These tests want what a PC that has been
+    # used before shows: the remembered client, which is the first listed.
+    from PySide6.QtCore import QSettings
+
+    QSettings("PackingTool", "ClientSelection").setValue(
+        "last_client", seed.get_available_clients()[0]
+    )
     window = MainWindow(config_path=str(config_ini))
     yield window
     window.deleteLater()

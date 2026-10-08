@@ -31,10 +31,13 @@ from PySide6.QtCore import QSettings, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
+    QLabel,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
+
+from shared.theme import font_css, on_theme_changed
 
 from .session_detail_page import SessionDetailPage
 from .sessions_list_widget import SessionsListWidget
@@ -58,7 +61,7 @@ class SessionBrowserWidget(QWidget):
 
     resume_session_requested = Signal(dict)
     start_packing_requested = Signal(dict)
-    sessions_shown = Signal(int, int)  # (shown, total) -- forwarded for the status bar
+    sessions_shown = Signal(int, int)  # (shown, total) -- forwarded; also drawn in the top row
 
     def __init__(
         self,
@@ -114,6 +117,16 @@ class SessionBrowserWidget(QWidget):
         self._auto_refresh_cb.stateChanged.connect(self._on_auto_refresh_toggled)
         top_bar.addWidget(self._auto_refresh_cb)
         top_bar.addStretch()
+        # The status bar's "12 of 40 sessions", here until phase 4 draws the
+        # mockup's tab counts.
+        self.count_label = QLabel("")
+        on_theme_changed(
+            self.count_label,
+            lambda tokens: self.count_label.setStyleSheet(
+                f"{font_css('caption')} color: {tokens.text_secondary};"
+            ),
+        )
+        top_bar.addWidget(self.count_label)
         root.addLayout(top_bar)
 
         self.sessions_list = SessionsListWidget(
@@ -152,6 +165,9 @@ class SessionBrowserWidget(QWidget):
         self.sessions_list.start_packing_requested.connect(self.start_packing_requested)
         self.sessions_list.session_details_requested.connect(self.show_detail)
         self.sessions_list.sessions_shown.connect(self.sessions_shown)
+        self.sessions_shown.connect(
+            lambda shown, total: self.count_label.setText(f"{shown} of {total} sessions")
+        )
 
     # ------------------------------------------------------------------ #
     #  Auto-refresh                                                        #

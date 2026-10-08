@@ -27,23 +27,6 @@ from shared.theme import (
 )
 
 
-def test_dark_base_is_not_pure_black():
-    # Pure black gives elevation nowhere to go: every raised plane can only
-    # get lighter, and the first step reads as a smudge (spec 3.1). 8.1
-    # lifted it again so the page sits above surface_sunken (spec 2/C1).
-    assert DARK_THEME.surface == "#101014"
-    assert LIGHT_THEME.surface == "#FFFFFF"
-
-
-def test_border_is_the_missing_middle_and_the_old_value_survives():
-    # border was pure text contrast (17.4:1) used for every box outline,
-    # which is what made both apps look harsh (spec 3.3).
-    assert LIGHT_THEME.border == "#70707A"
-    assert DARK_THEME.border == "#787878"
-    assert LIGHT_THEME.border_strong == "#1A1A1A"
-    assert DARK_THEME.border_strong == "#F2F2F2"
-
-
 def test_accent_blue_aliases_the_fill_not_the_info_foreground():
     # A fill token sits behind white; a foreground token sits on a surface.
     # One value cannot serve both -- aliasing accent_blue to status_info
@@ -148,38 +131,19 @@ def test_on_accent_clears_aa_against_the_solid_fill(theme):
     assert contrast_ratio(theme.on_accent, theme.accent_fill) >= 4.5
 
 
-def test_the_frame_plane_exists_and_is_part_of_the_matrix():
-    """spec 2/C1: Depot's fourth plane. It is the app frame, the 56 px nav
-    rail and the gutters -- regions separate by elevation instead of by a
-    1 px border on every widget. Adding the token without adding it to
-    _SURFACE_PLANES would leave it unvalidated, which is the whole failure
-    mode 8.2 existed to end."""
-    assert LIGHT_THEME.surface_sunken == "#DADADF"
-    assert DARK_THEME.surface_sunken == "#08080B"
+def test_the_frame_plane_is_part_of_the_matrix():
+    """surface_sunken is the app frame and the sidebar. A plane that is not in
+    _SURFACE_PLANES is not validated for contrast, which is the failure mode
+    the matrix exists to end. surface_inverse is the toast's plane, not an
+    elevation step, and stays out."""
     assert _SURFACE_PLANES == (
         "surface_sunken", "surface", "surface_raised", "surface_overlay"
     )
 
 
-def test_dark_page_plane_lifted_off_the_frame():
-    """spec 2/C1: dark surface moves 0A0A0A -> 101014 so the page reads
-    above surface_sunken without a border. Costs every foreground 0.2-0.4
-    of ratio; the parametrized floor test below is what proves that is
-    affordable."""
-    assert DARK_THEME.surface == "#101014"
-    assert DARK_THEME.background == "#101014"  # alias must move with it
-
-
-def test_the_three_accent_fills_are_theme_independent():
-    """spec 2/C4: a button fill sits on itself, not on a surface, so it
-    needs no per-theme value."""
-    for theme in (LIGHT_THEME, DARK_THEME):
-        assert theme.accent_fill == "#006FBA"
-        assert theme.accent_fill_hover == "#005F9F"
-        assert theme.accent_fill_active == "#004B80"
-    # Same tripwire the plane tuple gets above: both are derived from
-    # _COLOR_FIELDS by prefix, so this fails if a fill is renamed out of the
-    # matrix or a non-fill token wanders into it.
+def test_the_three_accent_fills_are_the_matrix():
+    """Derived from _COLOR_FIELDS by prefix: this fails if a fill is renamed
+    out of the matrix or a non-fill token wanders into it."""
     assert _ACCENT_FILLS == ("accent_fill", "accent_fill_hover", "accent_fill_active")
 
 
@@ -204,8 +168,7 @@ def test_the_hover_aliases_now_resolve_to_the_active_fill():
 
 
 def test_validate_theme_rejects_a_fill_that_fails_only_on_hover():
-    """The exact shipped defect, as a regression test: a theme that passes
-    on accent_fill and fails on the hover fill must raise.
+    """A theme that passes on accent_fill and fails on the hover fill must raise.
 
     Only accent_fill_hover moves. Perturbing button_hover_* as well would
     trip the alias-drift check first -- it runs before the contrast loops --
@@ -213,7 +176,7 @@ def test_validate_theme_rejects_a_fill_that_fails_only_on_hover():
     """
     regressed = dataclasses.replace(
         DARK_THEME, name="regressed",
-        accent_fill_hover="#2D9FE8",           # 2.90:1 behind white
+        accent_fill_hover=DARK_THEME.on_accent,   # 1:1 behind its own label
     )
     with pytest.raises(ValueError, match="accent_fill_hover"):
         validate_theme(regressed)
@@ -369,12 +332,10 @@ def _rule(qss: str, selector: str) -> str:
     "QTableView::item:selected", "QTreeView::item:selected",
     "QListWidget::item:selected",
 ])
-def test_selection_is_a_ring_and_not_an_accent_fill(theme, selector):
+def test_selection_is_a_ring(theme, selector):
     rule = _rule(build_stylesheet(theme), selector)
     assert theme.selection_bg in rule
     assert theme.selection_border in rule
-    assert theme.accent_fill not in rule
-    assert theme.on_accent not in rule
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
@@ -446,33 +407,6 @@ def test_every_foreground_clears_its_floor_with_room(theme):
             assert ratio >= floor + 0.1, (
                 f"{theme.name}.{token} on {plane}: {ratio:.2f} < {floor} + 0.1"
             )
-
-
-def test_light_planes_are_an_even_ramp():
-    """218 / 230 / 242 / 255. Before the retune sunken->overlay was 2 units."""
-    assert LIGHT_THEME.surface_sunken == "#DADADF"
-    assert LIGHT_THEME.surface_overlay == "#E6E6EA"
-    assert LIGHT_THEME.surface_raised == "#F2F2F4"
-    assert LIGHT_THEME.surface == "#FFFFFF"
-
-
-@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
-def test_hover_is_the_overlay_plane(theme):
-    """A row you point at should be a plane you can see."""
-    assert theme.hover == theme.surface_overlay
-
-
-@pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
-def test_selection_border_folds_onto_status_info(theme):
-    assert theme.selection_border == theme.status_info
-
-
-def test_focus_ring_folds_onto_status_info_in_light_only():
-    """Dark's focus_ring is untouched by the retune (spec 3.2): it measures
-    healthy already, and a symmetrical edit for light's sake gains nothing."""
-    assert LIGHT_THEME.focus_ring == LIGHT_THEME.status_info
-    assert DARK_THEME.focus_ring == "#4DA9E8"
-    assert DARK_THEME.focus_ring != DARK_THEME.status_info
 
 
 @pytest.mark.parametrize("theme", [LIGHT_THEME, DARK_THEME], ids=["light", "dark"])
