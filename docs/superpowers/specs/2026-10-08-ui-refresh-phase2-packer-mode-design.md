@@ -15,9 +15,9 @@ already renders on the web tier, but on its own bridge plumbing and its own copy
 panel styles, drawn to an older artboard. This phase moves it onto the page base and kit both apps share,
 restyles it to the approved mockup, and leaves behind the floor-density sheet phases 3 to 5 build on.
 
-It is a restyle. What the screen says and what each action does stay as they are, with four exceptions the
-task or the owner asked for: the unsaved warning becomes a banner (6i), the Force confirm question and the
-lock-lost notice are drawn in the page (6f, 6j), and one bug is fixed first (section 3).
+It is a restyle. What the screen says and what each action does stay as they are, with five exceptions: the
+unsaved warning becomes a banner (6i), the Force confirm question and the lock-lost notice are drawn in the
+page (6f, 6j), the band names the order when one opens (6b), and one bug is fixed first (section 3).
 
 **Done when:** the page holds no input element of any kind; the view is still `NoFocus`; the
 scan-after-click regression test passes; each of 6a to 6j has a test and a render in both themes; and
@@ -125,9 +125,10 @@ the side column 16px 16px 20px 4px. At 1920px the product column takes the extra
 **6a, waiting.** The band is solid `status_info` with "Scan an order barcode". The list card says "No order
 open". The order card is hidden. *Skip order* is disabled.
 
-**6b, order open.** The order card: today's chips as neutral badges, the notes behind a message glyph, and
+**6b, order open.** The band says "Order #10407 · 5 items" in info; today it is left empty until the first
+item scan, which the solid band would show as a blank block. The order card: today's chips as neutral badges, the notes behind a message glyph, and
 *Repeat* as a warning badge at the right. It is hidden when an order has none of them. The list has a 36px
-head (SKU, Product, Packed, Status) and 64px rows on the grid `150px minmax(0,1fr) 128px 116px auto`:
+head (SKU, Product, Packed, Status) and 64px rows on the grid `150px minmax(0,1fr) 128px 116px 404px`:
 
 - SKU in mono, bold; product in 14pt;
 - the packed count as a 26pt bold numeral with "of N" at 14pt beside it;
