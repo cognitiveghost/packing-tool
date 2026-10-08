@@ -268,6 +268,7 @@ class MainWindow(QMainWindow):
         self.current_packing_list = None  # Name of selected packing list
         self._progress_publisher = None  # ProgressPublisher for the open Shopify session
         self._leaving_packer_mode = False  # see _leave_packer_mode()
+        self._entering_packer_mode = False  # see switch_to_packer_mode()
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -1654,10 +1655,29 @@ class MainWindow(QMainWindow):
         )
 
     def switch_to_packer_mode(self):
-        """Switches the view to the Packer Mode widget."""
-        self.stacked_widget.setCurrentWidget(self.packer_mode_widget)
-        self.packer_mode_widget.resume_scanner()
-        self.packer_mode_widget.set_focus_to_scanner()
+        """Enter Packer Mode once the app document has painted itself empty.
+
+        A hidden QWebEngineView keeps its last frame and shows it when it
+        comes back. So the frame it keeps is the covered one, never orders
+        that may be gone by then (ADR 0003): the document is told to draw
+        nothing, and this waits for that paint, 150 ms at most.
+        """
+        if self._entering_packer_mode:
+            return
+        pages = self.session_tabs
+
+        def enter():
+            self._entering_packer_mode = False
+            self.stacked_widget.setCurrentWidget(self.packer_mode_widget)
+            self.packer_mode_widget.resume_scanner()
+            self.packer_mode_widget.set_focus_to_scanner()
+
+        if pages.view.isVisible():
+            self._entering_packer_mode = True
+            pages.bridge.set_covered(True)
+            when_painted(pages.bridge, enter)
+        else:
+            enter()
 
     def switch_to_session_view(self):
         """Switches the view back to the main session widget (tabbed interface)."""
@@ -1687,6 +1707,7 @@ class MainWindow(QMainWindow):
             self._leaving_packer_mode = False
             # Before the shell shows: what it shows is current (spec section 8).
             self._push_pages()
+            self.session_tabs.bridge.set_covered(False)
             self.stacked_widget.setCurrentWidget(self.session_widget)
 
         if self.stacked_widget.currentWidget() is widget and widget.isVisible():
