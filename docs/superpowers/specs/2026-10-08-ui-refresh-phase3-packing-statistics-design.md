@@ -337,8 +337,8 @@ the bridge's; assert the DOM holds B's order numbers (or SKUs) and none of A's.
 - `.tbl-head`, `.tbl-group`, `.tbl-row`: the index table's 40px head, 40px group row and its rows, with
   `--tbl-cols` set by the page.
 
-**`gui/web/app.css`** holds the two pages' layouts, grids and the 3b, 3c and 3g blocks. Sizes off the type
-scale (14pt) are custom properties at its top.
+**`gui/web/app.css`** holds the two pages' layouts, grids and the 3b, 3c and 3g blocks. Every size is on the type
+scale, so it defines none of its own.
 
 ## 11. Departures from the mockup
 
