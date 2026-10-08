@@ -169,3 +169,67 @@ def test_a_finished_orders_reset_does_not_close_the_order_opened_after_it(
     assert [r["sku"] for r in widget.bridge.items] == ["A"]
     assert widget._order_label.text() == "#1002"
     assert widget.scanner_input.isEnabled()
+
+
+def test_leaving_packer_mode_waits_for_the_cleared_page(window, qtbot):
+    """A hidden web view keeps its last painted frame and shows it on the way
+    back in. So the window leaves only once the cleared page has painted, and
+    the scanner is off while it waits."""
+    window.show()
+    qtbot.waitExposed(window)
+    window.switch_to_packer_mode()
+    widget = window.packer_mode_widget
+    qtbot.waitUntil(
+        lambda: widget.bridge.painted_revision >= widget.bridge.revision, timeout=20000
+    )
+    widget.display_order(
+        [{"SKU": "A", "Product_Name": "A", "Quantity": 1, "Order_Number": "1002"}], []
+    )
+
+    window.switch_to_session_view()
+
+    assert window.stacked_widget.currentWidget() is widget  # not yet
+    assert not widget.scanner_input.isEnabled()
+    qtbot.waitUntil(
+        lambda: window.stacked_widget.currentWidget() is window.session_widget, timeout=2000
+    )
+    assert widget.bridge.items == []
+
+
+def test_coming_back_gives_the_scanner_back(window):
+    window.packer_mode_widget.pause_scanner()
+    window.switch_to_packer_mode()
+    assert window.packer_mode_widget.scanner_input.isEnabled()
+
+
+def test_a_window_that_is_not_showing_leaves_at_once(window):
+    window.switch_to_packer_mode()
+    window.switch_to_session_view()
+    assert window.stacked_widget.currentWidget() is window.session_widget
+
+
+class OpeningLogic(StubLogic):
+    """An order barcode scanned with no order open."""
+
+    def __init__(self):
+        super().__init__("ORDER_LOADED")
+        self.current_order_number = None
+        self.orders_data = {"1002": {"metadata": {}}}
+        self.session_packing_state = {"completed_orders": [], "skipped_orders": []}
+
+    def start_order_packing(self, text):
+        self.current_order_number = "1002"
+        items = [
+            {"SKU": "A", "Product_Name": "A", "Quantity": 1, "Order_Number": "1002"},
+            {"SKU": "B", "Product_Name": "B", "Quantity": 2, "Order_Number": "1002"},
+        ]
+        return items, "ORDER_LOADED"
+
+
+def test_opening_an_order_says_so_in_the_band(window):
+    """It used to leave the band empty until the first item scan."""
+    window.logic = OpeningLogic()
+    window.on_scanner_input("1002")
+    feedback = window.packer_mode_widget.bridge.feedback
+    assert feedback["text"] == "Order #1002 · 2 items"
+    assert feedback["role"] == "info"
