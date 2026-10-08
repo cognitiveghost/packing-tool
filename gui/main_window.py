@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import PAGES, CommandBar
+from gui.components.connection_banner import ConnectionBanner
 from gui.components.sidebar import Sidebar
 from gui.packer_bridge import session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
@@ -68,7 +69,11 @@ from shared.components.card import Card
 from shared.components.state_panel import StatePanel
 from shared.components.toast import toast
 from shared.icons import icon
-from shared.server_connection import ConnectionSettingsDialog, prompt_for_recovery_path
+from shared.server_connection import (
+    ConnectionSettingsDialog,
+    prompt_for_recovery_path,
+    test_path_reachable,
+)
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
 from shared.theme import (
@@ -187,6 +192,8 @@ class MainWindow(QMainWindow):
 
     # A background heartbeat found another PC holding the lock (its work_dir)
     _heartbeat_lost = Signal(str)
+    # Emitted from the connection-check thread; queued to the UI thread.
+    _connection_checked = Signal(bool)
 
     def __init__(
         self,
@@ -242,6 +249,12 @@ class MainWindow(QMainWindow):
         self._heartbeat_busy = False
         self._order_tree_stale = False
         self._heartbeat_lost.connect(self._on_heartbeat_lost)
+        # ok / checking / down (spec 2026-10-08 section 6.5). Checked on Retry
+        # and after a failed session action, never on a timer (owner decision).
+        self._connection_state = "ok"
+        self._connection_was_down = False
+        self._connection_down_since = ""
+        self._connection_checked.connect(self._on_connection_checked)
         logger.info("SessionLockManager initialized successfully")
 
         # Initialize WorkerManager
@@ -457,6 +470,16 @@ class MainWindow(QMainWindow):
             self._shell_settings.value("sidebar_expanded", True, type=bool)
         )
 
+        # Frame 2e. Inset like the page content it sits above. The margins are
+        # on a container, so hiding it leaves no gap above the page.
+        self.connection_banner = ConnectionBanner()
+        self.connection_banner.retryRequested.connect(self.check_connection)
+        self._banner_row = QWidget()
+        banner_layout = QVBoxLayout(self._banner_row)
+        banner_layout.setContentsMargins(24, 20, 24, 0)
+        banner_layout.addWidget(self.connection_banner)
+        main_layout.addWidget(self._banner_row)
+
         # Frame 2a: with no client chosen the pages give way to this.
         self.no_client_panel = StatePanel(
             "Choose a client to begin",
@@ -493,6 +516,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stacked_widget)
 
         self._init_overflow()
+        self.sidebar.retryRequested.connect(self.check_connection)
+        self._set_connection_state("ok")
 
     def _refresh_rail_icons(self, _theme_name=None):
         """Re-render the rail's glyphs at the new theme's text colour."""
@@ -896,6 +921,49 @@ class MainWindow(QMainWindow):
         """
         self.packer_mode_widget.flash_scan(color)
 
+    def check_connection(self):
+        """Ask the server once, off the UI thread (a dead share can block for
+        the whole timeout). One check at a time."""
+        if self._connection_state == "checking":
+            return
+        self._connection_was_down = self._connection_state == "down"
+        self._set_connection_state("checking")
+        path = str(self.profile_manager.base_path)
+        timeout = self.profile_manager.connection_timeout
+
+        def run():
+            reachable = test_path_reachable(path, timeout)
+            try:
+                self._connection_checked.emit(reachable)
+            except RuntimeError:
+                pass  # the window closed while the check ran
+
+        threading.Thread(target=run, name="connection-check", daemon=True).start()
+
+    def _on_connection_checked(self, reachable: bool):
+        if reachable:
+            self._set_connection_state("ok")
+            if self._connection_was_down:
+                toast(self, f"Server connected again · {self.profile_manager.base_path}")
+            return
+        if not self._connection_was_down:
+            # The time we found out; when the server stopped is not knowable.
+            self._connection_down_since = datetime.now().astimezone().strftime("%H:%M")
+        self._set_connection_state("down")
+
+    def _set_connection_state(self, state: str):
+        self._connection_state = state
+        path = str(self.profile_manager.base_path)
+        down = state == "down"
+        self.sidebar.set_connection(state, path)
+        if down:
+            self.connection_banner.set_outage(path, self._connection_down_since)
+        # Both: the tests and the render read the banner, the layout reads the row.
+        self.connection_banner.setVisible(down)
+        self._banner_row.setVisible(down)
+        self.command_bar.set_server_reachable(not down)
+        self.packing_state_panel.button.setEnabled(not down)
+
     def _open_connection_settings(self):
         """Open the Server Connection settings dialog."""
         config_fallback = self.profile_manager.config.get(
@@ -1048,6 +1116,10 @@ class MainWindow(QMainWindow):
             self.current_packing_list = None
         if hasattr(self, "packing_data"):
             self.packing_data = None
+
+        # A failed start may be the server going away: find out, so the
+        # sidebar and the banner say so (spec 2026-10-08 section 6.5).
+        self.check_connection()
 
     def closeEvent(self, event: QCloseEvent):
         """
@@ -1679,6 +1751,7 @@ class MainWindow(QMainWindow):
                 f"Could not finish ending the session:\n\n{e}",
             )
             logger.exception("Error during end_session")
+            self.check_connection()
 
         self._teardown_session()
 
@@ -2235,6 +2308,14 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
+        if self._connection_state == "down":
+            toast(
+                self,
+                "Server unreachable. Sessions cannot be opened until it answers.",
+                role="info",
+            )
+            return
+
         # One list at a time. is_active() covers only the legacy Excel path;
         # an open Shopify list is self.logic (AUDIT-02-2).
         if self.logic is not None or (
