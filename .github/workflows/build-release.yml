@@ -156,12 +156,14 @@ jobs:
         # supposed to collect the helper process, and if it silently does not,
         # the only symptom is a dead view discovered over RDP after a full
         # build and a several-hundred-MB download. Fail here instead.
+        # kit.css and page.js are shared/web, which packer.html loads by
+        # relative path.
         #
         # qico.dll is Qt's .ico reader: without it brand_icon() loads nothing
         # and the window and taskbar show a blank icon.
         shell: pwsh
         run: |
-          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html", "packer-assistant.ico", "qico.dll") {
+          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html", "kit.css", "page.js", "packer-assistant.ico", "qico.dll") {
             if (-not (Get-ChildItem -Path "dist\PackerAssistant" -Recurse -Filter $name)) {
               throw "PyInstaller did not bundle $name -- the app would not start."
             }

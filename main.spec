@@ -7,6 +7,7 @@ a = Analysis(
     datas=[
         ('shared/assets', 'shared/assets'),
         ('gui/web', 'gui/web'),
+        ('shared/web', 'shared/web'),
         ('config.ini.example', '.'),
     ],
     hiddenimports=[],

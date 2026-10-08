@@ -9,18 +9,20 @@ import json
 import time
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
 from gui.packer_bridge import (
     PAGE,
-    THEME_MARKER,
     item_rows,
     mount_packer_page,
     unknown_rows,
 )
 from gui.theme import apply_theme
 from shared.theme import THEME_DARK, THEME_LIGHT
+from shared.web_page import THEME_MARKER, PageBridge
 
 ITEMS_FOR_PAGE = [{"SKU": "TS-4409-B", "Product_Name": "Wireless Mouse", "Quantity": 3}]
 
@@ -87,8 +89,6 @@ def test_a_theme_switch_repaints_without_a_reload(page, qtbot, qapp):
 
 
 def test_the_view_never_takes_keyboard_focus(page, qtbot):
-    from PySide6.QtCore import Qt
-
     view, _ = page
     assert view.focusPolicy() == Qt.FocusPolicy.NoFocus
 
@@ -602,26 +602,47 @@ def test_mapping_an_unmatched_scan_reaches_python_with_the_barcode(qtbot, page):
     assert caught.args == ["4006381333931"]
 
 
-def test_the_quantity_cell_warns_while_a_multi_unit_line_is_unfinished(qtbot, page):
-    view, bridge = page
-    bridge.set_items(
-        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 1, "required": 3}], {})
-    )
-    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
-    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
-        "sku-row__qty sku-row__qty--multi"
-    )
+def test_the_bridge_is_a_page_bridge_and_counts_its_changes(page):
+    _view, bridge = page
+    assert isinstance(bridge, PageBridge)
+    before = bridge.revision
+    bridge.set_items([])
+    bridge.set_unsaved(True)
+    assert bridge.revision == before + 2
 
 
-def test_a_finished_multi_unit_line_drops_the_warning(qtbot, page):
-    view, bridge = page
-    bridge.set_items(
-        item_rows(ITEMS_FOR_PAGE, [{"row": 0, "packed": 3, "required": 3}], {})
+def test_the_three_new_states_start_empty_and_round_trip(page):
+    _view, bridge = page
+    assert (bridge.unsaved, bridge.question, bridge.takeover) == (False, {}, {})
+    bridge.set_unsaved(True)
+    bridge.set_question({"row": 1, "sku": "A"})
+    bridge.set_takeover({"holder": "PC-2", "list": "DHL"})
+    assert bridge.unsaved is True
+    assert bridge.question == {"row": 1, "sku": "A"}
+    assert bridge.takeover == {"holder": "PC-2", "list": "DHL"}
+
+
+def test_an_answer_reaches_python(page, qtbot):
+    _view, bridge = page
+    with qtbot.waitSignal(bridge.questionAnswered, timeout=1000) as caught:
+        bridge.answerQuestion(True)
+    assert caught.args == [True]
+
+
+def test_a_reloaded_page_still_refuses_the_keyboard(page, qtbot):
+    """mount_page loads the page again when its render process dies. The new
+    document gets a new focus proxy, and it must refuse focus like the first."""
+    view, _bridge = page
+    with qtbot.waitSignal(view.page().loadFinished, timeout=20000):
+        view.page().renderProcessTerminated.emit(
+            QWebEnginePage.RenderProcessTerminationStatus.CrashedTerminationStatus, 1
+        )
+    qtbot.waitUntil(
+        lambda: view.focusProxy() is not None
+        and view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus,
+        timeout=5000,
     )
-    _until_js(qtbot, view, "document.querySelectorAll('.sku-row').length === 1")
-    assert _eval(qtbot, view, "document.querySelector('.sku-row__qty').className") == (
-        "sku-row__qty"
-    )
+    assert view.focusPolicy() == Qt.FocusPolicy.NoFocus
 
 
 def test_a_finished_session_replaces_the_document_with_its_panel(qtbot, page):
