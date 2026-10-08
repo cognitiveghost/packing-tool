@@ -190,9 +190,12 @@ def test_leaving_packer_mode_waits_for_the_cleared_page(window, qtbot):
 
     assert window.stacked_widget.currentWidget() is widget  # not yet
     assert not widget.scanner_input.isEnabled()
+    revision = widget.bridge.revision
     qtbot.waitUntil(
         lambda: window.stacked_widget.currentWidget() is window.session_widget, timeout=2000
     )
+    # On the page's report, not on the 150 ms cap.
+    assert widget.bridge.painted_revision >= revision
     assert widget.bridge.items == []
 
 

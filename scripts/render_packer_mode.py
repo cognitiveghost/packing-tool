@@ -171,6 +171,10 @@ def main(argv: list[str]) -> int:
         fresh(orders_done=120)
         widget.show_session_complete(session_end_payload(120, 120, 0, 1290, 11520))
         shoot("6h-{theme}")
+        # Not a mockup frame: the 6i banner stays above the 6h panel.
+        widget.set_unsaved(True)
+        shoot("6h-{theme}-unsaved")
+        widget.set_unsaved(False)
 
         order()
         scanned(1, 2, "CRM-50ML confirmed — 2 of 3 packed", "CRM-50ML")

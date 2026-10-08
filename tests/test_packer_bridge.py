@@ -95,8 +95,13 @@ def test_the_view_never_takes_keyboard_focus(page, qtbot):
     # The proxy is the widget that actually takes a click, and it is created
     # lazily -- so require it here rather than tolerating None, which is the one
     # case mount_packer_page's loadFinished re-assertion exists to cover.
-    qtbot.waitUntil(lambda: view.focusProxy() is not None, timeout=5000)
-    assert view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus
+    # It is denied when the load finishes, which can be a moment after the
+    # bridge reports ready.
+    qtbot.waitUntil(
+        lambda: view.focusProxy() is not None
+        and view.focusProxy().focusPolicy() == Qt.FocusPolicy.NoFocus,
+        timeout=5000,
+    )
 
 
 def test_a_notification_reaches_the_band_with_its_role(page, qtbot):
@@ -289,6 +294,35 @@ def test_a_force_click_opens_the_question_and_forces_only_on_yes(qtbot):
     widget.bridge.forceItem(1)
     widget.bridge.answerQuestion(True)
     assert seen == [1]
+
+
+def test_a_force_click_on_a_row_that_cannot_be_forced_asks_nothing(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    row = next(r["row"] for r in widget.bridge.items if not r["force"])
+
+    widget.bridge.forceItem(row)
+
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
+
+
+def test_a_new_order_closes_the_question_about_the_last_one(qtbot):
+    from gui.packer_mode_widget import PackerModeWidget
+
+    widget = PackerModeWidget()
+    qtbot.addWidget(widget)
+    widget.display_order(ITEMS, STATE)
+    widget.bridge.forceItem(1)
+    assert widget.bridge.question
+
+    widget.display_order(ITEMS, STATE)
+
+    assert widget.bridge.question == {}
+    assert widget.scanner_input.isEnabled()
 
 
 def test_a_map_click_carries_the_original_sku(qtbot):
@@ -879,6 +913,23 @@ def test_6i_the_unsaved_banner_follows_its_own_state(page, qtbot):
     assert _eval(qtbot, view, "document.getElementById('feedback').className") == "feedback feedback--success"
     bridge.set_unsaved(False)
     _until_js(qtbot, view, "document.getElementById('unsaved').hidden === true")
+
+
+def test_6i_the_unsaved_banner_stays_over_the_session_complete_panel(page, qtbot):
+    view, bridge = page
+    bridge.set_unsaved(True)
+    bridge.set_session_end({"title": "Session complete", "body": "done."})
+    _until_js(qtbot, view, "document.getElementById('doc-main').classList.contains('doc-state')")
+    assert _eval(
+        qtbot, view, "getComputedStyle(document.getElementById('unsaved')).display"
+    ) != "none"
+    assert _eval(
+        qtbot, view, "getComputedStyle(document.getElementById('feedback')).display"
+    ) == "none"
+    bridge.set_unsaved(False)
+    _until_js(
+        qtbot, view, "getComputedStyle(document.getElementById('unsaved')).display === 'none'"
+    )
 
 
 def test_6j_the_takeover_panel_names_the_holder_and_only_exits(page, qtbot):

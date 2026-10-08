@@ -294,6 +294,7 @@ class MainWindow(QMainWindow):
         self.current_session_path = None  # Path to current Shopify session
         self.current_packing_list = None  # Name of selected packing list
         self._progress_publisher = None  # ProgressPublisher for the open Shopify session
+        self._leaving_packer_mode = False  # see _leave_packer_mode()
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -1086,7 +1087,10 @@ class MainWindow(QMainWindow):
         self.logic.stop_writing()
         if self._progress_publisher is not None:
             self._progress_publisher.stop()
-        if self.stacked_widget.currentWidget() is self.packer_mode_widget:
+        widget = self.packer_mode_widget
+        # Not while it is leaving: the panel would paint on a page about to be
+        # covered, and the packer would land on a dead session with no word.
+        if self.stacked_widget.currentWidget() is widget and not self._leaving_packer_mode:
             # The lock is gone and stays gone: nothing left to renew, and a
             # second report must not land on the panel.
             if hasattr(self, "heartbeat_timer"):
@@ -1832,7 +1836,7 @@ class MainWindow(QMainWindow):
 
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
-            self._show_session_view()
+            self._leave_packer_mode()
 
         logger.info("Session ended and all variables cleared")
 
@@ -1879,10 +1883,10 @@ class MainWindow(QMainWindow):
         if self.logic:
             self.logic.clear_current_order()
         self.packer_mode_widget.clear_screen()
-        self._show_session_view()
+        self._leave_packer_mode()
         self._rebuild_order_tree_if_stale()
 
-    def _show_session_view(self):
+    def _leave_packer_mode(self):
         """Leave Packer Mode once its page has painted what it was last sent.
 
         A hidden QWebEngineView keeps its last painted frame and shows it when
@@ -1895,9 +1899,11 @@ class MainWindow(QMainWindow):
         widget = self.packer_mode_widget
 
         def switch():
+            self._leaving_packer_mode = False
             self.stacked_widget.setCurrentWidget(self.session_widget)
 
         if self.stacked_widget.currentWidget() is widget and widget.isVisible():
+            self._leaving_packer_mode = True
             widget.pause_scanner()
             when_painted(widget.bridge, switch)
         else:

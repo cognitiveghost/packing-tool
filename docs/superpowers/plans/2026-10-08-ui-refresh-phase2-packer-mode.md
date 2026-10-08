@@ -23,7 +23,7 @@
 - **Tests:** run with `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q <path>`. If a hook refuses that, run the whole suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest`. Write test files with Write/Edit, never with shell redirection. If `.venv` is missing in the worktree: `ln -s /home/gloopy/Desktop/Projects/packing-tool/.venv .venv`.
 - **Lint:** `.venv/bin/ruff check . --exclude shared` must pass before each commit.
 - After the last code change, run `graphify update .` (CLAUDE.md).
-- Departures from the mockup are the 17 in spec section 9. If you make another, add it to that table in the same commit.
+- Departures from the mockup are the 19 in spec section 9. If you make another, add it to that table in the same commit.
 
 ## Review Focus
 

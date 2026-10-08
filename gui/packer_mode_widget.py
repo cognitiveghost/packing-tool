@@ -336,7 +336,7 @@ class PackerModeWidget(QWidget):
         The page draws it. The scanner is off until it is answered, so a scan
         cannot answer it by accident.
         """
-        if not 0 <= row < len(self._rows):
+        if not 0 <= row < len(self._rows) or not self._rows[row]["force"]:
             return
         self._question = force_question(self._rows[row])
         self.bridge.set_question(self._question)
@@ -389,6 +389,9 @@ class PackerModeWidget(QWidget):
         """
         self._clear_timer.stop()
         self._paused = False
+        # A question is about a row of the order it was asked on.
+        self._question = {}
+        self.bridge.set_question({})
         self._order_open = True
         self._items = list(items)
         self._unknown = []

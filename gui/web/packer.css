@@ -271,8 +271,11 @@
 .state-panel-actions { display: flex; gap: 10px; margin-top: 10px; }
 
 /* One class decides the swap. The regions the panel replaces stay in the
-   DOM and the bridge keeps filling them; only one of the two paints. */
-.doc-main.doc-state > :not(.state-panel) { display: none; }
+   DOM and the bridge keeps filling them; only one of the two paints. The
+   unsaved banner stays: it is truest when the packer is about to end. */
+.doc-main.doc-state > :not(.state-panel):not(#unsaved) { display: none; }
+/* "Scanning continues" is not true there: the scanner is off. */
+.doc-main.doc-state > #unsaved > .banner-text { display: none; }
 .doc-main:not(.doc-state) > .state-panel { display: none; }
 
 /* --- side column: 248px, no cards, caption size -------------------------- */

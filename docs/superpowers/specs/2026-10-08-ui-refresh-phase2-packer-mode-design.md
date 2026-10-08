@@ -89,8 +89,9 @@ switches at once. `switch_to_packer_mode` resumes the scanner. The scanner is pa
 scan cannot open an order on a page that is about to be covered.
 
 A session's state pushed while the page is hidden (a resumed session's counts) is painted when the page is
-shown, so it can appear one frame late. It is never another session's data: the frame the view kept is the
-cleared one.
+shown, so it can appear one frame late. The frame the view kept never holds another order. One known limit:
+a session ended from the toolbar while Packer Mode is hidden resets the side column (History, Session
+progress) off screen, so the last session's side column can show for a frame on the way back in.
 
 ### 4.4 Build
 
@@ -166,7 +167,7 @@ keeps today's one sentence, "Order #N packed. Scan the next order."
 
 **6i, progress not saved.** A danger banner above the order card: the alert glyph, "Progress not saved —
 check the network" and "Scanning continues". The band underneath keeps reporting scans in their own colour.
-It clears when a write succeeds.
+It clears when a write succeeds. It stays above the Session complete panel (6h): that is when it matters most.
 
 **6j, taken over.** A scrim and a 600px dialog edged in `status_danger_border`: "This list is open on
 another PC", then today's sentence with the holder and the list name, and one button, *Exit packing*.
