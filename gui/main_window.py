@@ -24,25 +24,28 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl.styles import PatternFill
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QFont, QKeySequence, QShortcut
+from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
     QStackedWidget,
-    QTabWidget,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from gui.app_bridge import (
+    packing_payload,
+    session_payload,
+    start_failure,
+    statistics_payload,
+)
+from gui.app_pages import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS, AppPages
 from gui.command_bar import PAGES, CommandBar
 from gui.components.connection_banner import ConnectionBanner
 from gui.components.sidebar import Sidebar
@@ -50,14 +53,10 @@ from gui.packer_bridge import order_label, session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 from gui.sku_mapping_dialog import SKUMappingDialog
-from gui.statistics_widget import StatisticsWidget
 from gui.theme import apply_theme, current_tokens
 from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
-from packing_tool.exceptions import (
-    PackingStateUnreadableError,
-)
 from packing_tool.profile_manager import NetworkError, ProfileManager
 from packing_tool.progress_publisher import ProgressPublisher
 from packing_tool.session_history_manager import SessionHistoryManager
@@ -65,9 +64,8 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
-from shared.components.card import Card
-from shared.components.state_panel import StatePanel
 from shared.components.toast import toast
+from shared.fonts import load_bundled_fonts
 from shared.icons import icon
 from shared.server_connection import (
     ConnectionSettingsDialog,
@@ -77,13 +75,10 @@ from shared.server_connection import (
 from shared.session_id import derive_session_id
 from shared.stats_manager import StatsManager
 from shared.theme import (
-    StatusChip,
-    font_css,
-    get_density_profile,
-    on_theme_changed,
     theme_notifier,
+    themed_tokens,
 )
-from shared.web_page import when_painted
+from shared.web_page import switch_theme, when_painted
 
 logger = logging.getLogger(__name__)
 
@@ -95,32 +90,10 @@ RAIL_ITEMS = (
     ("folder-open", "Sessions", "Sessions  Ctrl+3"),
 )
 
-PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(len(RAIL_ITEMS))
-
 # How long a finished order stays on screen before Packer Mode resets.
 ORDER_CLEAR_MS = 3000
 
-# T1's three order states. All three are the system's reading of the packing
-# list, so none carries the solid mark -- F5's mark means a *packer declared*
-# this state. T1 draws "In progress" as chip--warning chip--tint chip--hollow,
-# and STATUS_CONFIG["in_progress"] in the session browser says the same; the
-# plan asked for a solid mark here, which would have made one state render two
-# ways on two screens.
-ORDER_STATUS_CHIP = {
-    "in_progress": ("status_warning", "In progress", True, False),
-    "packed": ("status_success", "Packed", False, False),
-    "not_started": ("text_secondary", "Not started", False, False),
-}
-
 DEFAULT_CONFIG_PATH = "config.ini"
-
-
-def order_summary(total: int, packed: int, in_progress: int) -> str:
-    """The Packing page's summary line. Empty with no orders."""
-    if not total:
-        return ""
-    noun = "order" if total == 1 else "orders"
-    return f"{total} {noun} · {packed} packed · {in_progress} in progress"
 
 
 def _session_seconds(started_at) -> int:
@@ -191,7 +164,6 @@ class MainWindow(QMainWindow):
         session_widget (QWidget): The main widget for the session view.
         packer_mode_widget (PackerModeWidget): The widget for the packer mode view.
         stacked_widget (QStackedWidget): Manages switching between views.
-        orders_table (QTableView): The table displaying the list of orders.
     """
 
     # A background heartbeat found another PC holding the lock (its work_dir)
@@ -251,7 +223,8 @@ class MainWindow(QMainWindow):
         # a release would recreate a lock nobody holds (AUDIT-02-8).
         self._lock_io = threading.Lock()
         self._heartbeat_busy = False
-        self._order_tree_stale = False
+        self._last_start = None
+        self._starting = False  # see start_shopify_packing_session()
         self._heartbeat_lost.connect(self._on_heartbeat_lost)
         # ok / checking / down (spec 2026-10-08 section 6.5). Checked on Retry
         # and after a failed session action, never on a timer (owner decision).
@@ -295,6 +268,7 @@ class MainWindow(QMainWindow):
         self.current_packing_list = None  # Name of selected packing list
         self._progress_publisher = None  # ProgressPublisher for the open Shopify session
         self._leaving_packer_mode = False  # see _leave_packer_mode()
+        self._entering_packer_mode = False  # see switch_to_packer_mode()
         self.current_work_dir = None  # Work directory for packing results
         self.packing_data = None  # Loaded packing list data
 
@@ -375,57 +349,7 @@ class MainWindow(QMainWindow):
 
         self.command_bar.open_session_button.clicked.connect(self.open_session_browser)
 
-        # Create tab widget for session views. A hidden tab bar makes this
-        # exactly a QStackedWidget with the API the existing call sites already
-        # speak; swapping the class would rewrite all of them to produce a
-        # screen no user can tell apart.
-        self.session_tabs = QTabWidget()
-        self.session_tabs.tabBar().hide()
-
-        # Tab 1: Packing View with expandable tree
-        packing_tab = QWidget()
-        packing_layout = QVBoxLayout(packing_tab)
-        packing_layout.setContentsMargins(0, 0, 0, 0)
-
-        # The status bar's "38 of 120 orders complete", on its own page until
-        # phase 3 draws the mockup's totals strip.
-        self.packing_summary_label = QLabel("")
-        self.packing_summary_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.packing_summary_label.setContentsMargins(0, 4, 12, 0)
-        on_theme_changed(
-            self.packing_summary_label,
-            lambda tokens: self.packing_summary_label.setStyleSheet(
-                f"{font_css('caption')} color: {tokens.text_secondary};"
-            ),
-        )
-        self.packing_summary_label.setVisible(False)
-        packing_layout.addWidget(self.packing_summary_label)
-
-        self._setup_order_tree()
-        self.order_tree_card = Card(margins=(0, 0, 0, 0))
-        self.order_tree_card.add_widget(self.order_tree)
-        packing_layout.addWidget(self.order_tree_card)
-
-        # T2: no packing list loaded is a state panel, not an empty tree.
-        self.packing_state_panel = StatePanel(
-            "No session open",
-            "Open a session to see its orders here.",
-            action_text="Open session",
-        )
-        self.packing_state_panel.button.clicked.connect(self.open_session_browser)
-        packing_layout.addWidget(self.packing_state_panel)
-        self.order_tree_card.setVisible(False)
-
-        self.session_tabs.addTab(packing_tab, "Packing")
-
-        # Tab 2: Statistics View
-        self.statistics_widget = StatisticsWidget()
-        self.statistics_widget.go_to_packing_requested.connect(
-            lambda: self.session_tabs.setCurrentIndex(PAGE_PACKING)
-        )
-        self.session_tabs.addTab(self.statistics_widget, "Statistics")
-
-        # Tab 3: Session Browser — a destination now, not a dialog.
+        # The Session Browser — a destination now, not a dialog.
         self.session_browser = SessionBrowserWidget(
             profile_manager=self.profile_manager,
             session_lock_manager=self.lock_manager,
@@ -439,7 +363,20 @@ class MainWindow(QMainWindow):
         self.session_browser.start_packing_requested.connect(
             self._handle_start_packing_from_browser
         )
-        self.session_tabs.addTab(self.session_browser, "Session Browser")
+
+        # Packing and Statistics are one web document; Sessions is the Qt
+        # page beside it until phase 4 (ADR 0003). AppPages speaks the
+        # QTabWidget calls the code below already makes.
+        self.session_tabs = AppPages(self.session_browser)
+        pages = self.session_tabs.bridge
+        pages.openSessionRequested.connect(lambda: self.open_session_browser())
+        pages.startPackingRequested.connect(lambda: self.switch_to_packer_mode())
+        pages.endSessionRequested.connect(lambda: self.end_session())
+        pages.clearFilterRequested.connect(lambda: self.search_input.clear())
+        pages.chooseClientRequested.connect(lambda: self.client_combo.showPopup())
+        pages.pageRequested.connect(self._show_named_page)
+        pages.retryStartRequested.connect(lambda: self._retry_start())
+        pages.closeFailureRequested.connect(lambda: self._close_failure())
         # load_available_clients() ran before this widget existed, so the
         # client it settled on (restored last_client, if any) never reached
         # the browser -- push it now that there is somewhere to push it.
@@ -456,7 +393,6 @@ class MainWindow(QMainWindow):
         # before emitting when the index is unchanged.
         self.nav_rail.currentChanged.connect(self.session_tabs.setCurrentIndex)
         self.session_tabs.currentChanged.connect(self.nav_rail.set_current)
-        self.session_tabs.currentChanged.connect(self._rebuild_order_tree_if_stale)
         self.session_tabs.currentChanged.connect(
             lambda index: self.command_bar.set_page(PAGES[index])
         )
@@ -485,16 +421,6 @@ class MainWindow(QMainWindow):
         banner_layout.addWidget(self.connection_banner)
         main_layout.addWidget(self._banner_row)
 
-        # Frame 2a: with no client chosen the pages give way to this.
-        self.no_client_panel = StatePanel(
-            "Choose a client to begin",
-            "Sessions, packing lists and SKU mapping all belong to one client.",
-            action_text="Choose a client",
-        )
-        self.no_client_panel.button.clicked.connect(
-            lambda: self.client_combo.showPopup()
-        )
-        main_layout.addWidget(self.no_client_panel, 1)
         main_layout.addWidget(self.session_tabs, 1)
 
         self.packer_mode_widget = PackerModeWidget(sim_mode=self._sim_mode)
@@ -538,10 +464,24 @@ class MainWindow(QMainWindow):
         self.sidebar.set_expanded(expanded)
         self.command_bar.set_sidebar_expanded(expanded)
 
+    def _show_named_page(self, name: str):
+        """The document asks for a page by the name the bridge uses."""
+        index = {"packing": PAGE_PACKING, "statistics": PAGE_STATISTICS}.get(name)
+        if index is not None:
+            self.session_tabs.setCurrentIndex(index)
+
     def _switch_theme(self, name: str):
-        """Light or Dark, from the sidebar's segment or its collapsed toggle."""
-        if name != current_tokens().name:
-            apply_theme(QApplication.instance(), name)
+        """Light or Dark, from the sidebar's segment or its collapsed toggle.
+
+        Through switch_theme, so the Qt chrome turns over with the visible web
+        page instead of a frame ahead of it.
+        """
+        switch_theme(
+            name,
+            current_name=lambda: current_tokens().name,
+            tokens_for=lambda theme: themed_tokens(theme, load_bundled_fonts()),
+            set_theme=lambda theme: apply_theme(QApplication.instance(), theme),
+        )
 
     def _init_overflow(self):
         """What is left behind the bar's ⋯ once the sidebar footer has the
@@ -570,213 +510,73 @@ class MainWindow(QMainWindow):
         if self.current_client_id and in_shell:
             self.session_tabs.setCurrentIndex(page)
 
-    def _setup_order_tree(self):
-        """Setup expandable order tree view."""
-        self.order_tree = QTreeWidget()
-        self.order_tree.setHeaderLabels(
-            ["Order / Item", "Product", "Quantity", "Status", "Courier"]
-        )
-
-        # Column widths (interactive, with sensible defaults)
-        from PySide6.QtWidgets import QHeaderView
-
-        self.order_tree.setColumnWidth(0, 180)  # Order/SKU
-        self.order_tree.setColumnWidth(2, 80)  # Quantity
-        self.order_tree.setColumnWidth(3, 110)  # Status
-        self.order_tree.setColumnWidth(4, 130)  # Courier
-        self.order_tree.header().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )  # Product stretches
-
-        self.order_tree.setAlternatingRowColors(True)
-        self.order_tree.setUniformRowHeights(False)
-        self.order_tree.setItemsExpandable(True)
-        self.order_tree.setRootIsDecorated(True)
-
-        # The floor rung, not a literal: T1's row height comes off the active
-        # density profile rather than a hardcoded pixel count.
-        row_height = get_density_profile().row_height
-        # Re-set on a theme switch: a widget with its own sheet keeps the palette
-        # it was polished with, so the alternate rows would stay the old theme's.
-        on_theme_changed(
-            self.order_tree,
-            lambda _tokens: self.order_tree.setStyleSheet(
-                f"QTreeWidget::item {{ height: {row_height}px; }}"
-            ),
-        )
-
-    def _order_status_chip(self, status: str) -> StatusChip:
-        role, text, live, manual = ORDER_STATUS_CHIP.get(
-            status, ORDER_STATUS_CHIP["not_started"]
-        )
-        return StatusChip(role, text, current_tokens(), live=live, manual=manual)
-
-    def _populate_order_tree(self):
-        """Populate tree with orders and items."""
-        self.order_tree.clear()
-
-        if (
-            not self.logic
-            or not hasattr(self.logic, "processed_df")
-            or self.logic.processed_df is None
-        ):
-            self.order_tree_card.setVisible(False)
-            self.packing_state_panel.setVisible(True)
-            self.packing_summary_label.setText("")
-            self.packing_summary_label.setVisible(False)
-            return
-
-        self.order_tree_card.setVisible(True)
-        self.packing_state_panel.setVisible(False)
-
-        # Group by order number
-        grouped = self.logic.processed_df.groupby("Order_Number")
-
-        # Get completed and in-progress orders
-        completed_orders = self.logic.session_packing_state.get("completed_orders", [])
-        in_progress_orders = self.logic.session_packing_state.get("in_progress", {})
-
-        for order_num, order_items in grouped:
-            items_df = order_items
-            total_items = len(items_df)
-
-            # Check order status
-            is_completed = order_num in completed_orders
-
-            # Order status -- T1's chip, not a text summary
-            if is_completed:
-                chip_status = "packed"
-            elif order_num in in_progress_orders:
-                chip_status = "in_progress"
-            else:
-                chip_status = "not_started"
-
-            # Courier
-            courier = (
-                items_df.iloc[0].get("Courier", "N/A")
-                if "Courier" in items_df.columns
-                else "N/A"
-            )
-
-            # Create top-level order item. Column 3 (Status) is filled by a
-            # StatusChip below, once the item is in the tree.
-            order_item = QTreeWidgetItem(
-                [f"{order_num}", f"{total_items} items", "", "", courier]
-            )
-
-            # Bold font for order
-            font = QFont()
-            font.setBold(True)
-            font.setPointSize(11)
-            for col in range(5):
-                order_item.setFont(col, font)
-
-            # Add child items (SKUs) - OPTIMIZED: replaced iterrows() with itertuples()
-            # itertuples() is 5-10x faster than iterrows() for DataFrame iteration
-            for row_tuple in items_df.itertuples(index=False):
-                # Access by column index from tuple
-                sku = (
-                    getattr(row_tuple, "SKU", "Unknown")
-                    if hasattr(row_tuple, "SKU")
-                    else "Unknown"
-                )
-                product = (
-                    getattr(row_tuple, "Product_Name", "Unknown")
-                    if hasattr(row_tuple, "Product_Name")
-                    else "Unknown"
-                )
-                qty = (
-                    getattr(row_tuple, "Quantity", 1)
-                    if hasattr(row_tuple, "Quantity")
-                    else 1
-                )
-
-                # Create child item. Status and Courier stay blank -- T1
-                # draws the chip on the order row only.
-                child_item = QTreeWidgetItem([f"  {sku}", product, str(qty), "", ""])
-
-                # Normal font for items
-                item_font = QFont()
-                item_font.setPointSize(10)
-                for col in range(5):
-                    child_item.setFont(col, item_font)
-
-                order_item.addChild(child_item)
-
-            self.order_tree.addTopLevelItem(order_item)
-            self.order_tree.setItemWidget(
-                order_item, 3, self._order_status_chip(chip_status)
-            )
-
-            # Expand completed orders, collapse pending
-            if is_completed:
-                order_item.setExpanded(False)  # Keep compact
-            else:
-                order_item.setExpanded(True)  # Show current work
-
-        self.packing_summary_label.setText(
-            order_summary(
-                grouped.ngroups, len(completed_orders), len(in_progress_orders)
-            )
-        )
-        self.packing_summary_label.setVisible(True)
-
-    def _refresh_order_tree(self):
-        """Rebuild the order tree now if it is on screen, else when it next is.
-
-        A rebuild is every order and line, ~130 ms on a 117-order list, and
-        during packing the tree sits on a page nobody is looking at (AUDIT-02-7).
-        """
-        if self.order_tree.isVisible():
-            self._populate_order_tree()
-        else:
-            self._order_tree_stale = True
-
-    def _rebuild_order_tree_if_stale(self, *_):
-        if self._order_tree_stale:
-            self._order_tree_stale = False
-            self._populate_order_tree()
-
     def _filter_orders(self, text: str):
-        """Filter tree items by search text."""
-        if not hasattr(self, "order_tree"):
+        """The bar's Filter orders field: the document redraws the index."""
+        if self.logic is not None:
+            self.session_tabs.bridge.set_packing(
+                packing_payload(
+                    self.logic.orders_data, self.logic.session_packing_state, text
+                )
+            )
+
+    def _shell_showing(self) -> bool:
+        return self.stacked_widget.currentWidget() is self.session_widget
+
+    def _push_pages(self):
+        """Send the document what Packing and Statistics show now.
+
+        With no list open it empties both pages and leaves `session` alone:
+        whoever closed, failed or is opening the session has said which.
+        """
+        bridge = self.session_tabs.bridge
+        logic = self.logic
+        if logic is None:
+            bridge.set_packing({})
+            bridge.set_statistics({})
+            self.command_bar.set_complete(False)
             return
 
-        if not text:
-            # Show all
-            for i in range(self.order_tree.topLevelItemCount()):
-                self.order_tree.topLevelItem(i).setHidden(False)
-            return
-
-        text = text.lower()
-
-        for i in range(self.order_tree.topLevelItemCount()):
-            order_item = self.order_tree.topLevelItem(i)
-            order_text = order_item.text(0).lower()
-
-            # Check if order matches
-            order_match = text in order_text
-
-            # Check if any child (SKU) matches
-            child_match = False
-            for j in range(order_item.childCount()):
-                child = order_item.child(j)
-                child_text = f"{child.text(0)} {child.text(1)}".lower()
-                if text in child_text:
-                    child_match = True
-                    break
-
-            # Show if order or child matches
-            order_item.setHidden(not (order_match or child_match))
-
-    def _update_statistics(self):
-        """Refresh the Statistics screen from the current session."""
-        if not self.logic or getattr(self.logic, "processed_df", None) is None:
-            self.statistics_widget.show_empty()
-            return
-        self.statistics_widget.update_from(
-            self.logic.processed_df, self.logic.session_packing_state
+        state = logic.session_packing_state
+        packing = packing_payload(logic.orders_data, state, self.search_input.text())
+        statistics = statistics_payload(getattr(logic, "processed_df", None), state)
+        complete = packing["totals"]["complete"]
+        bridge.set_session(
+            session_payload(
+                "open",
+                list_name=self.current_packing_list or "",
+                session_id=(
+                    Path(self.current_session_path).name
+                    if self.current_session_path
+                    else ""
+                ),
+                orders=packing["totals"]["orders"],
+                couriers=[courier["name"] for courier in statistics["couriers"]],
+                complete=complete,
+            )
         )
+        bridge.set_packing(packing)
+        bridge.set_statistics(statistics)
+        self.command_bar.set_complete(complete)
+        # Frame 3g: with every order packed there is nothing left to scan.
+        self.packer_mode_button.setEnabled(not complete)
+
+    def _refresh_pages(self):
+        """Push now if the shell is on screen; leaving Packer Mode pushes.
+
+        A push is every order and line; during packing the pages sit under
+        Packer Mode where nobody is looking (AUDIT-02-7).
+        """
+        if self._shell_showing():
+            self._push_pages()
+
+    def _toast(self, message: str, role: str = "success"):
+        """A toast where it can be seen: a Qt child cannot paint over a web
+        view, so the app document draws its own while it is on screen."""
+        pages = self.session_tabs
+        if pages.view.isVisible():
+            pages.bridge.raise_toast(message)
+        else:
+            toast(self, message, role=role)
 
     def _select_worker(self) -> bool:
         """Show worker selection dialog
@@ -878,10 +678,19 @@ class MainWindow(QMainWindow):
         chosen = bool(self.current_client_id)
         self.sidebar.set_client_chosen(chosen)
         self.command_bar.set_client_chosen(chosen)
-        self.no_client_panel.setVisible(not chosen)
-        # Nothing to choose from: the selector says "(No clients available)".
-        self.no_client_panel.button.setVisible(self.client_combo.isEnabled())
-        self.session_tabs.setVisible(chosen)
+        if not chosen:
+            # The document draws "Choose a client"; Sessions is still Qt.
+            self.session_tabs.setCurrentIndex(PAGE_PACKING)
+        self._sync_shell()
+
+    def _sync_shell(self):
+        self.session_tabs.bridge.set_shell(
+            client=bool(self.current_client_id),
+            # With none, the selector's one item is "(No clients available)",
+            # whose data is None. Not isEnabled(): an open session disables it.
+            clients=self.client_combo.itemData(0) is not None,
+            server_down=self._connection_state == "down",
+        )
 
     def on_client_changed(self, index: int):
         """
@@ -911,6 +720,7 @@ class MainWindow(QMainWindow):
         logger.info(f"Client changed to: {client_id}")
 
         self.current_client_id = client_id
+        self._close_failure()
 
         # Save as last selected client
         self.settings.setValue("last_client", client_id)
@@ -956,7 +766,7 @@ class MainWindow(QMainWindow):
         if reachable:
             self._set_connection_state("ok")
             if self._connection_was_down:
-                toast(self, f"Server connected again · {self.profile_manager.base_path}")
+                self._toast(f"Server connected again · {self.profile_manager.base_path}")
             return
         if not self._connection_was_down:
             # The time we found out; when the server stopped is not knowable.
@@ -974,7 +784,7 @@ class MainWindow(QMainWindow):
         self.connection_banner.setVisible(down)
         self._banner_row.setVisible(down)
         self.command_bar.set_server_reachable(not down)
-        self.packing_state_panel.button.setEnabled(not down)
+        self._sync_shell()
 
     def _open_connection_settings(self):
         """Open the Server Connection settings dialog."""
@@ -1015,7 +825,7 @@ class MainWindow(QMainWindow):
                         self.current_client_id
                     )
                     self.logic.set_sku_map(new_map)
-                    toast(self, "SKU mapping saved and shared with every PC.")
+                    self._toast("SKU mapping saved and shared with every PC.")
                     logger.info("SKU mapping reloaded into active session")
                 except Exception as e:
                     logger.exception("Failed to reload SKU mapping into session")
@@ -1106,6 +916,40 @@ class MainWindow(QMainWindow):
             "up to now are saved.",
         )
 
+    def _on_start_step(self, step: int):
+        """Frame 3b: the worker says which step it is on.
+
+        The signal is queued from the worker's thread, so it can arrive after
+        the start has already ended. Only an opening session takes a step.
+        """
+        bridge = self.session_tabs.bridge
+        session = bridge.session
+        if session.get("state") == "opening":
+            bridge.set_session(
+                session_payload(
+                    "opening",
+                    list_name=session.get("list", ""),
+                    session_id=session.get("id", ""),
+                    step=step,
+                )
+            )
+
+    def _show_start_failure(self, title: str, text: str, list_name: str):
+        """Frame 3c: a session that did not open says why, on the Packing page."""
+        self.session_tabs.bridge.set_session(
+            session_payload("failed", list_name=list_name, title=title, text=text)
+        )
+        self._push_pages()
+        self.session_tabs.setCurrentIndex(PAGE_PACKING)
+
+    def _retry_start(self):
+        if self._last_start is not None:
+            self._start_or_resume_from_browser(**self._last_start)
+
+    def _close_failure(self):
+        if self.session_tabs.bridge.session.get("state") == "failed":
+            self.session_tabs.bridge.set_session(session_payload())
+
     def _cleanup_failed_session_start(self):
         """
         Clean up resources after failed session start.
@@ -1167,6 +1011,11 @@ class MainWindow(QMainWindow):
         Args:
             event: Qt close event
         """
+        if self._starting:
+            # The start worker is still running; closing now would leave its
+            # thread and the lock behind. The start ends in seconds.
+            event.ignore()
+            return
         logger.info("Application closing, performing cleanup...")
 
         try:
@@ -1258,17 +1107,28 @@ class MainWindow(QMainWindow):
 
         Returns:
             bool: True if session started successfully, False otherwise
-
-        Raises:
-            FileNotFoundError: If packing list file not found
-            json.JSONDecodeError: If packing list JSON is invalid
-            ValueError: If packing data is invalid
-            RuntimeError: If barcode generation fails
         """
+        # The start spins the event loop while its worker runs, and nothing
+        # modal is up any more: a second start must not get in under it.
+        if self._starting:
+            return False
+        self._starting = True
         try:
             logger.info(f"Starting Shopify packing session: {packing_list_path}")
             logger.info(f"Work directory: {work_dir}")
             logger.info(f"Session path: {session_path}")
+
+            pages = self.session_tabs.bridge
+            pages.set_session(
+                session_payload(
+                    "opening",
+                    list_name=packing_list_name,
+                    session_id=session_path.name,
+                    step=1,
+                )
+            )
+            # The lock is taken on this thread: let the page hear about step 1.
+            QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
             # 1. Validate packing list file exists
             if not packing_list_path.exists():
@@ -1285,7 +1145,8 @@ class MainWindow(QMainWindow):
             )
             if not success:
                 if error_msg is None:
-                    # User chose not to force-release
+                    # User chose not to force-release: not a failure.
+                    pages.set_session(session_payload())
                     return False
                 raise RuntimeError(error_msg)
 
@@ -1296,16 +1157,7 @@ class MainWindow(QMainWindow):
             logger.info("Heartbeat timer started")
 
             # 5 & 7. Initialize PackerLogic + load packing list in background thread
-            # so the UI remains responsive (progress dialog animates while server is slow).
-            progress = QProgressDialog("Loading packing list…", None, 0, 0, self)
-            progress.setWindowTitle("Please Wait")
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setCancelButton(None)
-            progress.setMinimumDuration(0)
-            progress.setValue(0)
-            progress.show()
-            QApplication.processEvents()
-
+            # so the UI stays responsive and the page names the step it is on (frame 3b).
             start_worker = SessionStartWorker(
                 client_id=client_id,
                 profile_manager=self.profile_manager,
@@ -1313,10 +1165,12 @@ class MainWindow(QMainWindow):
                 packing_list_path=packing_list_path,
                 parent=self,
             )
+            start_worker.step.connect(self._on_start_step)
             start_worker.start()
+            # No clicks or keys until the session is open or has failed: the
+            # bar, the rail and the client selector are all live under 3b.
             while not start_worker.wait(50):
-                QApplication.processEvents()
-            progress.close()
+                QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
             if start_worker.error is not None:
                 raise start_worker.error
@@ -1390,14 +1244,13 @@ class MainWindow(QMainWindow):
                 packing_list_name,
             )
 
-            # 10. Setup order table
-            self.setup_order_table()
+            # 10. A clean Packer Mode document; enable_packing_mode pushes the pages
             self._open_packer_document()
 
             # 11. Update UI state
-            toast(self, f"Loaded {order_count} orders from {packing_list_name}.")
+            self._toast(f"Loaded {order_count} orders from {packing_list_name}.")
             if self.logic.list_changes:
-                toast(self, list_changes_text(self.logic.list_changes), role="info")
+                self._toast(list_changes_text(self.logic.list_changes), role="info")
 
             # 12. Enable packing UI
             self.enable_packing_mode()
@@ -1405,57 +1258,16 @@ class MainWindow(QMainWindow):
             logger.info("Shopify packing session started successfully")
             return True
 
-        except PackingStateUnreadableError:
-            logger.exception("Packing state unreadable; session not opened")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self,
-                "Could not read saved progress",
-                f"The saved progress for {packing_list_name} could not be read, "
-                "so the list was not opened. Nothing was changed. Check the "
-                "connection to the server and open it again.",
-            )
-            return False
-
-        except FileNotFoundError as e:
-            logger.exception("Packing list file not found")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "File Not Found", f"Packing list file not found:\n{e!s}"
-            )
-            return False
-
-        except json.JSONDecodeError as e:
-            logger.exception("Invalid JSON in packing list")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Invalid JSON", f"Packing list contains invalid JSON:\n{e!s}"
-            )
-            return False
-
-        except ValueError as e:
-            logger.exception("Invalid packing data")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Invalid Data", f"Packing list contains invalid data:\n{e!s}"
-            )
-            return False
-
-        except RuntimeError as e:
-            logger.exception("Failed to start session")
-            self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Session Start Failed", f"Failed to start packing session:\n{e!s}"
-            )
-            return False
-
         except Exception as e:
-            logger.exception("Unexpected error starting session")
+            # Every failed start is frame 3c, with its own sentence
+            # (gui.app_bridge.start_failure); no message box.
+            logger.exception("Session start failed")
             self._cleanup_failed_session_start()
-            QMessageBox.critical(
-                self, "Error", f"Unexpected error starting packing session:\n{e!s}"
-            )
+            title, text = start_failure(e, packing_list_name)
+            self._show_start_failure(title, text, packing_list_name)
             return False
+        finally:
+            self._starting = False
 
     def end_session(self):
         """
@@ -1541,7 +1353,7 @@ class MainWindow(QMainWindow):
                         for cell in row:
                             cell.fill = green_fill
 
-            toast(self, f"Session ended. Report saved to {output_path}")
+            self._toast(f"Session ended. Report saved to {output_path}")
 
             # Generate session summary + record stats in background thread so the
             # UI stays responsive while writing to the (potentially slow) file server.
@@ -1826,10 +1638,10 @@ class MainWindow(QMainWindow):
 
         self._show_session(None)
 
-        if hasattr(self, "order_tree"):
-            self.order_tree.clear()
-        self.packing_summary_label.setText("")
-        self.packing_summary_label.setVisible(False)
+        # Pushed even under Packer Mode: nothing of an ended session stays in
+        # the document.
+        self.session_tabs.bridge.set_session(session_payload())
+        self._push_pages()
 
         if self.packer_mode_widget:
             self.packer_mode_widget.reset_for_new_session()
@@ -1839,21 +1651,6 @@ class MainWindow(QMainWindow):
             self._leave_packer_mode()
 
         logger.info("Session ended and all variables cleared")
-
-    def setup_order_table(self):
-        """
-        Sets up the expandable order tree and statistics display.
-
-        This method populates the tree widget with orders and items,
-        and updates the statistics tab with session metrics.
-        """
-        # Populate the expandable tree
-        self._populate_order_tree()
-
-        # Update statistics
-        self._update_statistics()
-
-        logger.info("Order tree and statistics updated successfully")
 
     def _open_packer_document(self):
         """Give Packer Mode a clean document for the session just loaded.
@@ -1868,10 +1665,29 @@ class MainWindow(QMainWindow):
         )
 
     def switch_to_packer_mode(self):
-        """Switches the view to the Packer Mode widget."""
-        self.stacked_widget.setCurrentWidget(self.packer_mode_widget)
-        self.packer_mode_widget.resume_scanner()
-        self.packer_mode_widget.set_focus_to_scanner()
+        """Enter Packer Mode once the app document has painted itself empty.
+
+        A hidden QWebEngineView keeps its last frame and shows it when it
+        comes back. So the frame it keeps is the covered one, never orders
+        that may be gone by then (ADR 0003): the document is told to draw
+        nothing, and this waits for that paint, 150 ms at most.
+        """
+        if self._entering_packer_mode:
+            return
+        pages = self.session_tabs
+
+        def enter():
+            self._entering_packer_mode = False
+            self.stacked_widget.setCurrentWidget(self.packer_mode_widget)
+            self.packer_mode_widget.resume_scanner()
+            self.packer_mode_widget.set_focus_to_scanner()
+
+        if pages.view.isVisible():
+            self._entering_packer_mode = True
+            pages.bridge.set_covered(True)
+            when_painted(pages.bridge, enter)
+        else:
+            enter()
 
     def switch_to_session_view(self):
         """Switches the view back to the main session widget (tabbed interface)."""
@@ -1884,7 +1700,6 @@ class MainWindow(QMainWindow):
             self.logic.clear_current_order()
         self.packer_mode_widget.clear_screen()
         self._leave_packer_mode()
-        self._rebuild_order_tree_if_stale()
 
     def _leave_packer_mode(self):
         """Leave Packer Mode once its page has painted what it was last sent.
@@ -1900,6 +1715,9 @@ class MainWindow(QMainWindow):
 
         def switch():
             self._leaving_packer_mode = False
+            # Before the shell shows: what it shows is current (spec section 8).
+            self._push_pages()
+            self.session_tabs.bridge.set_covered(False)
             self.stacked_widget.setCurrentWidget(self.session_widget)
 
         if self.stacked_widget.currentWidget() is widget and widget.isVisible():
@@ -1948,7 +1766,7 @@ class MainWindow(QMainWindow):
                 self.packer_mode_widget.update_session_progress(
                     completed, len(self.logic.orders_data)
                 )
-                self.update_order_status(order_number_from_scan, "In Progress")
+                self._refresh_pages()
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
                 self.packer_mode_widget.show_notification(
@@ -2030,32 +1848,15 @@ class MainWindow(QMainWindow):
         Slot to handle real-time progress updates from the logic layer.
 
         This method is connected to the `item_packed` signal from PackerLogic.
-        It refreshes the tree and statistics to reflect the updated progress.
+        It refreshes the pages to reflect the updated progress.
 
         Args:
             order_number (str): The order number that was updated.
             packed_count (int): The new total of items packed for the order.
             required_count (int): The total items required for the order.
         """
-        # Refresh tree and statistics to show updated progress
-        self._refresh_order_tree()
-        self._update_statistics()
+        self._refresh_pages()
         logger.debug(f"Order {order_number} progress: {packed_count}/{required_count}")
-
-    def update_order_status(self, order_number: str, status: str):
-        """
-        Updates the status of an order in the tree view.
-
-        Args:
-            order_number (str): The order number to update.
-            status (str): The new status ('In Progress' or 'Completed').
-        """
-        # Simply refresh the tree and statistics to reflect the new status
-        self._refresh_order_tree()
-        self._update_statistics()
-        logger.debug(f"Order {order_number} status updated to: {status}")
-
-    # ─── Packer Mode new action handlers ─────────────────────────────────────
 
     def _handle_order_completion(self, order_number: str):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
@@ -2066,7 +1867,7 @@ class MainWindow(QMainWindow):
         self.flash_border("green")
         _beep(1200, 80)
         QTimer.singleShot(180, lambda: _beep(1200, 80))
-        self.update_order_status(order_number, "Completed")
+        self._refresh_pages()
         if self.logic:
             completed = len(
                 self.logic.session_packing_state.get("completed_orders", [])
@@ -2326,8 +2127,7 @@ class MainWindow(QMainWindow):
         """
         logger.info("Enabling packing mode UI")
 
-        # Enable packing operation buttons
-        self.packer_mode_button.setEnabled(True)
+        self._push_pages()
         self.client_combo.setEnabled(False)  # AUDIT-02-6
 
         session_id = (
@@ -2368,9 +2168,10 @@ class MainWindow(QMainWindow):
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
         """
+        if self._starting:
+            return
         if self._connection_state == "down":
-            toast(
-                self,
+            self._toast(
                 "Server unreachable. Sessions cannot be opened until it answers.",
                 role="info",
             )
@@ -2390,6 +2191,15 @@ class MainWindow(QMainWindow):
                 "A session is already active. Please end it first.",
             )
             return
+
+        self._last_start = {
+            "client_id": client_id,
+            "packing_list_name": packing_list_name,
+            "session_path": session_path,
+            "packing_list_path": packing_list_path,
+            "work_dir": work_dir,
+            "resumed": resumed,
+        }
 
         # The browser is a page now, so there is no dialog to accept -- the
         # equivalent is going back to the page the work happens on.
@@ -2421,10 +2231,10 @@ class MainWindow(QMainWindow):
                 # The usual way a packer first meets an outage: the work
                 # folder cannot be made on a share that has gone away.
                 logger.exception("Could not create the packing work directory")
-                QMessageBox.critical(
-                    self,
-                    "Session Error",
-                    f"Could not start packing {packing_list_name}:\n\n{e}",
+                self._show_start_failure(
+                    "Session could not be opened",
+                    f"The work folder for {packing_list_name} could not be made: {e}.",
+                    packing_list_name,
                 )
                 self.check_connection()
                 return

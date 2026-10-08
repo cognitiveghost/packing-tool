@@ -59,7 +59,7 @@ def test_a_failed_check_raises_the_banner_and_disables_session_actions(
     assert main_window._connection_down_since in text
     assert len(main_window._connection_down_since) == 5  # HH:MM
     assert not main_window.command_bar.open_session_button.isEnabled()
-    assert not main_window.packing_state_panel.button.isEnabled()
+    assert main_window.session_tabs.bridge.shell["serverDown"] is True
 
 
 def test_retry_recovers_hides_the_banner_and_says_so(main_window, qtbot, reach):
@@ -70,7 +70,7 @@ def test_retry_recovers_hides_the_banner_and_says_so(main_window, qtbot, reach):
     qtbot.waitUntil(lambda: main_window._connection_state == "ok", timeout=3000)
     assert main_window.connection_banner.isHidden()
     assert main_window.command_bar.open_session_button.isEnabled()
-    assert main_window.packing_state_panel.button.isEnabled()
+    assert main_window.session_tabs.bridge.shell["serverDown"] is False
     shown = Toast.for_window(main_window)
     assert shown is not None and shown.text().startswith("Server connected again · ")
 
@@ -160,14 +160,15 @@ def test_a_work_folder_that_cannot_be_made_reports_and_checks(
         raise OSError("share is gone")
 
     monkeypatch.setattr(SessionManager, "get_packing_work_dir", gone)
-    said = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: said.append(a[1:]))
     reach["ok"] = False
     main_window._start_or_resume_from_browser(
         "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
     )
     qtbot.waitUntil(lambda: main_window._connection_state == "down", timeout=3000)
-    assert len(said) == 1 and "share is gone" in said[0][1]
+    session = main_window.session_tabs.bridge.session
+    assert session["state"] == "failed"
+    assert session["title"] == "Session could not be opened"
+    assert session["text"] == "The work folder for DHL_Orders could not be made: share is gone."
     assert main_window.logic is None
 
 

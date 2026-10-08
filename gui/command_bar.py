@@ -34,6 +34,7 @@ PAGES = ("packing", "statistics", "browser")
 _CLIENT_WIDTH = 250
 _FILTER_MIN, _FILTER_MAX = 170, 300
 _END_TIP = "End the current packing session"
+_START_TIP = "Start packing · opens Packer Mode"
 
 
 def bar_css(tokens, selector: str = "CommandBar") -> str:
@@ -98,7 +99,7 @@ class CommandBar(QWidget):
         set_button_role(self.open_session_button, "primary")
         self.start_packing_button = QPushButton("Start packing", self)
         set_button_role(self.start_packing_button, "primary")
-        self.start_packing_button.setToolTip("Start packing · opens Packer Mode")
+        self.start_packing_button.setToolTip(_START_TIP)
         self.end_session_button = QPushButton("End session", self)
         set_button_role(self.end_session_button, "secondary")
         for button in (
@@ -136,6 +137,7 @@ class CommandBar(QWidget):
         self._has_session = False
         self._client_chosen = False
         self._reachable = True
+        self._complete = False
         self._sidebar_expanded = True
         on_theme_changed(self, self._apply_theme)
         self._refresh()
@@ -174,12 +176,24 @@ class CommandBar(QWidget):
 
     def _paint_hint(self) -> None:
         tokens = self._tokens
-        colour = (
-            tokens.text_secondary
-            if self.end_session_button.isEnabled()
-            else tokens.text_disabled
-        )
+        if not self.end_session_button.isEnabled():
+            colour = tokens.text_disabled
+        elif self._complete:
+            colour = tokens.on_accent
+        else:
+            colour = tokens.text_secondary
         self.end_shortcut_label.setStyleSheet(f"color: {colour};")
+
+    def set_complete(self, complete: bool) -> None:
+        """Every order is packed (frame 3g): ending the session is the next step."""
+        if complete == self._complete:
+            return
+        self._complete = complete
+        set_button_role(self.end_session_button, "primary" if complete else "secondary")
+        self.start_packing_button.setToolTip(
+            "Every order is packed" if complete else _START_TIP
+        )
+        self._paint_hint()
 
     def set_page(self, name: str) -> None:
         if name not in PAGES:

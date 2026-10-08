@@ -8,6 +8,10 @@
 
 **Packer bridge** — the one `QWebChannel` object the order document talks to. State Python owns crosses as a notify property; what the page reports crosses as a slot.
 
+**App document** — the web page that draws the shell's pages: Packing and Statistics, and from phase 4 Sessions. One page in one web view (ADR 0003); Packer Mode's order document is a different page in its own view.
+
+**App bridge** — the one `QWebChannel` object the app document talks to. It says which page shows, what the session is (none, opening, failed, open) and each page's numbers; the page reports clicks through slots.
+
 **Feedback band** — the order document's outcome row: what the last scan did, as one large sentence on a solid fill in its status colour, with the raw scanned text beside it. The unsaved warning is a banner above it, not part of it.
 
 **Scan flash** — the brief colour pulse on a 10px frame around the order document's main column that makes a scan's outcome visible from across the floor.
@@ -24,7 +28,7 @@
 
 **Force confirm** — marking the rest of an item's quantity packed at once, without a scan (*force_confirmed*; shown as *forced*). Offered only on lines over 5 units. The order document asks first, with the scanner off until the packer answers; it cannot be undone. The summary's `total_manual_confirms` counts both.
 
-**Packing table view** — the Packing tab's order list (orders with their SKU rows) shown before Packer Mode starts.
+**Order index** — the Packing page's table: orders grouped In progress, Not started, Packed, each row opening to its items. *Filter orders* narrows it by order number, SKU or product name and marks the item that matched.
 
 **Command bar** — the 60px row above a screen, carrying what that screen is and what can be done to it. Above the pages it holds the sidebar toggle, the client selector, the open session's id, the page's actions and the ⋯ overflow menu (Server connection…, Exit); above Packer Mode it holds the order number, scanner capture, Skip order and Exit packing.
 
@@ -34,9 +38,9 @@
 
 **Connection banner** — the banner above the page while the server is unreachable: which path, since when, and Retry. While it shows, sessions cannot be opened or ended.
 
-**State panel** — the centred title, sentence and action a screen shows in place of its content when there is nothing to show or the work is done.
+**State panel** — the centred title, sentence and action a screen shows in place of its content when there is nothing to show or the work is done. On a web page it is a centred card drawn by the page.
 
-**Toast** — a transient, non-blocking message at the window's bottom right for an outcome that needs no decision; failures use a dialog instead.
+**Toast** — a transient, non-blocking message for an outcome that needs no decision; failures are shown in the page or in a dialog. While the app document is on screen it draws the toast itself, bottom centre; elsewhere it is the Qt toast at the window's bottom right.
 
 **Floor density** — the density profile for warehouse use: 44px controls, 12pt body, 60px command bar.
 
@@ -50,7 +54,7 @@
 
 **Status chip** — the pill marking a status, carrying F5's three channels: colour is the role, a tinted ground means the thing is still live, and a solid dot means a person decided it where a hollow dot means the system did.
 
-**Stat card** — a big number over a small label in a bordered box; the unit the Statistics screen is built from.
+**KPI strip** — one card split into cells, each a label over a large number: Packing's totals strip and Statistics' KPI strip.
 
 **SKU roll-up** — one order's lines consolidated to one row per distinct SKU, in the order document's side column. Not the same as the Statistics screen's **SKU summary**, which spans the whole session.
 

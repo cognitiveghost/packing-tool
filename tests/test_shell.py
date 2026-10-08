@@ -5,7 +5,7 @@ MainWindow is expensive to construct, so this module builds one and shares it.
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QStatusBar, QTabWidget
+from PySide6.QtWidgets import QStatusBar
 
 from gui.main_window import (
     PAGE_BROWSER,
@@ -13,7 +13,6 @@ from gui.main_window import (
     PAGE_STATISTICS,
     RAIL_ITEMS,
     MainWindow,
-    order_summary,
 )
 from gui.session_browser.session_browser_widget import SessionBrowserWidget
 
@@ -35,11 +34,12 @@ def window(qapp, tmp_path_factory):
     mw.deleteLater()
 
 
-def test_the_tab_bar_is_hidden_but_the_tab_widget_survives(window):
-    """Swapping QTabWidget for QStackedWidget would rewrite every call site
-    to produce a screen no user can tell apart."""
-    assert isinstance(window.session_tabs, QTabWidget)
-    assert not window.session_tabs.tabBar().isVisible()
+def test_the_pages_are_one_web_view_and_the_session_browser(window):
+    """ADR 0003: Packing and Statistics are two pages of one document."""
+    from gui.app_pages import AppPages
+
+    assert isinstance(window.session_tabs, AppPages)
+    assert window.session_tabs.widget(PAGE_PACKING) is window.session_tabs.widget(PAGE_STATISTICS)
 
 
 def test_there_is_one_rail_item_per_page(window):
@@ -192,18 +192,6 @@ def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monke
     browser._on_auto_refresh()
     assert refreshes == []
     assert browser._refresh_timer.isActive()  # still armed for the next visit
-
-
-@pytest.mark.parametrize(
-    "args, text",
-    [
-        ((5, 2, 1), "5 orders · 2 packed · 1 in progress"),
-        ((1, 1, 0), "1 order · 1 packed · 0 in progress"),
-        ((0, 0, 0), ""),
-    ],
-)
-def test_order_summary(args, text):
-    assert order_summary(*args) == text
 
 
 def test_the_message_line_is_gone(window):

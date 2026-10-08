@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Packer Assistant</title>
+<!-- shared/web_page.mount_page writes theme_css_vars() over the marker in the
+     style element below before the page loads; app.js keeps it current. -->
+<style id="theme-vars">/* theme-vars */</style>
+<link rel="stylesheet" href="../../shared/web/kit.css">
+<link rel="stylesheet" href="floor.css">
+<link rel="stylesheet" href="app.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="../../shared/web/page.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<!-- The app document (ADR 0003): Packing and Statistics. Every string from
+     the bridge goes in through textContent. -->
+<div class="app" id="app">
+
+  <section class="card state-card" id="no-client" hidden>
+    <h1 class="state-card-title" id="no-client-title">Choose a client to begin</h1>
+    <p class="state-card-text">Sessions, packing lists and SKU mapping all belong to one client.</p>
+    <button type="button" class="btn primary" id="choose-client" data-action="chooseClient">Choose a client</button>
+  </section>
+
+  <section class="card state-card" id="no-session" hidden>
+    <h1 class="state-card-title">No session open</h1>
+    <p class="state-card-text">Open a session to see its orders here.</p>
+    <button type="button" class="btn primary" id="open-session" data-action="openSession">Open session</button>
+  </section>
+
+  <section class="card state-card" id="stats-empty" hidden>
+    <h1 class="state-card-title">No packing data yet</h1>
+    <p class="state-card-text">Start a session from the Packing tab to see numbers here.</p>
+    <button type="button" class="btn primary" id="go-packing" data-action="goPacking">Go to Packing</button>
+  </section>
+
+  <header class="app-head" id="head" hidden>
+    <div class="app-head-text">
+      <div class="app-head-line">
+        <span class="app-title" id="head-title"></span>
+        <span class="badge info" id="head-badge">Active</span>
+      </div>
+      <div class="app-meta">
+        <span class="mono" id="head-id"></span>
+        <span id="head-dot">·</span>
+        <span id="head-meta"></span>
+      </div>
+    </div>
+    <button type="button" class="btn primary" id="head-start" data-action="startPacking" title="Opens Packer Mode">Start packing</button>
+  </header>
+
+  <section class="card app-opening" id="opening" hidden>
+    <div class="app-step-count" id="step-count"></div>
+    <div class="app-step-name" id="step-name"></div>
+    <div class="app-step-detail"><span class="mono" id="step-list"></span> · <span class="mono" id="step-id"></span></div>
+    <div class="app-step-bars">
+      <span class="app-step-bar"></span><span class="app-step-bar"></span><span class="app-step-bar"></span>
+    </div>
+  </section>
+
+  <div class="banner danger app-failed" id="failed" hidden>
+    <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    <div class="banner-body">
+      <div class="banner-title" id="failed-title"></div>
+      <div class="banner-text" id="failed-text"></div>
+      <div class="banner-actions">
+        <button type="button" class="btn secondary" id="failed-retry" data-action="retryStart">Retry</button>
+        <button type="button" class="btn ghost" id="failed-close" data-action="closeFailure">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-page" id="packing" hidden>
+    <section class="card strip app-strip-packing">
+      <div class="strip-cell">
+        <span class="strip-label">Orders complete</span>
+        <span class="strip-line"><span class="strip-value" id="tot-done"></span><span class="strip-of" id="tot-orders"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-label">Items packed</span>
+        <span class="strip-line"><span class="strip-value" id="tot-packed"></span><span class="strip-of" id="tot-units"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-label">Orders skipped</span>
+        <span class="strip-line"><span class="strip-value" id="tot-skipped"></span><span class="strip-of" id="tot-skipped-note"></span></span>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="app-pct" id="tot-pct"></span></span>
+        <div class="track"><div class="track-fill" id="tot-fill"></div></div>
+        <span class="strip-note" id="tot-left"></span>
+      </div>
+    </section>
+
+    <section class="app-complete" id="complete" hidden>
+      <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+      <div class="app-complete-body">
+        <div class="app-complete-title">Packing list complete</div>
+        <div id="complete-text"></div>
+      </div>
+      <button type="button" class="btn primary" id="complete-end" data-action="endSession">End session</button>
+    </section>
+
+    <div class="app-filter-line" id="filter-line" hidden>
+      <span><span id="filter-text"></span><span class="mono app-strong" id="filter-query"></span></span>
+      <button type="button" class="btn ghost" id="filter-clear" data-action="clearFilter">Clear filter</button>
+    </div>
+
+    <section class="card app-index">
+      <div class="tbl-head">
+        <span class="app-head-first">Order / Item</span><span>Product</span><span class="app-qty">Quantity</span><span>Status</span><span>Courier</span>
+      </div>
+      <div class="app-no-match" id="no-match" hidden>
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <div class="app-no-match-title">No orders match</div>
+        <div class="app-no-match-text">Nothing in this packing list contains “<span class="mono app-no-match-query" id="no-match-query"></span>”.</div>
+        <button type="button" class="btn secondary" id="no-match-clear" data-action="clearFilter">Clear filter</button>
+      </div>
+      <div class="app-rows" id="rows"></div>
+    </section>
+  </div>
+  <div class="app-page" id="statistics" hidden>
+    <section class="card strip app-strip-stats">
+      <div class="strip-cell"><span class="strip-label">Orders</span><span class="strip-value" id="kpi-orders"></span><span class="strip-note" id="kpi-orders-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Completed</span><span class="strip-value" id="kpi-completed"></span><span class="strip-note" id="kpi-completed-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Items</span><span class="strip-value" id="kpi-items"></span><span class="strip-note" id="kpi-items-note"></span></div>
+      <div class="strip-cell"><span class="strip-label">Unique SKUs</span><span class="strip-value" id="kpi-skus"></span><span class="strip-note" id="kpi-skus-note"></span></div>
+      <div class="strip-cell">
+        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="strip-value" id="kpi-pct"></span></span>
+        <div class="track"><div class="track-fill" id="kpi-fill"></div></div>
+        <span class="strip-note" id="kpi-pct-note"></span>
+      </div>
+    </section>
+
+    <div class="app-stats-row">
+      <section class="card app-couriers">
+        <div class="app-strong">By courier</div>
+        <div class="app-courier-list" id="couriers"></div>
+      </section>
+
+      <section class="card app-skus">
+        <div class="app-skus-title">
+          <span class="app-strong spacer">SKU summary</span>
+          <span class="strip-note" id="sku-meta"></span>
+        </div>
+        <div class="tbl-head" role="row">
+          <span role="columnheader" data-col="sku"><button type="button" class="app-sort" data-sort="sku" title="Sort by SKU">SKU</button></span>
+          <span role="columnheader" data-col="product"><button type="button" class="app-sort" data-sort="product" title="Sort by Product">Product</button></span>
+          <span role="columnheader" data-col="total"><button type="button" class="app-sort num" data-sort="total" title="Sort by Total qty">Total qty</button></span>
+          <span role="columnheader" data-col="packed"><button type="button" class="app-sort num" data-sort="packed" title="Sort by Packed">Packed</button></span>
+          <span role="columnheader" data-col="left"><button type="button" class="app-sort num" data-sort="left" title="Sort by Left">Left</button></span>
+          <span role="columnheader" data-col="state"><button type="button" class="app-sort" data-sort="state" title="Sort by Status">Status</button></span>
+        </div>
+        <div class="app-rows" id="sku-rows"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast-wrap">
+    <div class="toast" id="toast" role="status" hidden>
+      <span id="toast-text"></span>
+      <button type="button" class="toast-close" id="toast-close" title="Dismiss" aria-label="Dismiss">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,219 @@
+/* The app document's own sheet (UI refresh phase 3, ADR 0003): the layouts of
+   Packing and Statistics. Buttons, badges, cards and the banner come from
+   shared/web/kit.css; the toast, state card, strip, track and table rows from
+   floor.css. Mockup: docs/design/ui-refresh/mockups/Packer App.html, frames
+   3a-3g and 4a-4c.
+   Spec: docs/superpowers/specs/2026-10-08-ui-refresh-phase3-packing-statistics-design.md
+   Web-tier rules (ADR 0001): var(--...) only, type sizes from the scale, one
+   mono face, no transition/transform/opacity. */
+
+.app {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+
+/* --- page header --------------------------------------------------------- */
+
+.app-head { flex: none; display: flex; align-items: center; gap: 16px; }
+.app-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-head-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.app-title {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-secondary); }
+
+/* --- 3b: opening --------------------------------------------------------- */
+
+.app-opening { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 20px 24px; }
+.app-step-count { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-step-name { font-size: var(--type-display-size); font-weight: 700; }
+.app-step-detail { color: var(--text-secondary); }
+.app-step-bars { display: flex; gap: 4px; margin-top: 8px; }
+.app-step-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--border); }
+.app-step-bar.done { background: var(--accent-fill); }
+
+/* --- 3c: a failed start. floor.css lays the banner out as one row. -------- */
+
+.app-failed { flex: none; align-items: flex-start; padding: 16px 20px; }
+.app-failed > .glyph { margin-top: 2px; }
+.app-failed .banner-body { gap: 6px; }
+.app-failed .banner-title { flex: none; }
+.app-failed .banner-actions { gap: 8px; margin-top: 4px; }
+
+/* --- a page's content ---------------------------------------------------- */
+
+.app-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* --- Packing: totals strip, complete banner, filter line, index ---------- */
+
+.app-strip-packing { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.6fr); }
+.app-pct { font-size: var(--type-display-size); font-weight: 700; }
+.app-strong { font-weight: 700; }
+
+.app-complete {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--kit-radius-card);
+  background: var(--status-success-bg);
+}
+.app-complete > .glyph { width: 32px; height: 32px; color: var(--status-success); }
+.app-complete-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-complete-title {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  color: var(--status-success);
+}
+.app-complete .btn { padding: 0 20px; }
+
+.app-filter-line { flex: none; display: flex; align-items: center; gap: 12px; min-height: 44px; }
+
+.app-index {
+  --tbl-cols: minmax(200px, 1.1fr) minmax(0, 2fr) 120px 170px 110px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-head-first { padding-left: 30px; }
+/* The head sits outside the scroller: both keep the scrollbar's gutter, so
+   a column stays under its heading when the rows scroll. */
+.app-rows { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.app-index > .tbl-head, .app-skus > .tbl-head { overflow: hidden; scrollbar-gutter: stable; }
+
+/* An order row is a button: it opens and closes its items. */
+.app-order {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.app-order[aria-expanded="true"] { background: var(--surface-raised); }
+.app-order:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.app-order-no { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.app-order-no > .glyph { width: 20px; height: 20px; color: var(--text-secondary); }
+.app-order-label { font-family: var(--font-family-mono); font-weight: 700; }
+.app-cut {
+  padding-right: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-order-summary { color: var(--text-secondary); }
+.app-qty { padding-right: 24px; text-align: right; font-family: var(--font-family-mono); }
+.tbl-head .app-qty { font-family: inherit; }
+
+.app-item { background: var(--surface-raised); }
+.app-item.hit {
+  padding-left: 12px;
+  border-left: 4px solid var(--selection-border);
+  background: var(--selection-bg);
+}
+.app-item-sku { padding-left: 30px; font-family: var(--font-family-mono); }
+
+.app-no-match {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+.app-no-match > .glyph { width: 32px; height: 32px; color: var(--text-secondary); stroke-width: 1.5; }
+.app-no-match-title { font-size: var(--type-display-size); font-weight: 700; }
+.app-no-match-text { color: var(--text-secondary); }
+.app-no-match-query { color: var(--text); }
+.app-no-match .btn { margin-top: 4px; padding: 0 20px; }
+
+/* --- Statistics: KPI strip, By courier, SKU summary ---------------------- */
+
+.app-strip-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.5fr); }
+
+.app-stats-row {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.75fr) minmax(0, 2fr);
+  gap: 16px;
+}
+
+.app-couriers {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 20px;
+  overflow: auto;
+}
+.app-courier-list { display: flex; flex-direction: column; gap: 18px; }
+.app-courier { display: flex; flex-direction: column; gap: 6px; }
+.app-courier-line { display: flex; align-items: baseline; gap: 8px; }
+.app-courier-name { flex: 1; min-width: 0; font-size: var(--type-heading-size); font-weight: 700; }
+.app-courier-of { color: var(--text-secondary); }
+.app-courier-left { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.app-skus {
+  --tbl-cols: 130px minmax(0, 1fr) 84px 84px 84px 120px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-skus-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.app-skus .tbl-head { height: 44px; padding: 0 12px; align-items: stretch; }
+.app-skus [role="columnheader"] { display: flex; }
+
+.app-sort {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.app-sort.num { justify-content: flex-end; }
+.app-sort:hover { background: var(--hover); }
+.app-sort:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+[aria-sort="ascending"] > .app-sort,
+[aria-sort="descending"] > .app-sort { color: var(--text); }
+
+.app-sku { min-height: 40px; height: 40px; padding: 0 12px; }
+.app-sku > span { padding: 0 8px; }
+.app-sku-code { font-family: var(--font-family-mono); white-space: nowrap; }
+.app-num { text-align: right; font-family: var(--font-family-mono); }
+.app-left { font-weight: 700; }
+.app-left.zero { font-weight: 400; color: var(--text-secondary); }

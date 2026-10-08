@@ -26,8 +26,8 @@ def _window(config_ini, clients):
 def _assert_no_client(window):
     assert window.current_client_id is None
     assert window.client_combo.currentIndex() == -1
-    assert not window.no_client_panel.isHidden()
-    assert window.session_tabs.isHidden()
+    assert window.session_tabs.bridge.shell["client"] is False
+    assert window.session_tabs.currentIndex() == PAGE_PACKING
     assert not any(window.nav_rail.button(i).isEnabled() for i in range(3))
     assert not window.sidebar.sku_button.isEnabled()
     assert not window.command_bar.open_session_button.isEnabled()
@@ -35,8 +35,7 @@ def _assert_no_client(window):
 
 def _assert_client(window, client_id):
     assert window.current_client_id == client_id
-    assert window.no_client_panel.isHidden()
-    assert not window.session_tabs.isHidden()
+    assert window.session_tabs.bridge.shell["client"] is True
     assert all(window.nav_rail.button(i).isEnabled() for i in range(3))
     assert window.sidebar.sku_button.isEnabled()
     assert window.command_bar.open_session_button.isEnabled()
@@ -48,8 +47,7 @@ def test_two_clients_and_nothing_remembered_starts_on_choose_a_client(
     window = _window(config_ini, ["ALPHA", "BETA"])
     try:
         _assert_no_client(window)
-        panel = window.no_client_panel
-        assert panel.button.text() == "Choose a client"
+        assert window.session_tabs.bridge.shell["clients"] is True
     finally:
         window.deleteLater()
 
@@ -86,8 +84,11 @@ def test_no_clients_at_all_shows_the_panel_without_a_button(config_ini, qapp, re
     window = _window(config_ini, [])
     try:
         assert window.current_client_id is None
-        assert not window.no_client_panel.isHidden()
-        assert window.no_client_panel.button.isHidden()
+        assert window.session_tabs.bridge.shell == {
+            "client": False,
+            "clients": False,
+            "serverDown": False,
+        }
     finally:
         window.deleteLater()
 
@@ -106,7 +107,7 @@ def test_the_panels_button_opens_the_selector(config_ini, qapp, remembered, monk
     try:
         opened = []
         monkeypatch.setattr(window.client_combo, "showPopup", lambda: opened.append(1))
-        window.no_client_panel.button.click()
+        window.session_tabs.bridge.chooseClient()
         assert opened == [1]
     finally:
         window.deleteLater()

@@ -199,8 +199,8 @@ def main_window(config_ini, server_root, qapp):
 @pytest.fixture
 def main_window_with_list(main_window, session_factory, packer_logic_factory):
     """A MainWindow with a 2-order packing list already loaded and populated
-    into order_tree -- for tests of the tree's chrome, filter, and empty
-    state that need a real MainWindow rather than a StubLogic seam.
+    pushed to the app document -- for tests that need a real MainWindow
+    rather than a StubLogic seam.
     """
     orders = [
         (
@@ -220,7 +220,8 @@ def main_window_with_list(main_window, session_factory, packer_logic_factory):
     logic = packer_logic_factory("TESTCL", work_dir)
     logic.load_packing_list_json(list_path)
     main_window.logic = logic
-    main_window._populate_order_tree()
+    main_window.current_packing_list = "DHL_Orders"
+    main_window._push_pages()
     return main_window
 
 

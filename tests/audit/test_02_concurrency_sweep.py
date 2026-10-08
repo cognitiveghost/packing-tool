@@ -216,19 +216,8 @@ def test_the_client_cannot_change_under_a_running_list(main_window_with_list, tm
 
 
 # ---------------------------------------------------------------------------
-# AUDIT-02-7  Every scan rebuilds the whole (hidden) order tree
+# AUDIT-02-7  Every scan rebuilt the whole (hidden) order tree: now tests/test_app_mainwindow_seam.py
 # ---------------------------------------------------------------------------
-
-
-def test_a_scan_does_not_rebuild_the_order_tree(main_window_with_list, monkeypatch):
-    window = main_window_with_list
-    window.logic.item_packed.connect(window._on_item_packed)  # as start_shopify_packing_session wires it
-    rebuilds = []
-    monkeypatch.setattr(window, "_populate_order_tree", lambda: rebuilds.append(True))
-    window.on_scanner_input("#10429")
-    window.logic.current_order_state[0]["required"] = 2  # so the scan is SKU_OK, not complete
-    window.on_scanner_input("TS-4409-B")
-    assert rebuilds == []  # the tree is on the other page; rebuild it when that page is shown
 
 
 # ---------------------------------------------------------------------------

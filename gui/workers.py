@@ -1,7 +1,7 @@
 """Background QThread workers for slow I/O during session start/end."""
 import logging
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,10 @@ class SessionStartWorker(QThread):
         self.logic = worker.logic
     """
 
+    # 2: reading saved progress. 3: reading the packing list. Step 1, the
+    # lock, is the caller's (it can ask a question, so it is on the UI thread).
+    step = Signal(int)
+
     def __init__(self, client_id, profile_manager, work_dir, packing_list_path, parent=None):
         super().__init__(parent)
         self._client_id = client_id
@@ -42,11 +46,13 @@ class SessionStartWorker(QThread):
     def run(self) -> None:
         try:
             from packing_tool.packer_logic import PackerLogic
+            self.step.emit(2)
             logic = PackerLogic(
                 client_id=self._client_id,
                 profile_manager=self._profile_manager,
                 work_dir=str(self._work_dir),
             )
+            self.step.emit(3)
             order_count, list_name = logic.load_packing_list_json(str(self._packing_list_path))
             # Move Qt object ownership back to the main thread
             logic.moveToThread(QApplication.instance().thread())

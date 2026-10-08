@@ -7,8 +7,8 @@
    docs/design/ui-refresh/mockups/Floor Components.html. Loaded after kit.css
    and before the page's own sheet. Web-tier rules as in kit.css.
 
-   Phases 3 to 5 add table rows, inputs and the toast here when a page first
-   uses them. */
+   Phase 3 added the toast, the state card, the strip, the track and the table
+   rows; phases 4 and 5 add inputs when a page first uses them. */
 
 /* --- buttons ------------------------------------------------------------- */
 
@@ -87,4 +87,113 @@
   justify-content: flex-end;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* --- toast: bottom centre of the page ------------------------------------ */
+
+.toast-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  z-index: var(--z-toast);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.toast-wrap .toast {
+  position: static;
+  min-height: 48px;
+  gap: 16px;
+  padding: 0 8px 0 16px;
+  pointer-events: auto;
+}
+.toast-wrap .toast-close { width: 36px; height: 36px; }
+
+/* --- state card: a page with nothing to show yet ------------------------- */
+
+.state-card {
+  margin: auto;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px;
+  text-align: center;
+}
+.state-card-title { margin: 0; font-size: var(--type-display-size); font-weight: 700; }
+.state-card-text { margin: 0; color: var(--text-secondary); }
+.state-card .btn { margin-top: 6px; padding: 0 20px; }
+
+/* --- strip: one card split into cells of a label over a number ----------- */
+
+.strip { flex: none; display: grid; }
+.strip-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 20px;
+  border-right: 1px solid var(--border);
+}
+.strip-cell:last-child { border-right: 0; justify-content: center; gap: 6px; }
+.strip-label { font-weight: 700; }
+.strip-line { display: flex; align-items: baseline; gap: 8px; }
+.strip-value { font-size: var(--type-display-xl-size); font-weight: 700; line-height: 1.15; }
+.strip-of { color: var(--text-secondary); }
+.strip-note {
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- track: how far along ------------------------------------------------- */
+
+.track {
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.track.tall { height: 24px; border-radius: 6px; }
+.track-fill { height: 100%; background: var(--status-success-dot); }
+
+/* --- table rows. The page sets --tbl-cols on the table's card. ------------ */
+
+.tbl-head, .tbl-row {
+  display: grid;
+  grid-template-columns: var(--tbl-cols);
+  align-items: center;
+}
+.tbl-head {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.tbl-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 16px;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+.tbl-group-label { font-weight: 700; }
+.tbl-group-count { font-family: var(--font-family-mono); color: var(--text-secondary); }
+.tbl-group-note { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.tbl-row {
+  min-height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }

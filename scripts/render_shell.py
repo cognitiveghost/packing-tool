@@ -92,7 +92,7 @@ def build(tmp: Path):
         window.logic = logic
         window.current_session_path = session_dir
         window.current_packing_list = "Morning_wave"
-        window._populate_order_tree()
+        window._push_pages()
         window.enable_packing_mode()
         return logic
 
