@@ -162,3 +162,15 @@ def test_the_bar_sits_on_the_frame_plane_and_repaints_on_a_theme_switch(bar):
         # Put back exactly what was there: set_current() cannot express "no
         # theme applied yet", and leaving "light" behind broke a later test.
         shared_theme._current = before
+
+
+def test_a_complete_list_makes_end_session_primary(bar):
+    bar.set_session("2026-10-07_1")
+    assert bar.end_session_button.property("role") == "secondary"
+    assert bar.start_packing_button.toolTip() == "Start packing · opens Packer Mode"
+    bar.set_complete(True)
+    assert bar.end_session_button.property("role") == "primary"
+    assert bar.start_packing_button.toolTip() == "Every order is packed"
+    bar.set_complete(False)
+    assert bar.end_session_button.property("role") == "secondary"
+    assert bar.start_packing_button.toolTip() == "Start packing · opens Packer Mode"
