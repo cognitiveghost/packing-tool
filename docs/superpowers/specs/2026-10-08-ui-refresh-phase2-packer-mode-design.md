@@ -128,7 +128,7 @@ open". The order card is hidden. *Skip order* is disabled.
 **6b, order open.** The band says "Order #10407 · 5 items" in info; today it is left empty until the first
 item scan, which the solid band would show as a blank block. The order card: today's chips as neutral badges, the notes behind a message glyph, and
 *Repeat* as a warning badge at the right. It is hidden when an order has none of them. The list has a 36px
-head (SKU, Product, Packed, Status) and 64px rows on the grid `150px minmax(0,1fr) 128px 116px 404px`:
+head (SKU, Product, Packed, Status) and 64px rows on the grid `150px minmax(0,1fr) 128px 116px 448px`:
 
 - SKU in mono, bold; product in 14pt;
 - the packed count as a 26pt bold numeral with "of N" at 14pt beside it;
@@ -228,6 +228,8 @@ To raise on Fulfilment's side. Nothing here blocks this phase.
 | 15 | "Scanning continues · retrying" | "Scanning continues" | nothing retries on a timer; the next scan writes again |
 | 16 | Segoe UI | the bundled Inter | the Qt tier's face, as in phase 1 |
 | 17 | Force confirm dialog button: solid `status_danger` | the kit's `.btn.critical` | the shared destructive fill |
+| 18 | Four row buttons fit a 404px column | the column is 448px, the buttons 4px apart | measured when rendering: Confirm, Force confirm, Undo and Map SKU need about 440px in Inter at 12pt bold |
+| 19 | Product name on one line | up to two lines, then cut | at 1366px the narrowed column would cut most names to a few letters |
 
 ## 10. Testing
 

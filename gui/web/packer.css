@@ -13,7 +13,7 @@
   --pm-numeral-size: 26pt;
   --pm-band-size: 30pt;
   /* SKU, product, packed, status, actions. The head and every row share it. */
-  --pm-cols: 150px minmax(0, 1fr) 128px 116px 404px;
+  --pm-cols: 150px minmax(0, 1fr) 128px 116px 448px;
 }
 
 .pm {
@@ -175,7 +175,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.sku-row__product { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Two lines before it is cut: the column is narrow at 1366 and a packer
+   checks the product against the box in their hands. */
+.sku-row__product {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
 .sku-row__qty { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .sku-row__num { font-size: var(--pm-numeral-size); font-weight: 700; line-height: 1; }
 .sku-row__of { color: var(--text-secondary); }
@@ -195,7 +204,7 @@
 }
 .sku-row--just-changed .sku-row__num { color: var(--status-success); }
 
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions { display: flex; gap: 4px; justify-content: flex-end; }
 /* An act that never applies to this row keeps its slot, so the buttons line
    up down the list. */
 .btn[data-absent] { visibility: hidden; }
