@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Packer Assistant</title>
+<!-- shared/web_page.mount_page writes theme_css_vars() over the marker in the
+     style element below before the page loads; app.js keeps it current. -->
+<style id="theme-vars">/* theme-vars */</style>
+<link rel="stylesheet" href="../../shared/web/kit.css">
+<link rel="stylesheet" href="floor.css">
+<link rel="stylesheet" href="app.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="../../shared/web/page.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<!-- The app document (ADR 0003): Packing and Statistics. Every string from
+     the bridge goes in through textContent. -->
+<div class="app" id="app">
+
+  <section class="card state-card" id="no-client" hidden>
+    <h1 class="state-card-title" id="no-client-title">Choose a client to begin</h1>
+    <p class="state-card-text">Sessions, packing lists and SKU mapping all belong to one client.</p>
+    <button type="button" class="btn primary" id="choose-client" data-action="chooseClient">Choose a client</button>
+  </section>
+
+  <section class="card state-card" id="no-session" hidden>
+    <h1 class="state-card-title">No session open</h1>
+    <p class="state-card-text">Open a session to see its orders here.</p>
+    <button type="button" class="btn primary" id="open-session" data-action="openSession">Open session</button>
+  </section>
+
+  <section class="card state-card" id="stats-empty" hidden>
+    <h1 class="state-card-title">No packing data yet</h1>
+    <p class="state-card-text">Start a session from the Packing tab to see numbers here.</p>
+    <button type="button" class="btn primary" id="go-packing" data-action="goPacking">Go to Packing</button>
+  </section>
+
+  <header class="app-head" id="head" hidden>
+    <div class="app-head-text">
+      <div class="app-head-line">
+        <span class="app-title" id="head-title"></span>
+        <span class="badge info" id="head-badge">Active</span>
+      </div>
+      <div class="app-meta">
+        <span class="mono" id="head-id"></span>
+        <span id="head-dot">·</span>
+        <span id="head-meta"></span>
+      </div>
+    </div>
+    <button type="button" class="btn primary" id="head-start" data-action="startPacking" title="Opens Packer Mode">Start packing</button>
+  </header>
+
+  <section class="card app-opening" id="opening" hidden>
+    <div class="app-step-count" id="step-count"></div>
+    <div class="app-step-name" id="step-name"></div>
+    <div class="app-step-detail"><span class="mono" id="step-list"></span> · <span class="mono" id="step-id"></span></div>
+    <div class="app-step-bars">
+      <span class="app-step-bar"></span><span class="app-step-bar"></span><span class="app-step-bar"></span>
+    </div>
+  </section>
+
+  <div class="banner danger app-failed" id="failed" hidden>
+    <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    <div class="banner-body">
+      <div class="banner-title" id="failed-title"></div>
+      <div class="banner-text" id="failed-text"></div>
+      <div class="banner-actions">
+        <button type="button" class="btn secondary" id="failed-retry" data-action="retryStart">Retry</button>
+        <button type="button" class="btn ghost" id="failed-close" data-action="closeFailure">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-page" id="packing" hidden></div>
+  <div class="app-page" id="statistics" hidden></div>
+
+  <div class="toast-wrap">
+    <div class="toast" id="toast" role="status" hidden>
+      <span id="toast-text"></span>
+      <button type="button" class="toast-close" id="toast-close" title="Dismiss" aria-label="Dismiss">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

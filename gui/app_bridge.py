@@ -12,9 +12,14 @@ Spec: docs/superpowers/specs/2026-10-08-ui-refresh-phase3-packing-statistics-des
 from pathlib import Path
 from typing import Any
 
+from PySide6.QtCore import Property, Signal, Slot
+from PySide6.QtWebEngineWidgets import QWebEngineView
+
 from gui.packer_bridge import _int, order_label
+from gui.theme import current_tokens
 from packing_tool.exceptions import PackingListInvalidError, PackingStateUnreadableError
 from packing_tool.session_stats import courier_totals, session_totals, sku_summary
+from shared.web_page import PageBridge, mount_page
 
 PAGE = Path(__file__).resolve().parent / "web" / "app.html"
 CHANNEL_NAME = "app"
@@ -257,3 +262,159 @@ def start_failure(error: Exception, list_name: str) -> tuple[str, str]:
     if isinstance(error, ValueError):  # json.JSONDecodeError is one
         return _LIST_FAILED, f"{list_name} could not be read: {error}."
     return _OPEN_FAILED, str(error)
+
+
+class AppBridge(PageBridge):
+    """The app document's one channel object.
+
+    The theme, the toast, the revision and the painted report come from
+    PageBridge. State Python owns crosses as a notify property, so a page that
+    connects late reads the current value; what the page reports crosses as a
+    slot. Every notify property raises the revision on its own.
+    """
+
+    pageChanged = Signal()
+    coveredChanged = Signal()
+    shellChanged = Signal()
+    sessionChanged = Signal()
+    packingChanged = Signal()
+    statisticsChanged = Signal()
+    # Python-facing. The page reports through the slots below and never
+    # connects to these.
+    openSessionRequested = Signal()
+    startPackingRequested = Signal()
+    endSessionRequested = Signal()
+    retryStartRequested = Signal()
+    closeFailureRequested = Signal()
+    clearFilterRequested = Signal()
+    chooseClientRequested = Signal()
+    pageRequested = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._page = "packing"
+        self._covered = False
+        self._shell: dict = {"client": False, "clients": True, "serverDown": False}
+        self._session: dict = session_payload()
+        self._packing: dict = {}
+        self._statistics: dict = {}
+
+    # --- out: Python -> JS -------------------------------------------------
+
+    def _get_page(self) -> str:
+        return self._page
+
+    page = Property(str, _get_page, notify=pageChanged)
+
+    def _get_covered(self) -> bool:
+        return self._covered
+
+    covered = Property(bool, _get_covered, notify=coveredChanged)
+
+    def _get_shell(self) -> dict:
+        return self._shell
+
+    shell = Property("QVariantMap", _get_shell, notify=shellChanged)
+
+    def _get_session(self) -> dict:
+        return self._session
+
+    session = Property("QVariantMap", _get_session, notify=sessionChanged)
+
+    def _get_packing(self) -> dict:
+        return self._packing
+
+    packing = Property("QVariantMap", _get_packing, notify=packingChanged)
+
+    def _get_statistics(self) -> dict:
+        return self._statistics
+
+    statistics = Property("QVariantMap", _get_statistics, notify=statisticsChanged)
+
+    # --- in: JS -> Python --------------------------------------------------
+
+    @Slot()
+    def openSession(self) -> None:
+        self.openSessionRequested.emit()
+
+    @Slot()
+    def startPacking(self) -> None:
+        self.startPackingRequested.emit()
+
+    @Slot()
+    def endSession(self) -> None:
+        self.endSessionRequested.emit()
+
+    @Slot()
+    def retryStart(self) -> None:
+        self.retryStartRequested.emit()
+
+    @Slot()
+    def closeFailure(self) -> None:
+        self.closeFailureRequested.emit()
+
+    @Slot()
+    def clearFilter(self) -> None:
+        self.clearFilterRequested.emit()
+
+    @Slot()
+    def chooseClient(self) -> None:
+        self.chooseClientRequested.emit()
+
+    @Slot(str)
+    def showPage(self, name) -> None:
+        self.pageRequested.emit(str(name))
+
+    # --- Python-facing API -------------------------------------------------
+    # A setter that changes nothing emits nothing, so an idle push does not
+    # raise the revision.
+
+    def set_page(self, name: str) -> None:
+        if name != self._page:
+            self._page = str(name)
+            self.pageChanged.emit()
+
+    def set_covered(self, covered: bool) -> None:
+        if bool(covered) != self._covered:
+            self._covered = bool(covered)
+            self.coveredChanged.emit()
+
+    def set_shell(self, *, client: bool, clients: bool, server_down: bool) -> None:
+        shell = {
+            "client": bool(client),
+            "clients": bool(clients),
+            "serverDown": bool(server_down),
+        }
+        if shell != self._shell:
+            self._shell = shell
+            self.shellChanged.emit()
+
+    def set_session(self, payload: dict) -> None:
+        payload = dict(payload or session_payload())
+        if payload != self._session:
+            self._session = payload
+            self.sessionChanged.emit()
+
+    def set_packing(self, payload: dict) -> None:
+        payload = dict(payload or {})
+        if payload != self._packing:
+            self._packing = payload
+            self.packingChanged.emit()
+
+    def set_statistics(self, payload: dict) -> None:
+        payload = dict(payload or {})
+        if payload != self._statistics:
+            self._statistics = payload
+            self.statisticsChanged.emit()
+
+
+def mount_app_page(view: QWebEngineView) -> AppBridge:
+    """Load the app document into `view` and return the bridge it talks to.
+
+    The view keeps its focus policy: the page is buttons, and a packer may
+    reach them from the keyboard (spec section 9). Packer Mode's view is the
+    one that refuses it.
+    """
+    bridge = AppBridge(view)
+    mount_page(view, bridge, PAGE, CHANNEL_NAME, tokens=current_tokens)
+    return bridge

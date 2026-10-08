@@ -1,0 +1,55 @@
+/* The app document's own sheet (UI refresh phase 3, ADR 0003): the layouts of
+   Packing and Statistics. Buttons, badges, cards and the banner come from
+   shared/web/kit.css; the toast, state card, strip, track and table rows from
+   floor.css. Mockup: docs/design/ui-refresh/mockups/Packer App.html, frames
+   3a-3g and 4a-4c.
+   Spec: docs/superpowers/specs/2026-10-08-ui-refresh-phase3-packing-statistics-design.md
+   Web-tier rules (ADR 0001): var(--...) only, type sizes from the scale, one
+   mono face, no transition/transform/opacity. */
+
+.app {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+
+/* --- page header --------------------------------------------------------- */
+
+.app-head { flex: none; display: flex; align-items: center; gap: 16px; }
+.app-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-head-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.app-title {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-secondary); }
+
+/* --- 3b: opening --------------------------------------------------------- */
+
+.app-opening { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 20px 24px; }
+.app-step-count { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-step-name { font-size: var(--type-display-size); font-weight: 700; }
+.app-step-detail { color: var(--text-secondary); }
+.app-step-bars { display: flex; gap: 4px; margin-top: 8px; }
+.app-step-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--border); }
+.app-step-bar.done { background: var(--accent-fill); }
+
+/* --- 3c: a failed start. floor.css lays the banner out as one row. -------- */
+
+.app-failed { flex: none; align-items: flex-start; padding: 16px 20px; }
+.app-failed > .glyph { margin-top: 2px; }
+.app-failed .banner-body { gap: 6px; }
+.app-failed .banner-title { flex: none; }
+.app-failed .banner-actions { gap: 8px; margin-top: 4px; }
+
+/* --- a page's content ---------------------------------------------------- */
+
+.app-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
