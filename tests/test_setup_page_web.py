@@ -57,7 +57,7 @@ def page(qtbot):
 
 
 def show_workers(page, qtbot, workers=SIX, **kwargs):
-    view, bridge = page
+    _view, bridge = page
     kwargs.setdefault("startup", True)
     bridge.set_workers(workers_payload(workers, now=NOW, **kwargs))
     bridge.set_page("workers")
@@ -65,7 +65,7 @@ def show_workers(page, qtbot, workers=SIX, **kwargs):
 
 
 def show_mapping(page, qtbot, editor=None, **kwargs):
-    view, bridge = page
+    _view, bridge = page
     editor = editor if editor is not None else MappingEditor(READ)
     kwargs.setdefault("client", "ACME")
     bridge.set_mapping(mapping_payload(editor, **kwargs))
@@ -110,7 +110,7 @@ def test_with_no_page_the_document_draws_no_text(page, qtbot):
 
 
 def test_six_workers_are_six_cards_and_the_new_card(page, qtbot):
-    view, bridge = page
+    view, _bridge = page
     show_workers(page, qtbot)
     assert shown(view, qtbot, "workers") and not shown(view, qtbot, "mapping")
     assert count(view, qtbot, "#w-grid [data-worker]") == 6
