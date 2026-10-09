@@ -1,8 +1,15 @@
 """Background QThread workers for slow I/O during session start/end."""
 import logging
+import os
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication
+
+from packing_tool.session_details import (
+    SessionFilesError,
+    error_cause,
+    load_session_details,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,3 +98,61 @@ class SessionEndWorker(QThread):
         except Exception as exc:
             logger.exception("SessionEndWorker: unexpected error")
             self.error = exc
+
+
+class RegistryRefreshWorker(QThread):
+    """Reads a client's session registry off the UI thread.
+
+    1. ensure_registry(): a one-time scan if the file is missing
+    2. refresh_available_lists(): packing lists uploaded since
+    3. get_all_entries(): every entry with its status resolved
+
+    Both signals carry the client id, so an answer for a client the packer
+    has already left can be dropped.
+    """
+
+    refresh_complete = Signal(str, list)  # (client_id, entries)
+    refresh_failed = Signal(str, str)  # (client_id, cause)
+
+    def __init__(self, registry_manager, client_id: str, parent=None):
+        super().__init__(parent)
+        self._registry = registry_manager
+        self._client_id = client_id
+
+    def run(self) -> None:
+        try:
+            # read_registry answers an unreachable server with an empty
+            # registry. Listing the server's root first lets the real error
+            # out, so the page can say the refresh failed (frame 7f).
+            os.listdir(self._registry.profile_manager.base_path)
+            self._registry.ensure_registry(self._client_id)
+            self._registry.refresh_available_lists(self._client_id)
+            entries = self._registry.get_all_entries(self._client_id)
+        except Exception as error:
+            logger.exception("RegistryRefreshWorker failed")
+            self.refresh_failed.emit(self._client_id, error_cause(error))
+        else:
+            self.refresh_complete.emit(self._client_id, entries)
+
+
+class SessionDetailsWorker(QThread):
+    """Reads one session's files off the UI thread (spec section 7.1)."""
+
+    loaded = Signal(str, object)  # (key, details)
+    failed = Signal(str, str, str)  # (key, path, cause)
+
+    def __init__(self, key: str, entry: dict, parent=None):
+        super().__init__(parent)
+        self._key = key
+        self._entry = dict(entry)
+
+    def run(self) -> None:
+        try:
+            details = load_session_details(self._entry)
+        except SessionFilesError as error:
+            self.failed.emit(self._key, error.path, error.cause)
+        except Exception as error:
+            logger.exception("SessionDetailsWorker failed")
+            self.failed.emit(self._key, str(self._entry.get("work_dir", "")), error_cause(error))
+        else:
+            self.loaded.emit(self._key, details)

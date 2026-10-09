@@ -42,6 +42,16 @@ def test_a_silent_lock_reads_stale(registry, tmp_path):
     assert registry._resolve_status(entry) == "stale"
 
 
+def test_stale_in_the_list_means_the_lock_can_be_taken(registry, tmp_path):
+    """One threshold, the lock's: a row reads Stale exactly when Resume can
+    take the session over (spec 2026-10-08 phase 4, section 5.5)."""
+    entry, work_dir = _entry(tmp_path)
+    _lock(work_dir, age_seconds=SessionLockManager.STALE_TIMEOUT + 10)
+    assert registry._resolve_status(entry) == "stale"
+    _lock(work_dir, age_seconds=SessionLockManager.STALE_TIMEOUT - 30)
+    assert registry._resolve_status(entry) == "in_progress"
+
+
 def test_no_lock_reads_paused(registry, tmp_path):
     entry, _work_dir = _entry(tmp_path)
     assert registry._resolve_status(entry) == "paused"

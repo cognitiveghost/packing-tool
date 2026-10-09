@@ -38,8 +38,10 @@ from shared.metadata_utils import get_current_timestamp, parse_timestamp
 
 logger = logging.getLogger(__name__)
 
-# Seconds before an "in_progress" heartbeat is considered stale
-STALE_HEARTBEAT_SECONDS = 300  # 5 minutes
+# Seconds before an "in_progress" heartbeat is considered stale. The same as
+# SessionLockManager.STALE_TIMEOUT: a session reads Stale in the list exactly
+# when its lock can be taken over.
+STALE_HEARTBEAT_SECONDS = 120
 
 # Seconds before a session with no summary and no recent activity is "abandoned"
 ABANDONED_SECONDS = 86400  # 24 hours
