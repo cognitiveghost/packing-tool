@@ -6,6 +6,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication
 
 from packing_tool.session_details import (
+    UNREADABLE_SHAPE,
     SessionFilesError,
     error_cause,
     load_session_details,
@@ -151,8 +152,8 @@ class SessionDetailsWorker(QThread):
             details = load_session_details(self._entry)
         except SessionFilesError as error:
             self.failed.emit(self._key, error.path, error.cause)
-        except Exception as error:
+        except Exception:
             logger.exception("SessionDetailsWorker failed")
-            self.failed.emit(self._key, str(self._entry.get("work_dir", "")), error_cause(error))
+            self.failed.emit(self._key, str(self._entry.get("work_dir", "")), UNREADABLE_SHAPE)
         else:
             self.loaded.emit(self._key, details)

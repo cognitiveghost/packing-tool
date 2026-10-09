@@ -550,8 +550,8 @@ function onKey(event) {
   const bridge = view.bridge;
   const page = bridge.page;
   if (event.key === "Escape") {
-    if ((bridge.confirm || {}).key) bridge.answerTakeOver(false);
-    else if (view.exportOpen) { view.exportOpen = false; renderPane(); }
+    if (view.exportOpen) { view.exportOpen = false; renderPane(); }
+    else if ((bridge.confirm || {}).key) bridge.answerTakeOver(false);
     else if (page === "sessions" && view.sel) { view.sel = null; renderPane(); }
     else return;
     event.preventDefault();
@@ -631,7 +631,8 @@ function detailItemRow(item) {
   if (item.sku) first.appendChild(el("span", "mono app-ditem-sku", item.sku));
   first.appendChild(cut("app-ditem-name", item.name));
   row.appendChild(first);
-  row.appendChild(el("span", "mono", item.offset));
+  if (item.sku || item.offset) row.appendChild(el("span", "mono", item.offset));
+  else first.classList.add("app-ditem-wide");
   row.appendChild(el("span", "mono", item.count));
   row.appendChild(el("span", "mono", item.time));
   row.appendChild(el("span"));

@@ -155,3 +155,17 @@ def test_an_unreadable_session_info_is_skipped(work_dir):
     _write(work_dir / "session_summary.json", {"session_id": "2026-09-29_1"})
     (work_dir.parent / "session_info.json").write_text("{", encoding="utf-8")
     assert load_session_details(_entry(work_dir))["session_info"] == {}
+
+
+def test_a_resumed_session_loads_from_the_state_not_the_summary_its_last_end_wrote(work_dir):
+    _write(work_dir / "session_summary.json", {"completed_orders": 2, "orders": [{}, {}]})
+    _write(work_dir / "packing_state.json", {
+        "progress": {"total_orders": 10},
+        "completed": [{"order_number": f"#{n}", "items_count": 1} for n in range(5)],
+        "in_progress": {},
+    })
+    details = load_session_details(_entry(work_dir, status="in_progress"))
+    assert details["record"]["completed_orders"] == 5
+    assert len(details["session_summary"]["orders"]) == 5
+    finished = load_session_details(_entry(work_dir, status="completed"))
+    assert finished["record"]["completed_orders"] == 2

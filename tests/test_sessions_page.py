@@ -522,6 +522,35 @@ def test_a_refresh_does_not_re_read_a_finished_sessions_details(made, tmp_path, 
     assert made.bridge.details["state"] == "ready"
 
 
+def test_details_left_open_are_read_once_more_when_the_session_finishes(made, tmp_path):
+    path = work_dir(tmp_path)
+    state = {"started_at": stamp(hours=1), "progress": {"total_orders": 3},
+             "completed": [{"order_number": "#1", "items_count": 1}], "in_progress": {}}
+    (path / "packing_state.json").write_text(json.dumps(state), encoding="utf-8")
+    active = entry("live", "in_progress", work_dir=str(path))
+    made.page.show_entries([active])
+    made.bridge.sessionDetails(session_key(active))
+    drain(made.page, made.qapp)
+    assert made.bridge.details["cards"][0]["value"] == "1"
+
+    state["completed"].append({"order_number": "#2", "items_count": 2})
+    (path / "packing_state.json").write_text(json.dumps(state), encoding="utf-8")
+    made.page.show_entries([dict(active, status="completed")])
+    drain(made.page, made.qapp)
+    assert made.bridge.details["cards"][0]["value"] == "2"
+
+
+def test_files_the_payload_cannot_read_are_the_error_frame(made, tmp_path):
+    path = work_dir(tmp_path)
+    summary(path, skipped_orders=3)  # parses, but is not a list
+    done = entry(status="completed", work_dir=str(path))
+    made.page.show_entries([done])
+    made.bridge.sessionDetails(session_key(done))
+    drain(made.page, made.qapp)
+    assert made.bridge.details["state"] == "error"
+    assert made.bridge.details["error"]["path"] == str(path)
+
+
 # --- exports (section 8) ---------------------------------------------------------------
 
 

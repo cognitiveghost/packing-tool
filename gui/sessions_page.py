@@ -32,6 +32,7 @@ from gui.sessions_payload import (
     visible_entries,
 )
 from gui.workers import RegistryRefreshWorker, SessionDetailsWorker
+from packing_tool.session_details import UNREADABLE_SHAPE
 
 logger = logging.getLogger(__name__)
 
@@ -179,9 +180,11 @@ class SessionsPage(QObject):
         entry = self._entry(self._detail_key)
         if entry is None:
             return
+        was_live = (self._detail_entry or {}).get("status") == "in_progress"
         self._detail_entry = entry
-        if entry.get("status") == "in_progress":
-            # Frame 8b: an Active session's numbers refresh with the list.
+        if was_live or entry.get("status") == "in_progress":
+            # Frame 8b: an Active session's numbers refresh with the list,
+            # and once more when it finishes, so the final figures are shown.
             self._load_details(keep=True)
         else:
             self._push_details()
@@ -407,8 +410,8 @@ class SessionsPage(QObject):
     def _push_details(self) -> None:
         if not self._detail_key or self._detail_entry is None:
             return
-        self._bridge.set_details(
-            details_payload(
+        def build():
+            return details_payload(
                 self._detail_entry,
                 self._details,
                 client=self._client_label(),
@@ -417,7 +420,19 @@ class SessionsPage(QObject):
                 stamp=self._stamp,
                 open_key=self._open_key,
             )
-        )
+
+        try:
+            payload = build()
+        except Exception:
+            # Files that parse but are not the shape this version writes: frame 8f.
+            logger.exception("Session details could not be built")
+            self._details = None
+            self._detail_error = {
+                "path": str(self._detail_entry.get("work_dir", "")),
+                "cause": UNREADABLE_SHAPE,
+            }
+            payload = build()
+        self._bridge.set_details(payload)
 
     # --- exports -----------------------------------------------------------------------
 

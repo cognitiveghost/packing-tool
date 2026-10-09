@@ -112,9 +112,12 @@ def fmt_age(stamp: Any, now: datetime) -> str:
 
 
 def fmt_duration(seconds: Any) -> str:
+    try:
+        seconds = float(seconds)
+    except (TypeError, ValueError):
+        return NOTHING
     if not seconds:
         return NOTHING
-    seconds = float(seconds)
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     if hours:
@@ -132,7 +135,7 @@ def fmt_touched(entry: dict, now: datetime) -> str:
     at = _at(stamp, now)
     when = ""
     if at is not None:
-        recent = (now - at).total_seconds() < 86400
+        recent = at.date() == now.date()
         when = f"{at:%H:%M}" if recent else f"{fmt_age(stamp, now)} ago"
     parts = [part for part in (worker, pc, when) if part]
     return " · ".join(parts) if parts else NOTHING
@@ -249,7 +252,7 @@ def _action(entry: dict, key: str, *, open_key: str, server_down: bool) -> dict:
     if status in ("completed", "abandoned") or status not in STATUS:
         if has_files or status in STATUS:
             return made("details", "View details")
-        return made("", "", enabled=False)
+        return made("", "", enabled=False, note="This session has no files to open.")
 
     start = status == "not_started"
     action, label = ("start", "Start packing") if start else ("resume", "Resume session")
@@ -285,7 +288,8 @@ def _row(entry: dict, now: datetime, *, open_key: str, server_down: bool) -> dic
     done = _n(entry.get("completed_orders"))
     skipped = _n(entry.get("skipped_orders"))
     items = _n(entry.get("total_items"))
-    metrics = entry.get("metrics") or {}
+    metrics = entry.get("metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
     live = status == "in_progress"
     here = bool(open_key) and key == open_key
 

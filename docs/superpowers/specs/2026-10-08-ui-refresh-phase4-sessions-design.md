@@ -376,7 +376,7 @@ label over tiles of a 17pt bold value and a 10pt label:
 Times read "45s", "4m 5s", "1h 2m". On an Active session the two time groups are titled "Order time so far"
 and "Item time so far".
 
-**8c, no timing.** A session has timing when its `metrics` is not empty. Without it the two time groups give
+**8c, no timing.** A session has timing when its `metrics` holds an average time per order (metrics with only counts are not timing). Without it the two time groups give
 way to one block: an info glyph, "Timing metrics are not available for this session." in bold, and at 10pt
 "Its files hold no scan times, so durations and rates cannot be worked out. Counts and flags are complete."
 Scan quality stays, counted from the orders.

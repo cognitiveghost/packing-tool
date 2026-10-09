@@ -26,6 +26,10 @@ class SessionFilesError(Exception):
         self.cause = cause
 
 
+# The 8f cause when a file parses but is not what this app writes.
+UNREADABLE_SHAPE = "its files are not in the shape this version reads"
+
+
 def error_cause(error: Exception) -> str:
     """The cause as the end of a sentence: lower case first, no full stop."""
     if isinstance(error, json.JSONDecodeError):
@@ -150,7 +154,10 @@ def load_session_details(entry: dict) -> dict:
 
     client_id = entry.get("client_id")
     list_name = entry.get("packing_list_name", "")
-    if summary:
+    # An ended-then-resumed session still holds the summary its last End wrote:
+    # while it is open again, packing_state.json is the newer file.
+    resumed = bool(state) and entry.get("status") in ("in_progress", "paused", "stale")
+    if summary and not resumed:
         record = {
             "session_id": summary.get("session_id", session_id),
             "client_id": summary.get("client_id", client_id),

@@ -640,6 +640,7 @@ button.app-dorder { cursor: pointer; }
   gap: 10px;
   padding-left: 30px;
 }
+.app-ditem-wide { grid-column: span 2; }
 .app-ditem-sku { white-space: nowrap; }
 .app-ditem-name { color: var(--text-secondary); }
 .app-flags { display: flex; gap: 6px; overflow: hidden; }
