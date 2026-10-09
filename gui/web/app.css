@@ -229,7 +229,9 @@
 
 .app-s-bar { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .app-s-bar .segmented { flex: none; }
-.app-s-search { flex: 1 1 200px; min-width: 130px; }
+/* Tighter than the kit's 12px: four tabs, two dates and the stamp share 1366px. */
+.app-s-bar .segment { padding: 0 8px; }
+.app-s-search { flex: 1 1 200px; min-width: 80px; }
 
 .app-clear {
   flex: none;
@@ -258,7 +260,7 @@
   background: var(--surface);
   white-space: nowrap;
 }
-.app-s-dates label { display: flex; align-items: baseline; gap: 6px; padding: 0 10px; }
+.app-s-dates label { display: flex; align-items: baseline; gap: 6px; padding: 0 8px; }
 .app-s-dates label > span { font-size: var(--type-caption-size); color: var(--text-secondary); }
 .app-s-dates input {
   padding: 0;
@@ -268,6 +270,15 @@
   /* The platform's own date control, drawn for the app's theme. */
   color-scheme: var(--color-scheme);
 }
+/* With the rail open the page is 1166px wide: the From and To captions give
+   way before the toolbar can (the box keeps its title, "Date range"). */
+@media (max-width: 1260px) {
+  .app-s-dates label > span { display: none; }
+}
+
+/* Chromium leaves 24px between the date and its picker button: the toolbar
+   needs that width at 1366px. */
+.app-s-dates input::-webkit-calendar-picker-indicator { margin-inline-start: 2px; }
 .app-s-dates label:focus-within {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
@@ -523,16 +534,15 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 20px;
+  padding: 10px 14px;
   border-left: 1px solid var(--border);
 }
 .app-d-fact:first-child { border-left: 0; }
 .app-d-fact-label { font-size: var(--type-caption-size); color: var(--text-secondary); }
 .app-d-fact-value {
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* A time cut to "6 Oct, 08:0…" is no use: let a long value wrap. */
+  overflow-wrap: anywhere;
 }
 
 .app-d-reading { padding: 0 4px; color: var(--text-secondary); }
@@ -578,9 +588,7 @@
 .app-d-tile-label {
   font-size: var(--type-caption-size);
   color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 /* 8c: one sentence where Order time and Item time would be. */
 .app-d-notiming {

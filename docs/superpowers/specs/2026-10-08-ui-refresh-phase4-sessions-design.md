@@ -519,6 +519,8 @@ revision equals the bridge's; assert the DOM holds B's ids and none of A's.
 | 22 | The connection banner is drawn in the page | the Qt banner above the view, as phases 1 and 3 built it | it works above the view; moving it is not this task |
 | 23 | Hairlines in `border_subtle`, control edges in `border`, Segoe UI, Consolas | the kit's edges, the bundled Inter and the theme's mono | phases 1 to 3, rows 13 and 14 of phase 3 |
 | 24 | F5's "tinted ground means still live" (CONTEXT.md) | the mockup's tones: Completed is tinted green, Abandoned is neutral | the mockup is the brief; CONTEXT.md is updated |
+| 25 | *From* and *To* captions in the date box | hidden when the page is narrower than 1260px (1366px with the rail open); the box keeps its title, "Date range" | native date inputs are about 120px wider than "8 Sep"; the Export button went off the page at 1366px |
+| 26 | Tabs padded 12px | 8px in this toolbar, and 2px between a date and its picker button | the same fit; Chromium leaves 24px there |
 
 ## 13. For shared/
 
