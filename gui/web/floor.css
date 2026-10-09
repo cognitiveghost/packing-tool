@@ -8,7 +8,7 @@
    and before the page's own sheet. Web-tier rules as in kit.css.
 
    Phase 3 added the toast, the state card, the strip, the track and the table
-   rows; phases 4 and 5 add inputs when a page first uses them. */
+   rows; phase 4 added the segmented control, the input, the menu and the dot. */
 
 /* --- buttons ------------------------------------------------------------- */
 
@@ -197,3 +197,32 @@
   padding: 0 16px;
   border-bottom: 1px solid var(--border-subtle);
 }
+
+
+/* --- segmented control --------------------------------------------------- */
+
+.segmented { align-self: auto; height: var(--control-height); }
+.segment { height: 38px; padding: 0 12px; }
+
+/* --- input: a label wrapping a glyph, an <input> and a clear button ------- */
+
+.input { gap: 8px; padding: 0 6px 0 12px; border-color: var(--border-strong); }
+.input > .glyph { width: 18px; height: 18px; }
+
+/* --- menu ---------------------------------------------------------------- */
+
+.menu-item { height: 44px; gap: 10px; padding: 0 12px; }
+.menu-group { padding: 6px 12px 4px; font-weight: 400; }
+
+/* --- dot: who set a status. Solid, a person; hollow, the system. --------- */
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.dot.solid { background: currentColor; }
+.badge > .dot { margin: 0 4px 0 -2px; }
