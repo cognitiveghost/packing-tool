@@ -270,7 +270,78 @@
     </div>
   </div>
 
-  <div class="app-details" id="details" hidden></div>
+  <div class="app-details" id="details" hidden>
+    <div class="app-d-top">
+      <button type="button" class="btn secondary" id="d-back" data-action="closeDetails" title="Back to Sessions  Alt+Left">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Sessions
+      </button>
+      <span class="mono app-d-id" id="d-id"></span>
+      <span id="d-chip"></span>
+      <span class="app-cut app-d-why" id="d-why"></span>
+      <button type="button" class="btn secondary" id="d-export" data-action="exportDetails">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export Excel
+      </button>
+    </div>
+
+    <div class="banner danger app-s-banner" id="d-error" hidden>
+      <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <div class="banner-body">
+        <div class="banner-title">The session's files could not be read</div>
+        <div class="banner-text"><span class="mono" id="d-error-path"></span> could not be read: <span id="d-error-cause"></span>. Timings, metrics and orders appear once it can be read; the facts below come from the session list.</div>
+      </div>
+      <button type="button" class="btn secondary" id="d-error-retry" data-action="retryDetails">Retry</button>
+    </div>
+
+    <div class="app-d-live" id="d-live" hidden>
+      <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      <span class="app-d-live-text"><span class="app-strong">Still packing on <span id="d-live-pc"></span>.</span> Every number below is so far and refreshes with the list.</span>
+      <span class="app-d-live-stamp">Last refreshed <span class="mono" id="d-live-stamp"></span></span>
+    </div>
+
+    <section class="card app-d-facts" id="d-facts"></section>
+
+    <div class="app-d-reading" id="d-loading" hidden>Reading the session's files…</div>
+
+    <div class="app-d-ready" id="d-ready" hidden>
+      <section class="card strip app-d-cards" id="d-cards"></section>
+
+      <section class="card app-d-metrics">
+        <div class="app-d-metrics-title">
+          <span class="app-strong">Timing and scan quality</span>
+          <span class="strip-note" id="d-metrics-note"></span>
+        </div>
+        <div class="app-d-groups" id="d-groups"></div>
+      </section>
+
+      <section class="card app-d-orders">
+        <div class="app-d-bar">
+          <span class="app-strong">Orders</span>
+          <label class="input app-d-filter">
+            <svg class="glyph" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="d-query" placeholder="Filter by order number" autocomplete="off" spellcheck="false">
+            <button type="button" class="app-clear" id="d-query-clear" data-action="clearDetailsFilter" title="Clear filter" aria-label="Clear filter" hidden>
+              <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </label>
+          <span class="app-secondary" id="d-showing"></span>
+          <span class="spacer"></span>
+          <button type="button" class="btn secondary" data-action="expandAll">Expand all</button>
+          <button type="button" class="btn secondary" data-action="collapseAll">Collapse all</button>
+        </div>
+        <div class="tbl-head app-d-head">
+          <span class="app-head-first">Order / Item</span><span>Duration</span><span>Count</span><span>Started / Scanned</span><span>Completed</span><span>Flags</span>
+        </div>
+        <div id="d-rows"></div>
+        <div class="app-no-match app-d-no-match" id="d-no-match" hidden>
+          <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <div class="app-no-match-title">No orders match</div>
+          <div class="app-no-match-text">No order number in this session contains “<span class="mono app-no-match-query" id="d-no-match-query"></span>”.</div>
+          <button type="button" class="btn secondary" data-action="clearDetailsFilter">Clear filter</button>
+        </div>
+        <div class="app-d-none" id="d-none" hidden>No orders were recorded for this session.</div>
+      </section>
+    </div>
+  </div>
 
   <div class="scrim" id="confirm" hidden>
     <div class="dialog app-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">

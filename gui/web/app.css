@@ -470,3 +470,177 @@
 
 .app-confirm { width: 540px; }
 .app-confirm .dialog-title .glyph { color: var(--status-warning); }
+
+
+/* --- Session details (frames 8a-8f) -------------------------------------- */
+
+/* One scrolling page. The negative margin undoes .app's padding, so the
+   scrollbar is at the view's edge. */
+.app-details {
+  flex: 1;
+  min-height: 0;
+  margin: -20px -24px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: auto;
+}
+.app-details > * { flex: none; }
+
+.app-d-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.app-d-top .btn > .glyph { width: 18px; height: 18px; }
+.app-d-id {
+  padding-left: 4px;
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.app-d-why {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+.app-d-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: var(--kit-radius-card);
+  background: var(--status-info-bg);
+  color: var(--status-info);
+}
+.app-d-live > .glyph { width: 20px; height: 20px; }
+.app-d-live-text { flex: 1; min-width: 0; }
+.app-d-live-stamp { font-size: var(--type-caption-size); white-space: nowrap; }
+
+.app-d-facts { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(6, minmax(0, 1fr)); }
+.app-d-fact {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 20px;
+  border-left: 1px solid var(--border);
+}
+.app-d-fact:first-child { border-left: 0; }
+.app-d-fact-label { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-d-fact-value {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-d-reading { padding: 0 4px; color: var(--text-secondary); }
+.app-d-ready { display: flex; flex-direction: column; gap: 16px; }
+
+/* The stat cards: floor.css's strip, with the number first. */
+.app-d-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.app-d-cards .strip-cell:last-child { justify-content: flex-start; gap: 2px; }
+.app-d-cards .strip-line { white-space: nowrap; }
+.app-d-cards .strip-note { min-height: 16px; }
+
+.app-d-metrics { display: flex; flex-direction: column; }
+.app-d-metrics-title { display: flex; align-items: baseline; gap: 12px; padding: 12px 20px 0; }
+.app-d-groups { display: flex; padding: 8px 0 16px; }
+.app-d-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 20px;
+  border-left: 1px solid var(--border);
+}
+.app-d-group:first-child { border-left: 0; }
+.app-d-group.n2 { flex: 2 1 0; }
+.app-d-group.n3 { flex: 3 1 0; }
+.app-d-group.n4 { flex: 4 1 0; }
+.app-d-group-title {
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.app-d-tiles { display: grid; gap: 16px; }
+.app-d-group.n2 .app-d-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-d-group.n3 .app-d-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app-d-group.n4 .app-d-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app-d-tile { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-d-tile-value {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.app-d-tile-label {
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 8c: one sentence where Order time and Item time would be. */
+.app-d-notiming {
+  flex: 5 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 20px;
+}
+.app-d-notiming > .glyph { width: 20px; height: 20px; margin-top: 2px; color: var(--text-secondary); }
+.app-d-notiming-text { display: flex; flex-direction: column; gap: 2px; }
+.app-d-notiming-note { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.app-d-orders {
+  --tbl-cols: minmax(0, 1fr) 150px 140px 150px 120px minmax(0, 1.25fr);
+  display: flex;
+  flex-direction: column;
+}
+.app-d-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.app-d-filter { width: 300px; }
+/* The head stays while the page scrolls under it. No ancestor between it and
+   .app-details may clip (overflow), or it would stick to that instead. */
+.app-d-head { position: sticky; top: 0; z-index: 1; }
+
+.app-dorder {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  text-align: left;
+}
+button.app-dorder { cursor: pointer; }
+.app-dorder[aria-expanded="true"] { background: var(--surface-raised); }
+.app-dorder:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.app-d-nochev { flex: none; width: 20px; }
+.app-ditem { min-height: 40px; height: 40px; background: var(--surface-raised); }
+.app-ditem-first {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-left: 30px;
+}
+.app-ditem-sku { white-space: nowrap; }
+.app-ditem-name { color: var(--text-secondary); }
+.app-flags { display: flex; gap: 6px; overflow: hidden; }
+.app-flag {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: var(--type-caption-size);
+}
+.app-d-no-match { padding: 48px 24px; }
+.app-d-none { padding: 24px; text-align: center; color: var(--text-secondary); }

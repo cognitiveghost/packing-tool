@@ -564,6 +564,173 @@ function onKey(event) {
   }
 }
 
+// --- Session details ------------------------------------------------------------
+
+const INFO_GLYPH = "M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0M12 16v-4M12 8h.01";
+
+function tilesGroup(title, tiles) {
+  const group = el("div", "app-d-group n" + tiles.length);
+  group.appendChild(el("span", "app-d-group-title", title));
+  const grid = el("div", "app-d-tiles");
+  tiles.forEach(function (tile) {
+    const node = el("div", "app-d-tile");
+    node.appendChild(el("span", "app-d-tile-value", tile.value));
+    const label = el("span", "app-d-tile-label", tile.label);
+    label.title = tile.label;
+    node.appendChild(label);
+    grid.appendChild(node);
+  });
+  group.appendChild(grid);
+  return group;
+}
+
+function noTiming() {
+  const node = el("div", "app-d-notiming");
+  node.appendChild(glyph(INFO_GLYPH));
+  const text = el("div", "app-d-notiming-text");
+  text.appendChild(el("span", "app-strong", "Timing metrics are not available for this session."));
+  text.appendChild(el("span", "app-d-notiming-note",
+    "Its files hold no scan times, so durations and rates cannot be worked out. Counts and flags are complete."));
+  node.appendChild(text);
+  return node;
+}
+
+function flagBadges(flags) {
+  const holder = el("span", "app-flags");
+  (flags || []).forEach(function (flag) {
+    holder.appendChild(el("span", "badge app-flag " + flag.tone, flag.label));
+  });
+  return holder;
+}
+
+function detailOrderRow(order) {
+  // A skipped order has nothing to open: it is a row, not a button.
+  const opens = order.items.length > 0;
+  const open = opens && !!view.dOpen[order.number];
+  const row = el(opens ? "button" : "div", "tbl-row app-dorder");
+  if (opens) {
+    row.type = "button";
+    row.dataset.dorder = order.number;
+    row.setAttribute("aria-expanded", String(open));
+  }
+  const first = el("span", "app-order-no");
+  first.appendChild(opens ? glyph(open ? CHEVRON_DOWN : CHEVRON_RIGHT) : el("span", "app-d-nochev"));
+  first.appendChild(el("span", "app-order-label", order.label));
+  row.appendChild(first);
+  row.appendChild(el("span", "mono", order.duration));
+  row.appendChild(el("span", "", order.count));
+  row.appendChild(el("span", "mono", order.started));
+  row.appendChild(el("span", "mono", order.completed));
+  row.appendChild(flagBadges(order.flags));
+  return row;
+}
+
+function detailItemRow(item) {
+  const row = el("div", "tbl-row app-ditem");
+  const first = el("span", "app-ditem-first");
+  if (item.sku) first.appendChild(el("span", "mono app-ditem-sku", item.sku));
+  first.appendChild(cut("app-ditem-name", item.name));
+  row.appendChild(first);
+  row.appendChild(el("span", "mono", item.offset));
+  row.appendChild(el("span", "mono", item.count));
+  row.appendChild(el("span", "mono", item.time));
+  row.appendChild(el("span"));
+  row.appendChild(flagBadges(item.flags));
+  return row;
+}
+
+function renderDetailRows() {
+  const d = view.bridge.details || {};
+  const built = document.createDocumentFragment();
+  (d.orders || []).forEach(function (order) {
+    built.appendChild(detailOrderRow(order));
+    if (view.dOpen[order.number]) {
+      order.items.forEach(function (item) { built.appendChild(detailItemRow(item)); });
+    }
+  });
+  els.dRows.replaceChildren(built);
+  show(els.dNoMatch, !!d.noMatch);
+  els.dNoMatchQuery.textContent = d.needle || "";
+  show(els.dNone, d.state === "ready" && !d.total);
+}
+
+function toggleDetailOrder(number) {
+  view.dOpen[number] = !view.dOpen[number];
+  renderDetailRows();
+  // The redraw replaced the row: Enter or Space again must reach the new one.
+  const row = Array.from(els.dRows.querySelectorAll("[data-dorder]"))
+    .find(function (node) { return node.dataset.dorder === number; });
+  if (row) row.focus();
+}
+
+function renderDetails() {
+  const d = view.bridge.details || {};
+  const key = d.key || "";
+  if (key !== view.detailsKey) {
+    // Back from details: the session it showed is the selected row.
+    if (!key && view.detailsKey) {
+      view.sel = view.detailsKey;
+      renderPane();
+    }
+    view.detailsKey = key;
+    view.dOpen = Object.create(null);
+    els.details.scrollTop = 0;
+  }
+  if (!key) return;
+
+  const ready = d.state === "ready";
+  els.dId.textContent = d.id || "";
+  els.dChip.replaceChildren(chip(d));
+  els.dWhy.textContent = d.setBy + " · " + d.why;
+  els.dWhy.title = els.dWhy.textContent;
+  els.dExport.disabled = !d.canExport;
+  els.dExport.title = ready && !d.canExport ? "No order data to export" : "";
+
+  const error = d.error || {};
+  show(els.dError, d.state === "error");
+  els.dErrorPath.textContent = error.path || "";
+  els.dErrorCause.textContent = error.cause || "";
+  show(els.dLive, !!d.active && d.state !== "error");
+  els.dLivePc.textContent = d.pc || "";
+  els.dLiveStamp.textContent = d.stamp || "";
+
+  els.dFacts.replaceChildren.apply(els.dFacts, (d.facts || []).map(function (fact) {
+    const cell = el("div", "app-d-fact");
+    cell.appendChild(el("span", "app-d-fact-label", fact.label));
+    const value = el("span", "app-d-fact-value", fact.value);
+    value.title = fact.value;
+    cell.appendChild(value);
+    return cell;
+  }));
+
+  show(els.dLoading, d.state === "loading");
+  show(els.dReady, ready);
+  if (!ready) return;
+
+  els.dCards.replaceChildren.apply(els.dCards, (d.cards || []).map(function (card) {
+    const cell = el("div", "strip-cell");
+    const line = el("span", "strip-line");
+    line.appendChild(el("span", "strip-value", card.value));
+    line.appendChild(el("span", "strip-of", card.of));
+    cell.appendChild(line);
+    cell.appendChild(el("span", "", card.label));
+    cell.appendChild(el("span", "strip-note", card.note));
+    return cell;
+  }));
+
+  els.dMetricsNote.textContent = d.metricsNote || "";
+  const groups = d.timing
+    ? (d.groups || []).map(function (group) { return tilesGroup(group.title, group.tiles); })
+    : [noTiming()];
+  groups.push(tilesGroup("Scan quality", d.scan || []));
+  els.dGroups.replaceChildren.apply(els.dGroups, groups);
+
+  setInput(els.dQuery, d.query || "");
+  show(els.dQueryClear, !!d.query);
+  els.dShowing.textContent = d.showing || "";
+  renderDetailRows();
+}
+
 // --- toast --------------------------------------------------------------------
 
 function hideToast() {
@@ -598,6 +765,17 @@ const ACTIONS = {
   toggleExport: function () { view.exportOpen = !view.exportOpen; renderPane(); },
   exportCsv: function (bridge) { view.exportOpen = false; renderPane(); bridge.exportSessions("csv"); },
   exportXlsx: function (bridge) { view.exportOpen = false; renderPane(); bridge.exportSessions("xlsx"); },
+  closeDetails: function (bridge) { bridge.closeDetails(); },
+  retryDetails: function (bridge) { bridge.retryDetails(); },
+  exportDetails: function (bridge) { bridge.exportDetails(); },
+  clearDetailsFilter: function (bridge) { els.dQuery.value = ""; bridge.setDetailsFilter(""); },
+  expandAll: function (bridge) {
+    ((bridge.details || {}).orders || []).forEach(function (order) {
+      if (order.items.length) view.dOpen[order.number] = true;
+    });
+    renderDetailRows();
+  },
+  collapseAll: function () { view.dOpen = Object.create(null); renderDetailRows(); },
   closePane: function () { view.sel = null; renderPane(); },
   paneAction: function (bridge) { if (view.sel) bridge.sessionAction(view.sel); },
   paneDetails: function (bridge) { if (view.sel) bridge.sessionDetails(view.sel); },
@@ -624,6 +802,11 @@ function onClick(event) {
   const sort = event.target.closest("[data-sort]");
   if (sort) {
     sortBy(sort.dataset.sort);
+    return;
+  }
+  const opened = event.target.closest("[data-dorder]");
+  if (opened) {
+    toggleDetailOrder(opened.dataset.dorder);
     return;
   }
   const tab = event.target.closest("[data-tab]");
@@ -675,6 +858,13 @@ const IDS = {
   pChip: "p-chip", pId: "p-id", pList: "p-list", pWhy: "p-why", pOrders: "p-orders",
   pFill: "p-fill", pOrdersNote: "p-orders-note", pFacts: "p-facts", pNote: "p-note",
   pNoteText: "p-note-text", pAction: "p-action", pDetails: "p-details",
+  dId: "d-id", dChip: "d-chip", dWhy: "d-why", dExport: "d-export",
+  dError: "d-error", dErrorPath: "d-error-path", dErrorCause: "d-error-cause",
+  dLive: "d-live", dLivePc: "d-live-pc", dLiveStamp: "d-live-stamp",
+  dFacts: "d-facts", dLoading: "d-loading", dReady: "d-ready", dCards: "d-cards",
+  dMetricsNote: "d-metrics-note", dGroups: "d-groups", dQuery: "d-query",
+  dQueryClear: "d-query-clear", dShowing: "d-showing", dRows: "d-rows",
+  dNoMatch: "d-no-match", dNoMatchQuery: "d-no-match-query", dNone: "d-none",
   confirm: "confirm", confirmId: "confirm-id", confirmBody: "confirm-body",
   confirmCarry: "confirm-carry", confirmCancel: "confirm-cancel",
   toast: "toast", toastText: "toast-text", toastClose: "toast-close",
@@ -718,6 +908,9 @@ new QWebChannel(qt.webChannelTransport, function (channel) {
   bridge.sessionsChanged.connect(renderSessions);
   renderSessions();
   bridge.confirmChanged.connect(renderConfirm);
+  bridge.detailsChanged.connect(renderDetails);
+  renderDetails();
+  els.dQuery.addEventListener("input", function () { bridge.setDetailsFilter(els.dQuery.value); });
   els.sQuery.addEventListener("input", function () { sendFilter(); });
   els.sFrom.addEventListener("change", function () { sendFilter(); });
   els.sTo.addEventListener("change", function () { sendFilter(); });
