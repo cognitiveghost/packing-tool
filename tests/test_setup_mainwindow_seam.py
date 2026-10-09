@@ -1,5 +1,7 @@
 """MainWindow and the setup pages: the ways in, and the way back (spec section 4.4)."""
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from setup_web import eval_js, settle, until_js
@@ -123,6 +125,32 @@ def test_a_saved_mapping_reaches_the_open_session(main_window_with_list, qtbot):
     assert window.logic.sku_map["5906000123456"] == "TS-4409-B"
     assert bridge.mapping["saved"] is True
     assert on_setup(window)  # Save stays on the page
+
+
+def test_a_lock_lost_under_sku_mapping_leaves_the_page_and_its_unsaved_rows(
+    main_window_with_list, qtbot, monkeypatch
+):
+    """Spec section 4.4: the teardown and the message box stand, the page stays."""
+    window = main_window_with_list
+    window.open_sku_mapping()
+    bridge = window.setup_pages.bridge
+    assert bridge.addMapping("5906000123456", "TS-4409-B") == ""
+    monkeypatch.setattr(
+        window.lock_manager, "is_locked", lambda work_dir: (True, {"locked_by": "WH-PC-02"})
+    )
+    boxes = []
+    monkeypatch.setattr(mw.QMessageBox, "critical", lambda *args: boxes.append(args))
+
+    window._on_lock_lost(Path("/sessions/2026-01-01_1/packing/DHL_Orders"))
+
+    assert len(boxes) == 1 and window.logic is None  # the session is torn down
+    assert on_setup(window)
+    assert bridge.page == "mapping" and bridge.mapping["dirty"] is True
+    assert window.setup_pages.dirty()
+
+    bridge.closeMapping()
+    qtbot.waitUntil(lambda: in_shell(window), timeout=3000)
+    assert window.session_tabs.bridge.covered is False
 
 
 def test_ctrl_e_does_nothing_on_a_setup_page(main_window, monkeypatch):

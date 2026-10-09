@@ -678,6 +678,39 @@ def test_a_quick_map_onto_a_mapped_barcode_goes_on_only_by_replace(page, qtbot):
         lambda: calls == [("replaceMapping", 0, "59012345003", "SER-30ML")], timeout=3000)
 
 
+def test_a_choice_for_a_mapped_barcode_arms_replace(page, qtbot):
+    """The wrong-mapping case: the scanned barcode maps to a SKU off this order."""
+    view, bridge = page
+    quick = quick_payload("barcode", barcode="59012345003", choices=CHOICES)
+    show_mapping(page, qtbot, quick=quick)
+    calls = answers(bridge, "")
+    assert shown(view, qtbot, "d-clash")
+    assert eval_js(qtbot, view, "document.getElementById('d-replace').disabled")
+
+    run_js(qtbot, view, "document.querySelector('[data-choice=\"SER-30ML\"]').click()")
+    until_js(qtbot, view, "!document.getElementById('d-replace').disabled")
+    assert text(view, qtbot, "d-clash-ask").strip() == "Replace it with SER-30ML?"
+    assert calls == []  # only Replace goes on from a collision
+    click(view, qtbot, "d-replace")
+    qtbot.waitUntil(
+        lambda: calls == [("replaceMapping", 0, "59012345003", "SER-30ML")], timeout=3000)
+
+
+def test_space_on_a_focused_button_presses_it(page, qtbot):
+    view, bridge = page
+    show_mapping(page, qtbot)
+    strays = record(bridge, "strayScanned")
+    run_js(qtbot, view, "document.getElementById('m-add').focus()")
+    assert eval_js(
+        qtbot, view,
+        "document.getElementById('m-add').dispatchEvent(new KeyboardEvent('keydown',"
+        " {key: ' ', bubbles: true, cancelable: true}))",
+    )  # not prevented: the button gets its Space
+    press(view, qtbot, "m-add", "Enter")
+    qtbot.wait(150)
+    assert strays == []
+
+
 def test_back_to_packing_and_escape_leave_a_quick_map(page, qtbot):
     view, bridge = page
     show_mapping(page, qtbot, quick=quick_payload("sku", sku="SER-30ML"))

@@ -387,6 +387,45 @@ def test_a_quick_map_that_cannot_be_saved_says_so_and_stays(
     assert pages.bridge.page == "mapping"
 
 
+def test_retry_works_when_a_quick_map_could_not_load(pages, profile_manager, monkeypatch):
+    def boom(client_id, fresh=False):
+        raise ProfileManagerError("Could not read the SKU mapping from the file server: boom")
+
+    monkeypatch.setattr(profile_manager, "load_sku_mapping", boom)
+    pages.show_mapping("ACME", "Acme", quick_payload("sku", sku="SER-30ML"))
+    assert pages.bridge.mapping["mode"] == "failed"
+
+    monkeypatch.undo()
+    pages.bridge.reloadMappings()  # the banner's Retry
+    assert pages.bridge.mapping["mode"] == "ready"
+    assert pages.bridge.mapping["quick"]["kind"] == "sku"
+    assert rows(pages) == [("111", "SKU-A"), ("222", "SKU-B")]
+
+    # Once loaded, a quick map reloads nothing.
+    monkeypatch.setattr(profile_manager, "load_sku_mapping", boom)
+    pages.bridge.reloadMappings()
+    assert pages.bridge.mapping["mode"] == "ready"
+
+
+def test_the_banner_names_the_cause_underneath_not_the_title_again(
+    pages, profile_manager, monkeypatch
+):
+    pages.show_mapping("ACME", "Acme")
+    pages.bridge.addMapping("444", "SKU-D")
+
+    def boom(*args, **kwargs):
+        try:
+            raise OSError("The network path was not found")
+        except OSError as error:
+            raise ProfileManagerError(
+                f"Could not save the SKU mapping to the file server: {error}"
+            ) from error
+
+    monkeypatch.setattr(profile_manager, "update_sku_mapping", boom)
+    pages.bridge.saveMappings()
+    assert pages.bridge.mapping["error"]["cause"] == "The network path was not found"
+
+
 def test_a_quick_map_does_nothing_else(pages, profile_manager, monkeypatch):
     pages.show_mapping("ACME", "Acme", quick_payload("sku", sku="SER-30ML"))
     before = rows(pages)

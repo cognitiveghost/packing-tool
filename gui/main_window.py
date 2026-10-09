@@ -657,15 +657,20 @@ class MainWindow(QMainWindow):
                 if after is not None:
                     after()
                 strays, self._stray_scans = self._stray_scans, []
-                for text in strays:
-                    self.on_scanner_input(text)
+                # Not onto a list another PC has taken: the panel blocks.
+                if not target.taken_over:
+                    for text in strays:
+                        self.on_scanner_input(text)
                 return
-            # Before the shell shows: what it shows is current.
-            self._push_pages()
-            self.session_tabs.bridge.set_covered(False)
-            self.stacked_widget.setCurrentWidget(self.session_widget)
+            self._show_shell()
 
         when_painted(self.setup_pages.bridge, switch)
+
+    def _show_shell(self) -> None:
+        """Put the shell on top, its pages current and uncovered first."""
+        self._push_pages()
+        self.session_tabs.bridge.set_covered(False)
+        self.stacked_widget.setCurrentWidget(self.session_widget)
 
     def switch_worker(self) -> None:
         """The sidebar's Switch worker…"""
@@ -1710,7 +1715,12 @@ class MainWindow(QMainWindow):
 
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
-            self._leave_packer_mode()
+            if self._setup_showing():
+                # A setup page stays open, unsaved mappings and all (spec
+                # 2026-10-09 section 4.4); it leaves for the shell when closed.
+                self._setup_return = self.session_widget
+            else:
+                self._leave_packer_mode()
 
         logger.info("Session ended and all variables cleared")
 
@@ -1777,10 +1787,7 @@ class MainWindow(QMainWindow):
 
         def switch():
             self._leaving_packer_mode = False
-            # Before the shell shows: what it shows is current (spec section 8).
-            self._push_pages()
-            self.session_tabs.bridge.set_covered(False)
-            self.stacked_widget.setCurrentWidget(self.session_widget)
+            self._show_shell()
 
         if self.stacked_widget.currentWidget() is widget and widget.isVisible():
             self._leaving_packer_mode = True

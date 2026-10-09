@@ -32,6 +32,11 @@ from shared.web_page import when_painted
 logger = logging.getLogger(__name__)
 
 
+def _cause(error: ProfileManagerError) -> str:
+    """What went wrong underneath: the banner's title already says what failed."""
+    return str(error.__cause__ or error)
+
+
 class SetupPages(QWidget):
     workerChosen = Signal(str, str)  # id, name; after "Opening…" has painted
     quitRequested = Signal()
@@ -198,7 +203,7 @@ class SetupPages(QWidget):
             logger.exception("Could not load the SKU mapping")
             self._editor = MappingEditor()
             self._failed = True
-            self._error = mapping_error("load", str(error), self._mapping_path())
+            self._error = mapping_error("load", _cause(error), self._mapping_path())
         else:
             self._editor = MappingEditor(mapping)
             self._failed = False
@@ -245,7 +250,8 @@ class SetupPages(QWidget):
         self._changed("")
 
     def _reload(self) -> None:
-        if not self._quick:
+        # In a quick map only as the failed banner's Retry: its Reload is hidden.
+        if not self._quick or self._failed:
             self._load_mapping()
 
     def _save(self) -> None:
@@ -258,7 +264,7 @@ class SetupPages(QWidget):
         try:
             mapping = self._profile_manager.update_sku_mapping(self._client, add, remove)
         except ProfileManagerError as error:
-            self._error = mapping_error("save", str(error), self._mapping_path(), changes)
+            self._error = mapping_error("save", _cause(error), self._mapping_path(), changes)
             self._push_mapping()
             return
         self._editor.loaded(mapping)
@@ -296,7 +302,7 @@ class SetupPages(QWidget):
             )
         except ProfileManagerError as error:
             logger.exception("Could not save the quick mapping")
-            self._error = mapping_error("quick", str(error), self._mapping_path())
+            self._error = mapping_error("quick", _cause(error), self._mapping_path())
             self._push_mapping()
             return "Not saved. Try again."
         self.quickMapped.emit(quick["kind"], barcode, sku, mapping)

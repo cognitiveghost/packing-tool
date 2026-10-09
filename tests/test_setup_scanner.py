@@ -230,3 +230,18 @@ def test_a_lock_lost_during_a_quick_map_lands_on_the_take_over_panel(
     qtbot.waitUntil(lambda: in_packer_mode(window), timeout=3000)
     assert window.packer_mode_widget.taken_over
     assert window.logic is not None  # torn down when the packer exits, as on frame 6j
+
+
+def test_a_held_stray_scan_is_not_replayed_onto_a_list_taken_over(
+    packing, qtbot, monkeypatch, replayed
+):
+    window = packing
+    open_quick(window, qtbot, sku="TS-4409-B")
+    window.setup_pages.bridge.strayScan("4006381333931")
+    assert window._stray_scans == ["4006381333931"]
+    monkeypatch.setattr(
+        window.lock_manager, "is_locked", lambda work_dir: (True, {"locked_by": "WH-PC-02"})
+    )
+    window._on_lock_lost(Path("/sessions/2026-01-01_1/packing/DHL_Orders"))
+    qtbot.waitUntil(lambda: in_packer_mode(window), timeout=3000)
+    assert replayed == [] and window._stray_scans == []

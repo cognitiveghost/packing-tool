@@ -549,6 +549,8 @@ function onKey(event) {
     view.stray = "";
     view.bridge.strayScan(text);
   } else if (event.key.length === 1) {
+    // A lone Space is a person pressing a focused button; no barcode starts with one.
+    if (event.key === " " && !view.stray) return;
     event.preventDefault();
     view.stray += event.key;
   }
@@ -592,6 +594,8 @@ function onClick(event) {
   const choice = event.target.closest("[data-choice]");
   if (choice) {
     els.dSku.value = choice.dataset.choice;
+    draftProblem("");
+    renderDraft();  // a barcode already mapped: Replace now names this SKU
     commitDraft();
     return;
   }
