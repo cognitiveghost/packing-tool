@@ -242,3 +242,15 @@ def test_profile_manager_creates_a_per_process_log_file(config_ini, server_root)
     log_dir = server_root / "Logs" / "PackingTool"
     files = list(log_dir.glob("PackingTool_*.log"))
     assert len(files) == 1
+
+
+def test_a_fresh_load_skips_the_cache(config_ini):
+    pc1 = ProfileManager(config_path=str(config_ini))
+    pc2 = ProfileManager(config_path=str(config_ini))
+    pc1.create_client_profile("M", "M")
+    assert pc2.load_sku_mapping("M") == {}
+    pc1.update_sku_mapping("M", {"111": "SKU-1"})
+
+    assert pc2.load_sku_mapping("M") == {}  # the cache, up to 60 s old
+    assert pc2.load_sku_mapping("M", fresh=True) == {"111": "SKU-1"}
+    assert pc2.load_sku_mapping("M") == {"111": "SKU-1"}  # and the cache was renewed
