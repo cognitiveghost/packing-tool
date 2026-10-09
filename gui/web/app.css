@@ -2,7 +2,7 @@
    Packing and Statistics. Buttons, badges, cards and the banner come from
    shared/web/kit.css; the toast, state card, strip, track and table rows from
    floor.css. Mockup: docs/design/ui-refresh/mockups/Packer App.html, frames
-   3a-3g and 4a-4c.
+   3a-3g and 4a-4c. Phase 4: Sessions (7a-7h) and Session details (8a-8f).
    Spec: docs/superpowers/specs/2026-10-08-ui-refresh-phase3-packing-statistics-design.md
    Web-tier rules (ADR 0001): var(--...) only, type sizes from the scale, one
    mono face, no transition/transform/opacity. */
@@ -217,3 +217,439 @@
 .app-num { text-align: right; font-family: var(--font-family-mono); }
 .app-left { font-weight: 700; }
 .app-left.zero { font-weight: 400; color: var(--text-secondary); }
+
+
+/* --- Sessions (frames 7a-7h) --------------------------------------------- */
+
+.app-secondary { color: var(--text-secondary); }
+
+/* floor.css lays a banner out as one row with its title stretching. */
+.app-s-banner { flex: none; }
+.app-s-banner .banner-title { flex: none; }
+
+.app-s-bar { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.app-s-bar .segmented { flex: none; }
+/* Tighter than the kit's 12px: four tabs, two dates and the stamp share 1366px. */
+.app-s-bar .segment { padding: 0 8px; }
+.app-s-search { flex: 1 1 200px; min-width: 80px; }
+
+.app-clear {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.app-clear > .glyph { width: 18px; height: 18px; }
+.app-clear:hover { background: var(--hover); }
+.app-clear:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.app-s-dates {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--control-height);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--kit-radius);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.app-s-dates label { display: flex; align-items: baseline; gap: 6px; padding: 0 8px; }
+.app-s-dates label > span { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-s-dates input {
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  /* The platform's own date control, drawn for the app's theme. */
+  color-scheme: var(--color-scheme);
+}
+/* With the rail open the page is 1166px wide: the From and To captions give
+   way before the toolbar can (the box keeps its title, "Date range"). */
+@media (max-width: 1260px) {
+  .app-s-dates label > span { display: none; }
+}
+
+/* Chromium leaves 24px between the date and its picker button: the toolbar
+   needs that width at 1366px. */
+.app-s-dates input::-webkit-calendar-picker-indicator { margin-inline-start: 2px; }
+.app-s-dates label:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--kit-radius);
+}
+.app-s-dates-rule { width: 1px; height: 24px; background: var(--border); }
+
+.app-s-stamp {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.app-s-stamp-line.failed { color: var(--status-danger); font-weight: 700; }
+.app-s-auto { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.app-s-menu { left: auto; right: 0; min-width: 240px; }
+
+.app-s-main { flex: 1; min-height: 0; display: flex; gap: 16px; }
+
+.app-s-list {
+  --tbl-cols: 150px 150px 64px minmax(0, 1fr) 170px 76px 230px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* With the pane open, Items and Last touched fold into it. */
+.app-s-main.pane-open .app-s-list { --tbl-cols: 150px 150px 64px minmax(0, 1fr) 170px; }
+.app-s-main.pane-open .app-s-wide { display: none; }
+.app-s-list > .tbl-head { padding: 0 12px; overflow: hidden; scrollbar-gutter: stable; }
+.app-s-list > .tbl-head > span { padding: 0 8px; }
+.app-s-list .app-rows { display: flex; flex-direction: column; }
+.app-s-r { text-align: right; }
+
+/* A session row is a button: a click selects it, a double-click acts. */
+.app-srow {
+  flex: none;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  text-align: left;
+  cursor: default;
+}
+.app-srow > span { min-width: 0; padding: 0 8px; }
+.app-srow:hover { background: var(--surface-raised); }
+.app-srow[aria-pressed="true"] {
+  padding-left: 8px;
+  border-left: 4px solid var(--selection-border);
+  background: var(--selection-bg);
+}
+.app-srow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.app-s-id { font-weight: 700; white-space: nowrap; }
+.app-s-age { color: var(--text-secondary); white-space: nowrap; }
+.app-s-orders { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.app-s-items.none { color: var(--text-disabled); }
+.app-s-touched { color: var(--text-secondary); }
+
+.app-bar {
+  flex: none;
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.app-bar-fill { display: block; height: 100%; background: var(--text-secondary); }
+.app-bar-fill.success { background: var(--status-success-dot); }
+.app-bar-fill.danger { background: var(--status-danger-dot); }
+
+/* 7e: one line of status over still skeleton rows. */
+.app-s-loading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.app-s-loading > .glyph { width: 18px; height: 18px; }
+.app-skel { padding: 0 12px; }
+.app-skel > span { padding: 0 8px; }
+.app-skel-bar {
+  display: block;
+  width: 100px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--border);
+}
+.app-skel > span:nth-child(2) .app-skel-bar { width: 110px; }
+.app-skel > span:nth-child(3) .app-skel-bar { width: 30px; }
+.app-skel > span:nth-child(4) .app-skel-bar { width: 140px; }
+
+.app-s-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 40px;
+  padding: 0 20px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.app-s-legend { display: flex; align-items: center; gap: 6px; }
+.app-s-count { color: var(--text); }
+
+/* --- the pane ------------------------------------------------------------ */
+
+.app-s-pane { flex: none; width: 360px; display: flex; flex-direction: column; overflow: hidden; }
+.app-p-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.app-p-top { display: flex; align-items: center; gap: 8px; }
+.app-p-close { width: 44px; height: 44px; border-radius: var(--kit-radius); }
+.app-p-id { font-size: var(--type-display-size); font-weight: 700; }
+.app-p-list {
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-p-why { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-p-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 20px;
+  overflow: auto;
+}
+.app-p-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.app-p-line { display: flex; align-items: baseline; gap: 8px; }
+.app-p-label { color: var(--text-secondary); }
+.app-p-track { height: 8px; border-radius: 4px; }
+.app-p-note { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-p-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.app-p-fact > .app-p-label { flex: none; }
+.app-p-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-p-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+.app-p-foot .btn { width: 100%; }
+/* Why the action is off; amber when it is a warning about taking over. */
+.app-p-warn {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--kit-radius);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+}
+.app-p-warn.warn { background: var(--status-warning-bg); color: var(--status-warning); }
+.app-p-warn > .glyph { width: 16px; height: 16px; margin-top: 1px; }
+.app-p-hint { font-size: var(--type-caption-size); color: var(--text-secondary); text-align: center; }
+
+/* --- 7c: the take-over question ------------------------------------------ */
+
+.app-confirm { width: 540px; }
+.app-confirm .dialog-title .glyph { color: var(--status-warning); }
+
+
+/* --- Session details (frames 8a-8f) -------------------------------------- */
+
+/* One scrolling page. The negative margin undoes .app's padding, so the
+   scrollbar is at the view's edge. */
+.app-details {
+  flex: 1;
+  min-height: 0;
+  margin: -20px -24px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: auto;
+}
+.app-details > * { flex: none; }
+
+.app-d-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.app-d-top .btn > .glyph { width: 18px; height: 18px; }
+.app-d-id {
+  padding-left: 4px;
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.app-d-why {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+
+.app-d-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: var(--kit-radius-card);
+  background: var(--status-info-bg);
+  color: var(--status-info);
+}
+.app-d-live > .glyph { width: 20px; height: 20px; }
+.app-d-live-text { flex: 1; min-width: 0; }
+.app-d-live-stamp { font-size: var(--type-caption-size); white-space: nowrap; }
+
+.app-d-facts { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(6, minmax(0, 1fr)); }
+.app-d-fact {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-left: 1px solid var(--border);
+}
+.app-d-fact:first-child { border-left: 0; }
+.app-d-fact-label { font-size: var(--type-caption-size); color: var(--text-secondary); }
+.app-d-fact-value {
+  font-weight: 700;
+  /* A time cut to "6 Oct, 08:0…" is no use: let a long value wrap. */
+  overflow-wrap: anywhere;
+}
+
+.app-d-reading { padding: 0 4px; color: var(--text-secondary); }
+.app-d-ready { display: flex; flex-direction: column; gap: 16px; }
+
+/* The stat cards: floor.css's strip, with the number first. */
+.app-d-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.app-d-cards .strip-cell:last-child { justify-content: flex-start; gap: 2px; }
+.app-d-cards .strip-line { white-space: nowrap; }
+.app-d-cards .strip-note { min-height: 16px; }
+
+.app-d-metrics { display: flex; flex-direction: column; }
+.app-d-metrics-title { display: flex; align-items: baseline; gap: 12px; padding: 12px 20px 0; }
+.app-d-groups { display: flex; padding: 8px 0 16px; }
+.app-d-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 20px;
+  border-left: 1px solid var(--border);
+}
+.app-d-group:first-child { border-left: 0; }
+.app-d-group.n2 { flex: 2 1 0; }
+.app-d-group.n3 { flex: 3 1 0; }
+.app-d-group.n4 { flex: 4 1 0; }
+.app-d-group-title {
+  font-size: var(--type-caption-size);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.app-d-tiles { display: grid; gap: 16px; }
+.app-d-group.n2 .app-d-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-d-group.n3 .app-d-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app-d-group.n4 .app-d-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app-d-tile { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-d-tile-value {
+  font-size: var(--type-display-size);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.app-d-tile-label {
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+/* 8c: one sentence where Order time and Item time would be. */
+.app-d-notiming {
+  flex: 5 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 20px;
+}
+.app-d-notiming > .glyph { width: 20px; height: 20px; margin-top: 2px; color: var(--text-secondary); }
+.app-d-notiming-text { display: flex; flex-direction: column; gap: 2px; }
+.app-d-notiming-note { font-size: var(--type-caption-size); color: var(--text-secondary); }
+
+.app-d-orders {
+  --tbl-cols: minmax(0, 1fr) 150px 140px 150px 120px minmax(0, 1.25fr);
+  display: flex;
+  flex-direction: column;
+}
+.app-d-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.app-d-filter { width: 300px; }
+/* The head stays while the page scrolls under it. No ancestor between it and
+   .app-details may clip (overflow), or it would stick to that instead. */
+.app-d-head { position: sticky; top: 0; z-index: 1; }
+
+.app-dorder {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  text-align: left;
+}
+button.app-dorder { cursor: pointer; }
+.app-dorder[aria-expanded="true"] { background: var(--surface-raised); }
+.app-dorder:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.app-d-nochev { flex: none; width: 20px; }
+.app-ditem { min-height: 40px; height: 40px; background: var(--surface-raised); }
+.app-ditem-first {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-left: 30px;
+}
+.app-ditem-wide { grid-column: span 2; }
+.app-ditem-sku { white-space: nowrap; }
+.app-ditem-name { color: var(--text-secondary); }
+.app-flags { display: flex; gap: 6px; overflow: hidden; }
+.app-flag {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: var(--type-caption-size);
+}
+.app-d-no-match { padding: 48px 24px; }
+.app-d-none { padding: 24px; text-align: center; color: var(--text-secondary); }

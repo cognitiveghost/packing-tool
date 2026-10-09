@@ -303,7 +303,7 @@ def test_3d_in_progress_orders_are_open_and_the_rest_closed(page, qtbot):
     ]
     assert _all(view, qtbot, ".app-item .app-item-sku") == ["LIP-RED", "CRM-50"]
     assert _all(view, qtbot, ".app-item .badge") == ["Complete", "Pending"]
-    assert _eval(qtbot, view, "document.querySelectorAll('input').length") == 0
+    assert _eval(qtbot, view, "document.querySelectorAll('#packing input').length") == 0
 
 
 def test_3d_an_order_row_says_what_it_holds(page, qtbot):

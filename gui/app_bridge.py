@@ -1,12 +1,14 @@
 """The app document's bridge and payloads (ADR 0003).
 
-One web document draws the shell's pages: Packing and Statistics now, Sessions
-in phase 4. The payload functions below are pure -- no Qt, no I/O -- and are
-the only place that decides what the pages say; gui/web/app.js renders them.
-The page keeps two pieces of view state of its own: the order rows the packer
-toggled, and the SKU table's sort.
+One web document draws the shell's pages: Packing, Statistics, Sessions and
+Session details. The payload functions below are pure -- no Qt, no I/O -- and
+decide what Packing and Statistics say; gui/sessions_payload.py does the same
+for the two Sessions pages. gui/web/app.js renders them. The page keeps a
+little view state of its own: the order rows the packer toggled, the SKU
+table's sort, the selected session and the orders opened in details.
 
 Spec: docs/superpowers/specs/2026-10-08-ui-refresh-phase3-packing-statistics-design.md
+Phase 4: docs/superpowers/specs/2026-10-08-ui-refresh-phase4-sessions-design.md
 """
 
 from pathlib import Path
@@ -279,6 +281,9 @@ class AppBridge(PageBridge):
     sessionChanged = Signal()
     packingChanged = Signal()
     statisticsChanged = Signal()
+    sessionsChanged = Signal()
+    detailsChanged = Signal()
+    confirmChanged = Signal()
     # Python-facing. The page reports through the slots below and never
     # connects to these.
     openSessionRequested = Signal()
@@ -289,6 +294,18 @@ class AppBridge(PageBridge):
     clearFilterRequested = Signal()
     chooseClientRequested = Signal()
     pageRequested = Signal(str)
+    sessionsFilterChanged = Signal(str, str, str, str)  # tab, query, from, to
+    sessionsFilterCleared = Signal()
+    refreshSessionsRequested = Signal()
+    autoRefreshChanged = Signal(bool)
+    sessionActionRequested = Signal(str)  # a session's key
+    sessionDetailsRequested = Signal(str)
+    exportSessionsRequested = Signal(str)  # "csv" or "xlsx"
+    closeDetailsRequested = Signal()
+    detailsFilterChanged = Signal(str)
+    retryDetailsRequested = Signal()
+    exportDetailsRequested = Signal()
+    takeOverAnswered = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -298,6 +315,9 @@ class AppBridge(PageBridge):
         self._session: dict = session_payload()
         self._packing: dict = {}
         self._statistics: dict = {}
+        self._sessions: dict = {}
+        self._details: dict = {}
+        self._confirm: dict = {}
 
     # --- out: Python -> JS -------------------------------------------------
 
@@ -330,6 +350,21 @@ class AppBridge(PageBridge):
         return self._statistics
 
     statistics = Property("QVariantMap", _get_statistics, notify=statisticsChanged)
+
+    def _get_sessions(self) -> dict:
+        return self._sessions
+
+    sessions = Property("QVariantMap", _get_sessions, notify=sessionsChanged)
+
+    def _get_details(self) -> dict:
+        return self._details
+
+    details = Property("QVariantMap", _get_details, notify=detailsChanged)
+
+    def _get_confirm(self) -> dict:
+        return self._confirm
+
+    confirm = Property("QVariantMap", _get_confirm, notify=confirmChanged)
 
     # --- in: JS -> Python --------------------------------------------------
 
@@ -364,6 +399,54 @@ class AppBridge(PageBridge):
     @Slot(str)
     def showPage(self, name) -> None:
         self.pageRequested.emit(str(name))
+
+    @Slot(str, str, str, str)
+    def setSessionsFilter(self, tab, query, date_from, date_to) -> None:
+        self.sessionsFilterChanged.emit(str(tab), str(query), str(date_from), str(date_to))
+
+    @Slot()
+    def clearSessionsFilter(self) -> None:
+        self.sessionsFilterCleared.emit()
+
+    @Slot()
+    def refreshSessions(self) -> None:
+        self.refreshSessionsRequested.emit()
+
+    @Slot(bool)
+    def setAutoRefresh(self, enabled) -> None:
+        self.autoRefreshChanged.emit(bool(enabled))
+
+    @Slot(str)
+    def sessionAction(self, key) -> None:
+        self.sessionActionRequested.emit(str(key))
+
+    @Slot(str)
+    def sessionDetails(self, key) -> None:
+        self.sessionDetailsRequested.emit(str(key))
+
+    @Slot(str)
+    def exportSessions(self, fmt) -> None:
+        self.exportSessionsRequested.emit(str(fmt))
+
+    @Slot()
+    def closeDetails(self) -> None:
+        self.closeDetailsRequested.emit()
+
+    @Slot(str)
+    def setDetailsFilter(self, text) -> None:
+        self.detailsFilterChanged.emit(str(text))
+
+    @Slot()
+    def retryDetails(self) -> None:
+        self.retryDetailsRequested.emit()
+
+    @Slot()
+    def exportDetails(self) -> None:
+        self.exportDetailsRequested.emit()
+
+    @Slot(bool)
+    def answerTakeOver(self, yes) -> None:
+        self.takeOverAnswered.emit(bool(yes))
 
     # --- Python-facing API -------------------------------------------------
     # A setter that changes nothing emits nothing, so an idle push does not
@@ -406,6 +489,24 @@ class AppBridge(PageBridge):
         if payload != self._statistics:
             self._statistics = payload
             self.statisticsChanged.emit()
+
+    def set_sessions(self, payload: dict) -> None:
+        payload = dict(payload or {})
+        if payload != self._sessions:
+            self._sessions = payload
+            self.sessionsChanged.emit()
+
+    def set_details(self, payload: dict) -> None:
+        payload = dict(payload or {})
+        if payload != self._details:
+            self._details = payload
+            self.detailsChanged.emit()
+
+    def set_confirm(self, payload: dict) -> None:
+        payload = dict(payload or {})
+        if payload != self._confirm:
+            self._confirm = payload
+            self.confirmChanged.emit()
 
 
 def mount_app_page(view: QWebEngineView) -> AppBridge:

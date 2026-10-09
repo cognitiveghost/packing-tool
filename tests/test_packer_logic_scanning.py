@@ -299,7 +299,7 @@ def test_skip_order_preserves_progress_for_resume(loaded_logic):
 # Regression test: start_order_packing() used to never call
 # _unskip_current_order_if_needed() (only full completion did). An order that
 # was skipped and then resumed but not yet re-completed stayed in
-# skipped_orders, so session_browser/orders_tab.py._load_orders() rendered it
+# skipped_orders, so Session details listed it
 # as a grey '[SKIPPED]' row even while it was being actively re-packed.
 def test_resuming_a_skipped_order_should_clear_it_from_the_skipped_list(loaded_logic):
     loaded_logic.start_order_packing("ORDER-001")

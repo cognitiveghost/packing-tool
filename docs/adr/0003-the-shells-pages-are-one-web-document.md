@@ -29,7 +29,8 @@ The mockup draws the pages as one app with one frame around them.
 ## Consequences
 
 - Switching between pages of the document is a redraw inside a visible view. It cannot show an old frame.
-- One view is hidden only under Packer Mode, and, until phase 4, under the Qt Sessions page.
+- One view is hidden only under Packer Mode. (Until phase 4 it was also hidden under the Qt Sessions page;
+  Sessions and Session details are pages of the document since.)
 - One document means one script and one sheet that grow with each phase. `app.js` keeps a section per
   page, and the bridge keeps one named property per page's state, so a page's payload and its tests stay
   separable.

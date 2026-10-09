@@ -127,7 +127,7 @@ def test_a_toast_goes_to_the_page_when_it_is_showing(main_window, qtbot):
         assert raised == ["Saved."]
         main_window.session_tabs.setCurrentIndex(PAGE_BROWSER)
         main_window._toast("On Sessions.")
-        assert raised == ["Saved."]
+        assert raised == ["Saved.", "On Sessions."]
     finally:
         main_window.hide()
 
@@ -175,7 +175,7 @@ def test_a_start_cannot_be_entered_while_one_is_running(
     # from inside it (Open session, Retry) must be refused untouched.
     session_dir, work_dir, list_path = _broken_list(session_factory)
     nested = []
-    real_acquire = main_window._acquire_lock_with_stale_prompt
+    real_acquire = main_window._acquire_lock
 
     def acquire(*args):
         # Where a click would land: inside the running start.
@@ -189,7 +189,7 @@ def test_a_start_cannot_be_entered_while_one_is_running(
         assert main_window._last_start is before
         return real_acquire(*args)
 
-    monkeypatch.setattr(main_window, "_acquire_lock_with_stale_prompt", acquire)
+    monkeypatch.setattr(main_window, "_acquire_lock", acquire)
     bridge = _bridge(main_window)
     lists = []
     bridge.sessionChanged.connect(lambda: lists.append(bridge.session.get("list")))
@@ -245,7 +245,7 @@ def test_retry_starts_again_with_the_same_arguments(main_window, monkeypatch, tm
     )
     main_window._start_or_resume_from_browser(
         "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
-        work_dir=tmp_path, resumed=True,
+        work_dir=tmp_path,
     )
     assert len(started) == 1
     _bridge(main_window).retryStart()

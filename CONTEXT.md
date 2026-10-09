@@ -8,9 +8,9 @@
 
 **Packer bridge** — the one `QWebChannel` object the order document talks to. State Python owns crosses as a notify property; what the page reports crosses as a slot.
 
-**App document** — the web page that draws the shell's pages: Packing and Statistics, and from phase 4 Sessions. One page in one web view (ADR 0003); Packer Mode's order document is a different page in its own view.
+**App document** — the web page that draws the shell's pages: Packing, Statistics, Sessions and Session details. One page in one web view (ADR 0003); Packer Mode's order document is a different page in its own view.
 
-**App bridge** — the one `QWebChannel` object the app document talks to. It says which page shows, what the session is (none, opening, failed, open) and each page's numbers; the page reports clicks through slots.
+**App bridge** — the one `QWebChannel` object the app document talks to. It says which of the four pages shows, what the session is (none, opening, failed, open) and each page's data; the page reports clicks through slots.
 
 **Feedback band** — the order document's outcome row: what the last scan did, as one large sentence on a solid fill in its status colour, with the raw scanned text beside it. The unsaved warning is a banner above it, not part of it.
 
@@ -48,11 +48,15 @@
 
 **Artboard** — a static HTML drawing of a screen under `docs/design/`; once the owner approves it, it is the brief the implementation follows.
 
-**Session Browser** — the screen listing a client's packing sessions, and the detail page behind a selected one. Its client picker is the command bar's; it has no picker of its own. Its destination in the sidebar is labelled "Sessions".
+**Session Browser** — the Sessions page and the Session details page behind a session: two pages of the app document. Its client picker is the command bar's; it has no picker of its own. Its destination in the sidebar is labelled "Sessions".
 
 **Session status** — one of seven states a session is in: *not started*, *active*, *paused*, *stale*, *completed*, *incomplete*, *abandoned*. A packer declares *paused* and *incomplete*; the system infers the rest.
 
-**Status chip** — the pill marking a status, carrying F5's three channels: colour is the role, a tinted ground means the thing is still live, and a solid dot means a person decided it where a hollow dot means the system did.
+**Status chip** — the pill marking a session's status: its colour is the status's tone, and a solid dot means a person set the status where a hollow dot means the system inferred it.
+
+**Session pane** — the 360px column beside the Sessions list while a row is selected: the session's facts and its one action (Start packing, Resume session, View details or Go to Packing). While it is open the list's Items and Last touched columns fold into it.
+
+**Take over** — resuming a session whose lock is stale. The page asks first, saying which PC had it, since when and what comes along; only that lock is released, and only if it is still stale. A session that is live on another PC cannot be taken over.
 
 **KPI strip** — one card split into cells, each a label over a large number: Packing's totals strip and Statistics' KPI strip.
 
@@ -60,7 +64,7 @@
 
 **Packing state** — one packing list's saved progress (`packing_state.json` in its work directory): completed, skipped and in-progress orders, with timing. The source of truth for a session's progress.
 
-**Session lock** — the file in a packing list's work directory that says which PC is packing it. One PC at a time; it is renewed by a heartbeat, and a lock whose heartbeat stopped is *stale*.
+**Session lock** — the file in a packing list's work directory that says which PC is packing it. One PC at a time; it is renewed by a heartbeat, and a lock with no heartbeat for 2 minutes is *stale*, and the Sessions list calls the session *stale* from the same moment.
 
 **Session registry** — the per-client index the Session Browser reads: one entry per packing session with its status and counts. A summary of packing state for listing, never the source of truth.
 

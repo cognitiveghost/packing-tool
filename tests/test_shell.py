@@ -14,7 +14,6 @@ from gui.main_window import (
     RAIL_ITEMS,
     MainWindow,
 )
-from gui.session_browser.session_browser_widget import SessionBrowserWidget
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +30,7 @@ def window(qapp, tmp_path_factory):
     )
     mw = MainWindow(config_path=str(config))
     yield mw
+    mw.sessions.shutdown()
     mw.deleteLater()
 
 
@@ -69,16 +69,16 @@ def test_the_two_way_binding_does_not_loop(window):
         window.nav_rail.currentChanged.disconnect(seen.append)
 
 
-def test_session_browser_is_a_page_not_a_dialog(window):
-    page = window.session_tabs.widget(PAGE_BROWSER)
-    assert isinstance(page, SessionBrowserWidget)
-    assert page is window.session_browser
+def test_sessions_is_a_page_of_the_document(window):
+    assert window.session_tabs.widget(PAGE_BROWSER) is window.session_tabs.view
+    assert not hasattr(window, "session_browser")
 
 
 def test_open_session_browser_navigates_instead_of_opening_a_dialog(window):
     window.session_tabs.setCurrentIndex(PAGE_PACKING)
     window.open_session_browser()
     assert window.session_tabs.currentIndex() == PAGE_BROWSER
+    assert window.session_tabs.bridge.page == "sessions"
 
 
 def _is_connected(obj, signal_name: str) -> bool:
@@ -96,12 +96,9 @@ def _is_connected(obj, signal_name: str) -> bool:
     raise AssertionError(f"no such signal: {signal_name}")
 
 
-def test_the_browsers_signals_are_still_wired_to_main_window(window):
-    """Both signals keep their names and payloads; only the receiver moved off
-    a throwaway QDialog and onto the window itself."""
-    browser = window.session_browser
-    assert _is_connected(browser, "start_packing_requested")
-    assert _is_connected(browser, "resume_session_requested")
+def test_the_sessions_signals_are_wired_to_main_window(window):
+    for name in ("startRequested", "resumeRequested", "showPackingRequested"):
+        assert _is_connected(window.sessions, name)
 
 
 def test_the_browser_handlers_no_longer_take_a_dialog_to_close(window):
@@ -179,19 +176,15 @@ def test_the_bar_follows_the_page(window):
     assert not window.command_bar.filter_input.isHidden()
 
 
-def test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown(window, monkeypatch):
-    """As a dialog the timer died on close. As a permanent page it must not put
-    a registry rescan on the warehouse share while the packer is scanning."""
-    browser = window.session_tabs.widget(PAGE_BROWSER)
-    browser._auto_refresh_enabled = True
-
+def test_auto_refresh_is_quiet_while_sessions_is_not_shown(window, monkeypatch):
+    """A permanent page must not put a registry read on the warehouse share
+    while the packer is on another page."""
     refreshes = []
-    monkeypatch.setattr(browser.sessions_list, "refresh", lambda: refreshes.append(1))
-
+    monkeypatch.setattr(window.sessions, "refresh", lambda: refreshes.append(1))
     window.session_tabs.setCurrentIndex(PAGE_PACKING)
-    browser._on_auto_refresh()
+    window.sessions._on_tick()
     assert refreshes == []
-    assert browser._refresh_timer.isActive()  # still armed for the next visit
+    assert window.sessions._timer.isActive()  # still armed for the next visit
 
 
 def test_the_message_line_is_gone(window):

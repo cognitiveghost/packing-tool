@@ -56,6 +56,7 @@ def window(qapp, tmp_path):
     )
     mw = MainWindow(config_path=str(config))
     yield mw
+    mw.sessions.shutdown()
     mw.deleteLater()
 
 

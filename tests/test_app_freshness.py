@@ -1,12 +1,14 @@
 """What the pages show after they were hidden (spec section 8), in a real Chromium."""
 
 import json
+from datetime import datetime, timedelta
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
 from gui.main_window import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS
+from gui.sessions_payload import session_key
 
 
 def _eval(qtbot, view, expr, timeout=5000):
@@ -54,6 +56,16 @@ def shown(main_window, qtbot):
     main_window.hide()
 
 
+def _cover(window):
+    """Packer Mode's widget over the shell: since phase 4 the one thing that
+    hides the view (spec phase 4, section 10)."""
+    window.stacked_widget.setCurrentWidget(window.packer_mode_widget)
+
+
+def _uncover(window):
+    window.stacked_widget.setCurrentWidget(window.session_widget)
+
+
 @pytest.mark.parametrize("page, a_text, b_text", [
     (PAGE_PACKING, "#A-1001", "#B-2002"),
     (PAGE_STATISTICS, "SKU-AAA", "SKU-BBB"),
@@ -70,18 +82,106 @@ def test_a_page_shown_after_being_hidden_holds_the_current_session_only(
     _settle(qtbot, bridge)
     assert a_text in _eval(qtbot, view, "document.body.textContent")
 
-    pages.setCurrentIndex(PAGE_BROWSER)          # the view is hidden
-    window._teardown_session()                   # session A ends
+    _cover(window)                               # the view is hidden
     _open(window, _logic(session_factory, packer_logic_factory, "2026-01-02_1", "B-2002", "SKU-BBB"),
-          "2026-01-02_1")
+          "2026-01-02_1")                        # session B replaces A underneath
     pushed = bridge.revision
 
-    pages.setCurrentIndex(page)                  # shown again
+    _uncover(window)                             # shown again
     _settle(qtbot, bridge)
     assert bridge.painted_revision >= pushed
     text = _eval(qtbot, view, "document.body.textContent")
     assert b_text in text
     assert a_text not in text
+
+
+def _stamp(**ago) -> str:
+    return (datetime.now().astimezone() - timedelta(**ago)).isoformat()
+
+
+def _session(session_id, work_dir="") -> dict:
+    return {
+        "session_id": session_id, "packing_list_name": "DHL_Orders", "status": "completed",
+        "worker_name": "Maria", "pc_name": "WH-PC-02",
+        "started_at": _stamp(hours=3), "last_updated": _stamp(hours=1),
+        "total_orders": 1, "completed_orders": 1, "skipped_orders": 0, "total_items": 1,
+        "work_dir": str(work_dir), "session_path": f"/srv/{session_id}", "metrics": None,
+    }
+
+
+def _files(tmp_path, session_id, order):
+    work_dir = tmp_path / session_id / "packing" / "DHL_Orders"
+    work_dir.mkdir(parents=True)
+    summary = {
+        "session_id": session_id, "packing_list_name": "DHL_Orders",
+        "total_orders": 1, "completed_orders": 1, "metrics": {},
+        "orders": [{"order_number": order, "duration_seconds": 30, "items_count": 1,
+                    "items": [{"sku": "A", "quantity": 1, "row": 0}]}],
+        "skipped_orders": [],
+    }
+    (work_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return work_dir
+
+
+@pytest.fixture
+def sessions(shown, qapp, monkeypatch):
+    """The window's Sessions controller on its page, with the registry out of
+    the way: what it shows is what the test gives it."""
+    page = shown.sessions
+    page.wait()
+    qapp.processEvents()
+    qapp.processEvents()
+    monkeypatch.setattr(page, "refresh", lambda: None)
+    shown.session_tabs.setCurrentIndex(PAGE_BROWSER)
+    return page
+
+
+def test_sessions_shown_after_being_hidden_holds_the_current_list_only(shown, sessions, qtbot):
+    view, bridge = shown.session_tabs.view, shown.session_tabs.bridge
+    sessions.show_entries([_session("AAA-111")])
+    _settle(qtbot, bridge)
+    assert "AAA-111" in _eval(qtbot, view, "document.getElementById('sessions').textContent")
+
+    _cover(shown)
+    sessions.show_entries([_session("BBB-222")])
+    pushed = bridge.revision
+
+    _uncover(shown)
+    _settle(qtbot, bridge)
+    assert bridge.painted_revision >= pushed
+    text = _eval(qtbot, view, "document.getElementById('sessions').textContent")
+    assert "BBB-222" in text
+    assert "AAA-111" not in text
+
+
+def test_details_shown_after_being_hidden_hold_the_current_session_only(
+    shown, sessions, qtbot, tmp_path
+):
+    view, bridge = shown.session_tabs.view, shown.session_tabs.bridge
+    a = _session("AAA-111", _files(tmp_path, "AAA-111", "#A-1001"))
+    b = _session("BBB-222", _files(tmp_path, "BBB-222", "#B-2002"))
+    sessions.show_entries([a, b])
+
+    def open_details(entry):
+        sessions.open_details(session_key(entry))
+        qtbot.waitUntil(lambda: bridge.details.get("state") == "ready", timeout=10000)
+
+    open_details(a)
+    assert bridge.page == "details"
+    _settle(qtbot, bridge)
+    assert "A-1001" in _eval(qtbot, view, "document.getElementById('details').textContent")
+
+    _cover(shown)
+    open_details(b)
+    pushed = bridge.revision
+
+    _uncover(shown)
+    _settle(qtbot, bridge)
+    assert bridge.painted_revision >= pushed
+    text = _eval(qtbot, view, "document.getElementById('details').textContent")
+    assert "B-2002" in text
+    assert "A-1001" not in text
+    assert _eval(qtbot, view, "document.getElementById('d-id').textContent") == "BBB-222"
 
 
 def test_start_packing_waits_for_the_covered_page_to_paint(
