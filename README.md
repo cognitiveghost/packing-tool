@@ -10,7 +10,7 @@ at a time with a heartbeat, and both apps share one file server and one statisti
 Take the latest zip from [Releases](https://github.com/cognitiveghost/packing-tool/releases), unzip it and run
 `PackerAssistant.exe`. The version is in the window title.
 
-Point it at the file server once in **Settings → Server Connection**, or copy `config.ini.example` (shipped in the
+Point it at the file server once in the **⋯** menu → **Server connection…**, or copy `config.ini.example` (shipped in the
 zip) to `config.ini` next to the exe and set `FileServerPath`.
 
 To check a download was built by this repo's CI:
@@ -55,10 +55,11 @@ Do not create releases by hand in the GitHub UI: nothing builds for them.
 
 ## Layout
 
-- `gui/`: Qt UI; `gui/web/` is the order document (QtWebEngine)
+- `gui/`: the Qt shell (sidebar, command bar, scanner field) and the bridges; `gui/web/` holds the three web documents every screen is drawn in: the app document (Packing, Statistics, Sessions, Session details), the order document (Packer Mode) and the setup document (Worker selection, SKU mapping)
 - `packing_tool/`: sessions, scanning logic, locks, state
 - `shared/`: code shared with Fulfilment Tool, mirrored from its canonical copy in shopify-fulfillment-tool by `scripts/sync_shared.py` (see `CLAUDE.md`)
 - `docs/adr/`: decisions; `CONTEXT.md`: the domain glossary
+- `docs/design/ui-refresh/`: the approved mockups, the final renders of every screen, and `for-shared.md`, what is waiting to move into `shared/`
 
 ## Links
 

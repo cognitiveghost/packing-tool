@@ -12,15 +12,23 @@
 
 **App bridge** — the one `QWebChannel` object the app document talks to. It says which of the four pages shows, what the session is (none, opening, failed, open) and each page's data; the page reports clicks through slots.
 
+**Setup document** — the web page that draws the two full-window pages: Worker selection and SKU mapping. One page in its own web view, the third thing the window can show beside the shell and Packer Mode. While it is up the sidebar and the command bar are hidden, and its own buttons are the only ways out.
+
+**Setup bridge** — the one `QWebChannel` object the setup document talks to. It says which of the two pages shows and each page's data. Four of its slots answer: they return an empty string when the thing was done, else the sentence to show beside the field.
+
+**Quick map** — SKU mapping opened from Packer Mode (*Map SKU* on an item, *Map barcode…* on an unmatched scan) for one add. The known side is filled and fixed, the add is written to the file server at once, and the page returns to Packer Mode. Nothing else on the page can change a mapping (ADR 0004).
+
+**Stray scan** — a complete scan (text ended by Enter) that reaches no field while a setup page is up: the moment a quick map is switching in or out. It is held and replayed into Packer Mode once the scanner field has the focus again (ADR 0004). Not an **unmatched scan**, which reached Packer Mode and matched nothing.
+
 **Feedback band** — the order document's outcome row: what the last scan did, as one large sentence on a solid fill in its status colour, with the raw scanned text beside it. The unsaved warning is a banner above it, not part of it.
 
 **Scan flash** — the brief colour pulse on a 10px frame around the order document's main column that makes a scan's outcome visible from across the floor.
 
 **Item state** — an order item's packing state: *pending* (nothing packed), *partial* (some of the required quantity packed), *complete* (all of it).
 
-**Unmatched scan** — a scan that matches no item in the order and no known barcode; it is not an item, so it has no item state.
+**Unmatched scan** — a scan that matches no item in the order and no known barcode; it is not an item, so it has no item state. Its row offers *Map barcode…*, which opens a quick map.
 
-**Scanner capture** — the Qt input that receives barcode-scanner keystrokes; it must hold keyboard focus whenever Packer Mode is open. It is the field in Packer Mode's command bar.
+**Scanner capture** — the Qt input that receives barcode-scanner keystrokes; it must hold keyboard focus whenever Packer Mode is open. It is the field in Packer Mode's command bar. A quick map is the one time the scanner types somewhere else, and ADR 0004 says how that is kept safe.
 
 **Extras** — items scanned into an order that the order does not contain; the packer keeps or removes each one.
 
@@ -32,7 +40,7 @@
 
 **Command bar** — the 60px row above a screen, carrying what that screen is and what can be done to it. Above the pages it holds the sidebar toggle, the client selector, the open session's id, the page's actions and the ⋯ overflow menu (Server connection…, Exit); above Packer Mode it holds the order number, scanner capture, Skip order and Exit packing.
 
-**Sidebar** — the Qt column left of the pages: the app mark, the three destinations (Packing, Statistics, Sessions) and a footer with SKU mapping, the worker, Light/Dark and the connection card. 200px, collapsing to a 56px rail. With no client chosen its destinations are disabled.
+**Sidebar** — the Qt column left of the pages: the app mark, the three destinations (Packing, Statistics, Sessions) and a footer with SKU mapping and *Switch worker…* (each opens a page of the setup document), Light/Dark and the connection card. 200px, collapsing to a 56px rail. With no client chosen its destinations are disabled.
 
 **Connection card** — the sidebar footer's statement of whether the file server answers: *Server connected*, *Reconnecting…* (while a check runs) or *Server unreachable* (with Retry). The server is checked on Retry and after a failed session action, never on a timer.
 

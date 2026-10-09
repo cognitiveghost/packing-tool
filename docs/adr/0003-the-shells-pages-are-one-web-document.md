@@ -36,7 +36,9 @@ The mockup draws the pages as one app with one frame around them.
   separable.
 - State is pushed to the document only while the shell is showing. A scan in Packer Mode pushes nothing,
   and leaving pushes once.
-- SKU mapping and Worker selection are dialogs, not pages of the shell. Phase 5 decides where they live.
+- SKU mapping and Worker selection are not pages of the shell. Since phase 5 they are the two pages of a
+  second document, the setup document, in a view of its own that replaces the whole shell while it shows
+  (spec `docs/superpowers/specs/2026-10-09-ui-refresh-phase5-setup-pages-design.md`, section 4.1; ADR 0004).
 
 ## Alternatives considered
 
