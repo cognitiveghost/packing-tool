@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.command_bar import BAR_HEIGHT
+from gui.setup_payload import initials
 from shared.icons import icon
 from shared.navrail import RAIL_WIDTH, NavRail
 from shared.theme import current_tokens, font_css, on_theme_changed
@@ -42,11 +43,6 @@ _CONNECTION = {
 _PATH_WIDTH = 140
 # 200 - footer margins 16 - card padding 16 - avatar 32 - gap 10 = 126.
 _NAME_WIDTH = 122
-
-
-def initials(name: str) -> str:
-    """The first letters of the first two words: "Desislava Ilieva" -> "DI"."""
-    return "".join(word[0] for word in name.split()[:2]).upper()
 
 
 class FloorNavRail(NavRail):

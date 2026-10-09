@@ -147,8 +147,8 @@ def test_the_overflow_keeps_only_server_connection_and_exit(window):
 
 def test_the_sidebar_footer_reaches_what_the_overflow_used_to(window, monkeypatch):
     calls = []
-    monkeypatch.setattr(window, "open_sku_mapping_dialog", lambda: calls.append("sku"))
-    monkeypatch.setattr(window, "_select_worker", lambda: calls.append("worker"))
+    monkeypatch.setattr(window, "open_sku_mapping", lambda: calls.append("sku"))
+    monkeypatch.setattr(window, "switch_worker", lambda: calls.append("worker"))
     monkeypatch.setattr(window, "_switch_theme", lambda name: calls.append(name))
     window.sidebar.skuMappingRequested.emit()
     window.sidebar.switchWorkerRequested.emit()

@@ -28,9 +28,7 @@ from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QHBoxLayout,
-    QInputDialog,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
@@ -53,9 +51,9 @@ from gui.packer_bridge import order_label, session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.sessions_page import SessionsPage
 from gui.sessions_payload import session_key
-from gui.sku_mapping_dialog import SKUMappingDialog
+from gui.setup_pages import SetupPages
+from gui.setup_payload import order_choices, quick_payload
 from gui.theme import apply_theme, current_tokens
-from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
 from packing_tool.profile_manager import NetworkError, ProfileManager
@@ -131,22 +129,9 @@ def _local_stamp(iso) -> str:
         return ""
 
 
-def _unmapped_choices(order_state) -> list[tuple[str, str]]:
-    """This order's lines as (sku, label), the ones still owing scans first.
-
-    An unmatched scan happened while packing this order, so the SKU the packer
-    meant is almost always a line that is not finished yet.
-    """
-    return [
-        (
-            s["original_sku"],
-            f"{s['original_sku']} — {s['packed']} / {s['required']} packed",
-        )
-        for s in sorted(
-            order_state or [],
-            key=lambda s: s["packed"] >= s["required"],
-        )
-    ]
+def _under_pytest() -> bool:
+    """Whether the suite is running: it must not start on Worker selection."""
+    return "pytest" in sys.modules
 
 
 class MainWindow(QMainWindow):
@@ -179,7 +164,7 @@ class MainWindow(QMainWindow):
         """Initialize the MainWindow, sets up UI, and loads initial state.
 
         Args:
-            skip_worker_selection: If True, skip worker selection dialog (for tests)
+            skip_worker_selection: If True, start on the shell with a dummy worker (for tests and render scripts)
             config_path: Path to the configuration file (default: config.ini).
                 Use a dev config (e.g. config.dev.ini) to point at a local mock server.
         """
@@ -195,7 +180,7 @@ class MainWindow(QMainWindow):
         logger.info("Initializing MainWindow")
 
         # Detect if running in test mode
-        self._is_test_mode = skip_worker_selection or "pytest" in sys.modules
+        self._is_test_mode = skip_worker_selection or _under_pytest()
 
         # Initialize ProfileManager, offering a path-recovery prompt on
         # NetworkError instead of exiting immediately.
@@ -281,13 +266,7 @@ class MainWindow(QMainWindow):
         # Settings for remembering last client
         self.settings = QSettings("PackingTool", "ClientSelection")
 
-        # Show worker selection BEFORE main window initialization (skip in test mode)
-        if not self._is_test_mode:
-            if not self._select_worker():
-                # User cancelled - exit app
-                logger.info("Worker selection cancelled - exiting application")
-                sys.exit(0)
-        else:
+        if self._is_test_mode:
             # Test mode - use dummy worker
             self.current_worker_id = "test_worker_001"
             self.current_worker_name = "Test Worker"
@@ -297,6 +276,11 @@ class MainWindow(QMainWindow):
 
         # Load available clients and restore last selected
         self.load_available_clients()
+
+        if not self._is_test_mode:
+            # The first thing a packer sees: who is packing (spec 2026-10-09,
+            # section 4.4). The shell is built and waits underneath.
+            self._open_setup(lambda: self.setup_pages.show_workers(startup=True))
 
         logger.info("MainWindow initialized successfully")
 
@@ -404,8 +388,8 @@ class MainWindow(QMainWindow):
         # rasterised at the colour in force when they were built.
         theme_notifier.changed.connect(self._refresh_rail_icons)
         # Lambdas, so a test (or a subclass) that replaces the handler is seen.
-        self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping_dialog())
-        self.sidebar.switchWorkerRequested.connect(lambda: self._select_worker())
+        self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping())
+        self.sidebar.switchWorkerRequested.connect(lambda: self.switch_worker())
         self.sidebar.themeRequested.connect(lambda name: self._switch_theme(name))
         self.sidebar.set_worker(self.current_worker_name or "")
         self.command_bar.sidebarToggled.connect(self._toggle_sidebar)
@@ -443,10 +427,30 @@ class MainWindow(QMainWindow):
             self._on_map_barcode_from_packer
         )
 
-        # Stacked widget to switch between session view and packer mode
+        # Worker selection and SKU mapping: the setup document, full window
+        # (spec 2026-10-09 section 4). Lambdas, so a test that replaces a
+        # handler is seen.
+        self.setup_pages = SetupPages(self.worker_manager, self.profile_manager)
+        self.setup_pages.workerChosen.connect(
+            lambda worker_id, name: self._on_worker_chosen(worker_id, name)
+        )
+        self.setup_pages.quitRequested.connect(lambda: self.close())
+        self.setup_pages.backRequested.connect(lambda: self._leave_setup())
+        self.setup_pages.mappingSaved.connect(lambda mapping: self._on_mapping_saved(mapping))
+        self.setup_pages.quickMapped.connect(
+            lambda kind, barcode, sku, mapping: self._on_quick_mapped(kind, barcode, sku, mapping)
+        )
+        self.setup_pages.strayScanned.connect(lambda text: self._on_stray_scan(text))
+        self._setup_return = self.session_widget  # where a setup page goes back to
+        self._opening_setup = False
+        self._leaving_setup = False
+        self._stray_scans: list[str] = []  # see _on_stray_scan()
+
+        # The shell, Packer Mode and the setup pages: one at a time.
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.addWidget(self.session_widget)
         self.stacked_widget.addWidget(self.packer_mode_widget)
+        self.stacked_widget.addWidget(self.setup_pages)
         self.setCentralWidget(self.stacked_widget)
 
         self._init_overflow()
@@ -504,8 +508,11 @@ class MainWindow(QMainWindow):
         exit_item.setShortcutVisibleInContextMenu(True)
 
         # Through click(), which is a no-op on the disabled no-session button.
+        # Not from a setup page: the session is out of sight there.
         end_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
-        end_shortcut.activated.connect(lambda: self.toolbar_end_btn.click())
+        end_shortcut.activated.connect(
+            lambda: None if self._setup_showing() else self.toolbar_end_btn.click()
+        )
 
         for page, _item in enumerate(RAIL_ITEMS):
             shortcut = QShortcut(QKeySequence(f"Ctrl+{page + 1}"), self)
@@ -588,41 +595,97 @@ class MainWindow(QMainWindow):
         else:
             toast(self, message, role=role)
 
-    def _select_worker(self) -> bool:
-        """Show worker selection dialog
+    # ========================================================================
+    # SETUP PAGES: Worker selection and SKU mapping (spec 2026-10-09)
+    # ========================================================================
 
-        Returns:
-            bool: True if worker selected, False if cancelled
+    def _setup_showing(self) -> bool:
+        return self.stacked_widget.currentWidget() is self.setup_pages
+
+    def _open_setup(self, show) -> None:
+        """Put a setup page over whatever is showing, and remember what that was.
+
+        `show` is one of SetupPages' show_* methods, bound to its arguments.
+        From the shell the app document is told to draw nothing first, and the
+        switch waits for that paint (ADR 0003). From Packer Mode the switch is
+        immediate and its document is left alone: the packer comes back to the
+        same order, and a scan must not fall into a gap (ADR 0004).
         """
-        try:
-            # Show selection dialog
-            dialog = WorkerSelectionDialog(self.worker_manager, self)
+        if (
+            self._setup_showing()
+            or self._opening_setup
+            or self._entering_packer_mode
+            or self._leaving_packer_mode
+        ):
+            return
+        self._setup_return = self.stacked_widget.currentWidget()
+        self._stray_scans = []
+        show()
 
-            if dialog.exec() == QDialog.Accepted:
-                self.current_worker_id = dialog.get_selected_worker_id()
+        def enter():
+            self._opening_setup = False
+            self.stacked_widget.setCurrentWidget(self.setup_pages)
+            self.setup_pages.view.setFocus()
 
-                # Get worker details
-                worker = self.worker_manager.get_worker(self.current_worker_id)
-                if worker:
-                    self.current_worker_name = worker.name
-                    if hasattr(self, "sidebar"):
-                        self.sidebar.set_worker(self.current_worker_name)
-                    logger.info(
-                        f"Logged in as: {self.current_worker_name} ({self.current_worker_id})"
-                    )
-                    return True
+        pages = self.session_tabs
+        if self._setup_return is self.session_widget and pages.view.isVisible():
+            self._opening_setup = True
+            pages.bridge.set_covered(True)
+            when_painted(pages.bridge, enter)
+        else:
+            enter()
 
-            logger.info("Worker selection cancelled")
-            return False
+    def _leave_setup(self, after=None) -> None:
+        """Go back to where the setup page was opened from.
 
-        except Exception as e:
-            logger.exception("Worker selection failed")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to load worker profiles:\n{e!s}\n\nApplication will exit.",
+        The page is blanked and the switch waits for that paint, 150 ms at
+        most: a hidden view keeps its last frame (ADR 0003). `after` runs once
+        Packer Mode is back and its scanner has the focus, before any stray
+        scan is replayed.
+        """
+        if not self._setup_showing() or self._leaving_setup:
+            return
+        self._leaving_setup = True
+        target = self._setup_return
+        self.setup_pages.blank()
+
+        def switch():
+            self._leaving_setup = False
+            if target is self.packer_mode_widget:
+                self.stacked_widget.setCurrentWidget(target)
+                target.set_focus_to_scanner()
+                if after is not None:
+                    after()
+                strays, self._stray_scans = self._stray_scans, []
+                # Not onto a list another PC has taken: the panel blocks.
+                if not target.taken_over:
+                    for text in strays:
+                        self.on_scanner_input(text)
+                return
+            self._show_shell()
+
+        when_painted(self.setup_pages.bridge, switch)
+
+    def _show_shell(self) -> None:
+        """Put the shell on top, its pages current and uncovered first."""
+        self._push_pages()
+        self.session_tabs.bridge.set_covered(False)
+        self.stacked_widget.setCurrentWidget(self.session_widget)
+
+    def switch_worker(self) -> None:
+        """The sidebar's Switch worker…"""
+        self._open_setup(
+            lambda: self.setup_pages.show_workers(
+                self.current_worker_id or "", self.current_worker_name or "", startup=False
             )
-            return False
+        )
+
+    def _on_worker_chosen(self, worker_id: str, name: str) -> None:
+        self.current_worker_id = worker_id
+        self.current_worker_name = name
+        self.sidebar.set_worker(name)
+        logger.info(f"Logged in as: {name} ({worker_id})")
+        self._leave_setup()
 
     # ========================================================================
     # CLIENT MANAGEMENT (NEW)
@@ -816,46 +879,18 @@ class MainWindow(QMainWindow):
             self, "PackingTool", "FULFILLMENT_SERVER_PATH", config_fallback
         ).exec()
 
-    def open_sku_mapping_dialog(self):
-        """
-        Open SKU mapping dialog for current client.
-
-        Phase 1.3: Uses ProfileManager for centralized storage on file server.
-        All changes are synchronized across all PCs with file locking.
-        """
+    def open_sku_mapping(self) -> None:
+        """The sidebar's SKU mapping: the full-window page for the current client."""
         if not self.current_client_id:
-            logger.warning("Attempted to open SKU mapping without selecting client")
-            QMessageBox.warning(
-                self, "No Client Selected", "Please select a client first!"
-            )
-            return
+            return  # the sidebar's item is disabled until a client is chosen
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label))
 
-        logger.info(f"Opening SKU mapping dialog for client {self.current_client_id}")
-
-        # Phase 1.3: Use ProfileManager directly for centralized storage
-        dialog = SKUMappingDialog(self.current_client_id, self.profile_manager, self)
-
-        if dialog.exec():  # User clicked "Save & Close"
-            # Mappings are already saved by the dialog
-            logger.info("SKU mapping dialog closed with save")
-
-            # If a session is active, reload the SKU map into logic instance
-            if self.logic:
-                try:
-                    new_map = self.profile_manager.load_sku_mapping(
-                        self.current_client_id
-                    )
-                    self.logic.set_sku_map(new_map)
-                    self._toast("SKU mapping saved and shared with every PC.")
-                    logger.info("SKU mapping reloaded into active session")
-                except Exception as e:
-                    logger.exception("Failed to reload SKU mapping into session")
-                    QMessageBox.warning(
-                        self,
-                        "Reload Warning",
-                        f"Mappings saved successfully but failed to reload into current session:\n\n{e}\n\n"
-                        f"Please restart the session to use new mappings.",
-                    )
+    def _on_mapping_saved(self, mapping: dict) -> None:
+        """A Save on the mapping page: the open session matches by it at once."""
+        if self.logic:
+            self.logic.set_sku_map(mapping)
 
     def _start_heartbeat_timer(self):
         """Start timer to update session lock heartbeat."""
@@ -909,7 +944,7 @@ class MainWindow(QMainWindow):
 
         In Packer Mode the page says so and blocks (frame 6j), and the session
         is torn down when the packer exits. On any other page: teardown, then
-        a message box, as before.
+        a message box, as before. A quick map counts as Packer Mode.
         """
         _locked, info = self.lock_manager.is_locked(work_dir)
         holder = (info or {}).get("locked_by") or "Another PC"
@@ -919,14 +954,21 @@ class MainWindow(QMainWindow):
         if self._progress_publisher is not None:
             self._progress_publisher.stop()
         widget = self.packer_mode_widget
+        # A quick map is Packer Mode with a page over it (ADR 0004): the page
+        # goes, and the packer lands on the panel.
+        in_quick_map = self._setup_showing() and self._setup_return is widget
         # Not while it is leaving: the panel would paint on a page about to be
         # covered, and the packer would land on a dead session with no word.
-        if self.stacked_widget.currentWidget() is widget and not self._leaving_packer_mode:
+        if (
+            self.stacked_widget.currentWidget() is widget or in_quick_map
+        ) and not self._leaving_packer_mode:
             # The lock is gone and stays gone: nothing left to renew, and a
             # second report must not land on the panel.
             if hasattr(self, "heartbeat_timer"):
                 self.heartbeat_timer.stop()
             self.packer_mode_widget.show_takeover(holder, list_name)
+            if in_quick_map:
+                self._leave_setup()
             return
         self._teardown_session()
         QMessageBox.critical(
@@ -1036,6 +1078,12 @@ class MainWindow(QMainWindow):
             # The start worker is still running; closing now would leave its
             # thread and the lock behind. The start ends in seconds.
             event.ignore()
+            return
+        if self._setup_showing() and self.setup_pages.dirty():
+            # Unsaved mappings: the page asks, and the window stays
+            # (spec 2026-10-09 section 6.6).
+            event.ignore()
+            self.setup_pages.ask_leave()
             return
         logger.info("Application closing, performing cleanup...")
 
@@ -1667,7 +1715,12 @@ class MainWindow(QMainWindow):
 
         # Return user to session view (avoids leaving a blank packer mode screen)
         if hasattr(self, "stacked_widget") and hasattr(self, "session_widget"):
-            self._leave_packer_mode()
+            if self._setup_showing():
+                # A setup page stays open, unsaved mappings and all (spec
+                # 2026-10-09 section 4.4); it leaves for the shell when closed.
+                self._setup_return = self.session_widget
+            else:
+                self._leave_packer_mode()
 
         logger.info("Session ended and all variables cleared")
 
@@ -1734,10 +1787,7 @@ class MainWindow(QMainWindow):
 
         def switch():
             self._leaving_packer_mode = False
-            # Before the shell shows: what it shows is current (spec section 8).
-            self._push_pages()
-            self.session_tabs.bridge.set_covered(False)
-            self.stacked_widget.setCurrentWidget(self.session_widget)
+            self._show_shell()
 
         if self.stacked_widget.currentWidget() is widget and widget.isVisible():
             self._leaving_packer_mode = True
@@ -1964,105 +2014,71 @@ class MainWindow(QMainWindow):
                 self.flash_border("green")
         self.packer_mode_widget.set_focus_to_scanner()
 
-    def _save_sku_mapping(self, barcode: str, sku: str) -> bool:
-        """Save one barcode → SKU mapping, confirming an overwrite first.
-
-        Shared by both directions of the Map SKU flow: the per-item button
-        knows the SKU and asks for the barcode, and the unmatched-scan row
-        knows the barcode and asks for the SKU.
-        """
-        try:
-            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
-            if barcode in existing and existing[barcode] != sku:
-                reply = QMessageBox.question(
-                    self,
-                    "Overwrite Mapping?",
-                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
-                    f"Replace with '{sku}'?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    return False
-
-            # One entry onto the mapping as it is on the server now (AUDIT-02-3)
-            mapping = self.profile_manager.update_sku_mapping(
-                self.current_client_id, {barcode: sku}
-            )
-
-            if self.logic:
-                self.logic.sku_map = {
-                    self.logic._normalize_sku(k): v for k, v in mapping.items()
-                }
-                logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
-            self.packer_mode_widget.show_notification(
-                f"Mapped: {barcode} → {sku}", "status_success"
-            )
-            return True
-        except Exception as e:
-            logger.exception("Failed to save quick SKU mapping")
-            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
-            return False
-
     def _on_map_sku_from_packer(self, sku: str):
-        """Quick-add barcode→SKU mapping from packer mode.
+        """Map SKU on an item row: the SKU is known, the packer scans the barcode.
 
-        Pre-populates the SKU so the worker only needs to scan/type the barcode.
-        The barcode field is left empty for the scanner to fill in.
+        A quick map (ADR 0004): the SKU mapping page, for this one add.
         """
         if not self.current_client_id:
             self.packer_mode_widget.set_focus_to_scanner()
             return
-
-        barcode, ok = QInputDialog.getText(
-            self,
-            "Map Barcode to SKU",
-            f"SKU:  {sku}\n\nScan or type the product barcode to map to this SKU:",
-        )
-        if not (ok and barcode and barcode.strip()):
-            self.packer_mode_widget.set_focus_to_scanner()
-            return
-
-        self._save_sku_mapping(barcode.strip(), sku)
-        self.packer_mode_widget.set_focus_to_scanner()
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        quick = quick_payload("sku", sku=sku)
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label, quick))
 
     def _on_map_barcode_from_packer(self, barcode: str):
-        """Map an unmatched scan to one of this order's SKUs, then replay it.
-
-        The reverse of _on_map_sku_from_packer: here the barcode is known and
-        the SKU is picked. Replaying the scan afterwards packs the item in the
-        same gesture -- the scan already happened, and making the packer scan
-        again to use a mapping they just made is a step with no purpose.
-        """
-        choices = (
-            _unmapped_choices(self.logic.current_order_state) if self.logic else []
-        )
+        """Map barcode… on a No match row: the barcode is known, the SKU is one
+        of this order's lines (owner decision, spec 2026-10-09 section 2)."""
+        choices = order_choices(self.logic.current_order_state) if self.logic else []
         if not (choices and self.current_client_id):
             self.packer_mode_widget.set_focus_to_scanner()
             return
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        quick = quick_payload("barcode", barcode=barcode, choices=choices)
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label, quick))
 
-        labels = [label for _sku, label in choices]
-        picked, ok = QInputDialog.getItem(
-            self,
-            "Map SKU",
-            f"Barcode {barcode}\n\nWhich item did you scan?",
-            labels,
-            0,
-            False,
-        )
-        if not (ok and picked):
-            self.packer_mode_widget.set_focus_to_scanner()
-            return
+    def _on_quick_mapped(self, kind: str, barcode: str, sku: str, mapping: dict):
+        """A quick map was saved: back to Packer Mode, and say so there.
 
-        sku = choices[labels.index(picked)][0]
-        if self._save_sku_mapping(barcode, sku):
-            # It matches an item now, so its "No match" row goes with the mapping.
-            self.logic.unknown_scans = [
-                scan for scan in self.logic.unknown_scans if scan != barcode
-            ]
-            self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
-            self.on_scanner_input(barcode)
-        self.packer_mode_widget.set_focus_to_scanner()
+        For a barcode the scan that had no match is replayed, which packs the
+        item in the same gesture: the scan already happened, and making the
+        packer scan again to use a mapping they just made is a step with no
+        purpose.
+        """
+        if self.logic:
+            self.logic.set_sku_map(mapping)
+            logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
+
+        def after():
+            self.packer_mode_widget.show_notification(
+                f"Mapped: {barcode} → {sku}", "status_success"
+            )
+            if kind == "barcode" and self.logic:
+                # It matches an item now, so its "No match" row goes with the mapping.
+                self.logic.unknown_scans = [
+                    scan for scan in self.logic.unknown_scans if scan != barcode
+                ]
+                self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
+                self.on_scanner_input(barcode)
+
+        self._leave_setup(after)
+
+    def _on_stray_scan(self, text: str):
+        """A complete scan that reached no field of a setup page (ADR 0004).
+
+        Held while a page opened from Packer Mode is up and replayed by
+        _leave_setup once the scanner has the focus. One reported just after
+        the return is acted on at once. Anywhere else there is nothing to
+        scan into, and it is dropped.
+        """
+        from_packer = self._setup_return is self.packer_mode_widget
+        if self._setup_showing():
+            if from_packer:
+                self._stray_scans.append(text)
+        elif self.stacked_widget.currentWidget() is self.packer_mode_widget and self.logic:
+            self.on_scanner_input(text)
 
     def _on_extra_confirmed(self, norm_sku: str):
         """Handle 'Keep' for an extra item — user acknowledges it is intentional."""

@@ -353,7 +353,9 @@ class PackerModeWidget(QWidget):
     def _on_map_sku_requested(self, sku: str):
         """Emit map_sku_requested with the original SKU string."""
         self.map_sku_requested.emit(sku)
-        self.set_focus_to_scanner()
+        # MainWindow may have put the SKU mapping page over us (ADR 0004).
+        if self.isVisible():
+            self.set_focus_to_scanner()
 
     def _on_extra_confirmed(self, norm_sku: str):
         """Emit extra_confirmed for the given normalized SKU."""
@@ -366,9 +368,10 @@ class PackerModeWidget(QWidget):
         self.set_focus_to_scanner()
 
     def _on_map_barcode(self, barcode: str):
-        """Forward an unmatched scan's barcode; MainWindow owns the dialog."""
+        """Forward an unmatched scan's barcode; MainWindow owns the page."""
         self.map_barcode_requested.emit(barcode)
-        self.set_focus_to_scanner()
+        if self.isVisible():
+            self.set_focus_to_scanner()
 
     # ─── Public display methods ───────────────────────────────────────────────
 

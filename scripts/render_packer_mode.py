@@ -1,9 +1,9 @@
 """Offscreen renders of Packer Mode, mockup frames 6a-6j, in both themes.
 
-    .venv/bin/python scripts/render_packer_mode.py [output dir]
+    .venv/bin/python scripts/render_packer_mode.py [output dir] [--size WIDTHxHEIGHT]
 
-Writes <frame>-<theme>.png at 1366x768 and 6b-<theme>-1920.png at 1920x1080,
-by default into docs/design/ui-refresh/renders/phase2/. It drives a
+Writes <frame>-<theme>.png at the size given (1366x768 by default), by default
+into docs/design/ui-refresh/renders/final/<size>/. It drives a
 PackerModeWidget alone through its public methods: no MainWindow, no server,
 and its own QSettings, so it touches neither the file server nor this PC's
 saved theme.
@@ -28,8 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
-
-DEFAULT_OUT = ROOT / "docs" / "design" / "ui-refresh" / "renders" / "phase2"
+from render_args import parse_args
 
 # The mockup's order, with SPF-50 at 8 units so one row offers Force confirm.
 LINES = [
@@ -66,7 +65,7 @@ def packed_state(packed):
 
 
 def main(argv: list[str]) -> int:
-    out = Path(argv[0]) if argv else DEFAULT_OUT
+    out, width, height = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -82,7 +81,7 @@ def main(argv: list[str]) -> int:
 
         load_saved_theme(app)
         widget = PackerModeWidget()
-        widget.resize(1366, 768)
+        widget.resize(width, height)
         widget.show()
         bridge = widget.bridge
 
@@ -100,7 +99,7 @@ def main(argv: list[str]) -> int:
         def js(code: str) -> None:
             widget.document_view.page().runJavaScript(code)
 
-        def shoot(name: str, width: int = 1366, height: int = 768) -> None:
+        def shoot(name: str) -> None:
             for theme in ("light", "dark"):
                 apply_theme(app, theme)
                 widget.resize(width, height)
@@ -137,7 +136,6 @@ def main(argv: list[str]) -> int:
 
         order()
         shoot("6b-{theme}")
-        shoot("6b-{theme}-1920", 1920, 1080)
 
         order()
         scanned(1, 2, "CRM-50ML confirmed — 2 of 3 packed", "CRM-50ML")

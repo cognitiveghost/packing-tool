@@ -462,20 +462,21 @@ class ProfileManager:
     # SKU MAPPING WITH FILE LOCKING
     # ========================================================================
 
-    def load_sku_mapping(self, client_id: str) -> dict[str, str]:
+    def load_sku_mapping(self, client_id: str, fresh: bool = False) -> dict[str, str]:
         """
         Load SKU mapping for a specific client with caching.
         Now reads from packer_config.json instead of separate sku_mapping.json
 
         Args:
             client_id: Client identifier
+            fresh: Read the file even if a cached copy is under a minute old.
 
         Returns:
             Dictionary mapping barcode to SKU
         """
         # Check cache
         cache_key = f"sku_{client_id}"
-        if cache_key in self._sku_cache:
+        if not fresh and cache_key in self._sku_cache:
             cached_data, cached_time = self._sku_cache[cache_key]
             age_seconds = (datetime.now().astimezone() - cached_time).total_seconds()
 

@@ -1,0 +1,236 @@
+/* The setup document's own sheet (UI refresh phase 5): the layouts of Worker
+   selection and SKU mapping. Buttons, badges, cards, fields and the banner
+   come from shared/web/kit.css; the scrim, dialog, state card and table rows
+   from floor.css. Mockups: docs/design/ui-refresh/mockups/Worker Selection.html
+   and SKU Mapping.html, at floor density (spec section 11).
+   Spec: docs/superpowers/specs/2026-10-09-ui-refresh-phase5-setup-pages-design.md
+   Web-tier rules (ADR 0001): var(--...) only, type sizes from the scale, one
+   mono face, no transition/transform/opacity. */
+
+.setup { position: relative; height: 100%; overflow: hidden; }
+
+/* A bare input in trouble. The kit has this for .input only. */
+.setup .field.invalid {
+  border-color: var(--status-danger);
+  outline: 1px solid var(--status-danger);
+  outline-offset: -2px;
+}
+
+/* A ghost icon button is a glyph, not a word: no underline to carry. */
+.setup .su-plain { text-decoration: none; color: var(--text-secondary); }
+.setup .su-plain:hover { color: var(--text); }
+
+/* --- Worker selection ---------------------------------------------------- */
+
+.su-workers { height: 100%; display: flex; flex-direction: column; }
+.su-top { flex: none; height: 60px; display: flex; align-items: center; padding: 0 20px; }
+.su-w-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 40px 48px;
+}
+.su-w-head { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.su-mark {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 8px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+.su-mark .glyph { width: 30px; height: 30px; stroke-width: 1.5; }
+.su-w-title { margin: 0; font-size: var(--type-display-size); font-weight: 700; line-height: 1.2; }
+.su-w-sub { margin: 0; color: var(--text-secondary); }
+
+.su-w-banner { width: 100%; max-width: 640px; margin-top: 32px; }
+
+.su-w-empty { margin-top: 36px; text-align: center; color: var(--text-secondary); }
+.su-w-empty-title { font-size: var(--type-heading-size); font-weight: 700; color: var(--text); }
+
+.su-grid {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: repeat(var(--su-cols, 4), 240px);
+  gap: 16px;
+  justify-content: center;
+  align-items: start;
+}
+.su-grid.lone { margin-top: 20px; }
+
+.su-card {
+  width: 240px;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+.su-card:hover { border-color: var(--border-strong); }
+.su-card:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* The mockup rings these with a shadow; the web tier may not, so an outline. */
+.su-card.picked, .su-form { border-color: var(--text); outline: 1px solid var(--text); }
+
+.su-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.su-avatar {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+}
+.su-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.su-card-name {
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.su-card-line { color: var(--text-secondary); font-size: var(--type-caption-size); }
+
+.su-new {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--kit-radius-card);
+  color: var(--text-secondary);
+  font-size: var(--type-heading-size);
+  font-weight: 700;
+}
+.su-new:hover { color: var(--text); }
+.su-new-plus {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px dashed var(--border-strong);
+}
+.su-new-plus .glyph { width: 20px; height: 20px; }
+
+.su-form { cursor: default; justify-content: flex-start; gap: 12px; }
+.su-form-title { font-size: var(--type-heading-size); font-weight: 700; }
+.su-form .field { width: 100%; border-color: var(--border-strong); }
+.su-form-error { font-size: var(--type-caption-size); color: var(--status-danger); }
+.su-form-actions { display: flex; gap: 8px; }
+.su-form-actions .primary { flex: 1; }
+
+/* --- SKU mapping --------------------------------------------------------- */
+
+.su-mapping { height: 100%; display: flex; justify-content: center; padding: 40px 0; }
+.su-m-card {
+  position: relative;  /* the question's scrim covers the card */
+  width: 920px;
+  max-width: calc(100% - 48px);
+  height: 100%;
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr) 68px;
+  overflow: hidden;
+  box-shadow: var(--overlay-shadow);
+}
+
+.su-m-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.su-m-title { font-size: var(--type-heading-size); font-weight: 700; }
+.su-ok { color: var(--status-success-dot); }
+
+.su-m-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--surface-sunken);
+}
+.su-m-body > .banner { flex: none; align-items: flex-start; }
+.su-m-cause { font-size: var(--type-caption-size); overflow-wrap: anywhere; }
+.su-m-intro { flex: none; display: flex; align-items: center; gap: 16px; min-height: 40px; }
+.su-m-desc { flex: 1; min-width: 0; color: var(--text-secondary); }
+
+.su-m-table {
+  --tbl-cols: 8px 240px 16px minmax(0, 1fr) 96px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.su-m-table .tbl-head, .su-m-table .tbl-row { column-gap: 12px; }
+.su-m-tools { flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.su-m-search { width: 280px; }
+.su-m-count { color: var(--text-secondary); }
+.su-m-rows { flex: 1; min-height: 0; overflow: auto; }
+
+.su-row:hover { background: var(--surface-raised); }
+.su-row.clash { background: var(--status-danger-bg); }
+.su-sku { font-weight: 700; }
+.su-cut { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.su-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.su-undot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text); }
+
+.su-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 10px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.su-draft-row { border-bottom: 0; }
+.su-draft .field { width: 100%; min-width: 0; border-color: var(--border-strong); }
+.su-draft-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 36px;
+  font-size: var(--type-caption-size);
+  color: var(--text-secondary);
+}
+.su-draft-line.danger { font-size: var(--type-body-size); color: var(--status-danger); }
+.su-choices { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 0 36px; }
+.su-m-nohits { padding: 16px; color: var(--text-secondary); }
+
+.su-m-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+.su-unsaved, .su-saved { display: inline-flex; align-items: center; gap: 8px; }
+.su-unsaved { color: var(--text-secondary); }
+.su-unsaved > span:last-child { margin-left: -4px; }
+.su-saved { color: var(--status-success); font-weight: 700; }
+.su-saved .glyph { width: 18px; height: 18px; stroke-width: 2; }
+
+.su-pair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--kit-radius);
+  background: var(--surface-raised);
+}
