@@ -28,7 +28,6 @@ from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QHBoxLayout,
     QInputDialog,
     QMainWindow,
@@ -53,9 +52,8 @@ from gui.packer_bridge import order_label, session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
 from gui.sessions_page import SessionsPage
 from gui.sessions_payload import session_key
-from gui.sku_mapping_dialog import SKUMappingDialog
+from gui.setup_pages import SetupPages
 from gui.theme import apply_theme, current_tokens
-from gui.worker_selection_dialog import WorkerSelectionDialog
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
 from packing_tool.profile_manager import NetworkError, ProfileManager
@@ -149,6 +147,11 @@ def _unmapped_choices(order_state) -> list[tuple[str, str]]:
     ]
 
 
+def _under_pytest() -> bool:
+    """Whether the suite is running: it must not start on Worker selection."""
+    return "pytest" in sys.modules
+
+
 class MainWindow(QMainWindow):
     """
     The main application window, acting as the central orchestrator.
@@ -179,7 +182,7 @@ class MainWindow(QMainWindow):
         """Initialize the MainWindow, sets up UI, and loads initial state.
 
         Args:
-            skip_worker_selection: If True, skip worker selection dialog (for tests)
+            skip_worker_selection: If True, start on the shell with a dummy worker (for tests and render scripts)
             config_path: Path to the configuration file (default: config.ini).
                 Use a dev config (e.g. config.dev.ini) to point at a local mock server.
         """
@@ -195,7 +198,7 @@ class MainWindow(QMainWindow):
         logger.info("Initializing MainWindow")
 
         # Detect if running in test mode
-        self._is_test_mode = skip_worker_selection or "pytest" in sys.modules
+        self._is_test_mode = skip_worker_selection or _under_pytest()
 
         # Initialize ProfileManager, offering a path-recovery prompt on
         # NetworkError instead of exiting immediately.
@@ -281,13 +284,7 @@ class MainWindow(QMainWindow):
         # Settings for remembering last client
         self.settings = QSettings("PackingTool", "ClientSelection")
 
-        # Show worker selection BEFORE main window initialization (skip in test mode)
-        if not self._is_test_mode:
-            if not self._select_worker():
-                # User cancelled - exit app
-                logger.info("Worker selection cancelled - exiting application")
-                sys.exit(0)
-        else:
+        if self._is_test_mode:
             # Test mode - use dummy worker
             self.current_worker_id = "test_worker_001"
             self.current_worker_name = "Test Worker"
@@ -297,6 +294,11 @@ class MainWindow(QMainWindow):
 
         # Load available clients and restore last selected
         self.load_available_clients()
+
+        if not self._is_test_mode:
+            # The first thing a packer sees: who is packing (spec 2026-10-09,
+            # section 4.4). The shell is built and waits underneath.
+            self._open_setup(lambda: self.setup_pages.show_workers(startup=True))
 
         logger.info("MainWindow initialized successfully")
 
@@ -404,8 +406,8 @@ class MainWindow(QMainWindow):
         # rasterised at the colour in force when they were built.
         theme_notifier.changed.connect(self._refresh_rail_icons)
         # Lambdas, so a test (or a subclass) that replaces the handler is seen.
-        self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping_dialog())
-        self.sidebar.switchWorkerRequested.connect(lambda: self._select_worker())
+        self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping())
+        self.sidebar.switchWorkerRequested.connect(lambda: self.switch_worker())
         self.sidebar.themeRequested.connect(lambda name: self._switch_theme(name))
         self.sidebar.set_worker(self.current_worker_name or "")
         self.command_bar.sidebarToggled.connect(self._toggle_sidebar)
@@ -443,10 +445,26 @@ class MainWindow(QMainWindow):
             self._on_map_barcode_from_packer
         )
 
-        # Stacked widget to switch between session view and packer mode
+        # Worker selection and SKU mapping: the setup document, full window
+        # (spec 2026-10-09 section 4). Lambdas, so a test that replaces a
+        # handler is seen.
+        self.setup_pages = SetupPages(self.worker_manager, self.profile_manager)
+        self.setup_pages.workerChosen.connect(
+            lambda worker_id, name: self._on_worker_chosen(worker_id, name)
+        )
+        self.setup_pages.quitRequested.connect(lambda: self.close())
+        self.setup_pages.backRequested.connect(lambda: self._leave_setup())
+        self.setup_pages.mappingSaved.connect(lambda mapping: self._on_mapping_saved(mapping))
+        self._setup_return = self.session_widget  # where a setup page goes back to
+        self._opening_setup = False
+        self._leaving_setup = False
+        self._stray_scans: list[str] = []  # see _on_stray_scan()
+
+        # The shell, Packer Mode and the setup pages: one at a time.
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.addWidget(self.session_widget)
         self.stacked_widget.addWidget(self.packer_mode_widget)
+        self.stacked_widget.addWidget(self.setup_pages)
         self.setCentralWidget(self.stacked_widget)
 
         self._init_overflow()
@@ -504,8 +522,11 @@ class MainWindow(QMainWindow):
         exit_item.setShortcutVisibleInContextMenu(True)
 
         # Through click(), which is a no-op on the disabled no-session button.
+        # Not from a setup page: the session is out of sight there.
         end_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
-        end_shortcut.activated.connect(lambda: self.toolbar_end_btn.click())
+        end_shortcut.activated.connect(
+            lambda: None if self._setup_showing() else self.toolbar_end_btn.click()
+        )
 
         for page, _item in enumerate(RAIL_ITEMS):
             shortcut = QShortcut(QKeySequence(f"Ctrl+{page + 1}"), self)
@@ -588,41 +609,92 @@ class MainWindow(QMainWindow):
         else:
             toast(self, message, role=role)
 
-    def _select_worker(self) -> bool:
-        """Show worker selection dialog
+    # ========================================================================
+    # SETUP PAGES: Worker selection and SKU mapping (spec 2026-10-09)
+    # ========================================================================
 
-        Returns:
-            bool: True if worker selected, False if cancelled
+    def _setup_showing(self) -> bool:
+        return self.stacked_widget.currentWidget() is self.setup_pages
+
+    def _open_setup(self, show) -> None:
+        """Put a setup page over whatever is showing, and remember what that was.
+
+        `show` is one of SetupPages' show_* methods, bound to its arguments.
+        From the shell the app document is told to draw nothing first, and the
+        switch waits for that paint (ADR 0003). From Packer Mode the switch is
+        immediate and its document is left alone: the packer comes back to the
+        same order, and a scan must not fall into a gap (ADR 0004).
         """
-        try:
-            # Show selection dialog
-            dialog = WorkerSelectionDialog(self.worker_manager, self)
+        if (
+            self._setup_showing()
+            or self._opening_setup
+            or self._entering_packer_mode
+            or self._leaving_packer_mode
+        ):
+            return
+        self._setup_return = self.stacked_widget.currentWidget()
+        self._stray_scans = []
+        show()
 
-            if dialog.exec() == QDialog.Accepted:
-                self.current_worker_id = dialog.get_selected_worker_id()
+        def enter():
+            self._opening_setup = False
+            self.stacked_widget.setCurrentWidget(self.setup_pages)
+            self.setup_pages.view.setFocus()
 
-                # Get worker details
-                worker = self.worker_manager.get_worker(self.current_worker_id)
-                if worker:
-                    self.current_worker_name = worker.name
-                    if hasattr(self, "sidebar"):
-                        self.sidebar.set_worker(self.current_worker_name)
-                    logger.info(
-                        f"Logged in as: {self.current_worker_name} ({self.current_worker_id})"
-                    )
-                    return True
+        pages = self.session_tabs
+        if self._setup_return is self.session_widget and pages.view.isVisible():
+            self._opening_setup = True
+            pages.bridge.set_covered(True)
+            when_painted(pages.bridge, enter)
+        else:
+            enter()
 
-            logger.info("Worker selection cancelled")
-            return False
+    def _leave_setup(self, after=None) -> None:
+        """Go back to where the setup page was opened from.
 
-        except Exception as e:
-            logger.exception("Worker selection failed")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to load worker profiles:\n{e!s}\n\nApplication will exit.",
+        The page is blanked and the switch waits for that paint, 150 ms at
+        most: a hidden view keeps its last frame (ADR 0003). `after` runs once
+        Packer Mode is back and its scanner has the focus, before any stray
+        scan is replayed.
+        """
+        if not self._setup_showing() or self._leaving_setup:
+            return
+        self._leaving_setup = True
+        target = self._setup_return
+        self.setup_pages.blank()
+
+        def switch():
+            self._leaving_setup = False
+            if target is self.packer_mode_widget:
+                self.stacked_widget.setCurrentWidget(target)
+                target.set_focus_to_scanner()
+                if after is not None:
+                    after()
+                strays, self._stray_scans = self._stray_scans, []
+                for text in strays:
+                    self.on_scanner_input(text)
+                return
+            # Before the shell shows: what it shows is current.
+            self._push_pages()
+            self.session_tabs.bridge.set_covered(False)
+            self.stacked_widget.setCurrentWidget(self.session_widget)
+
+        when_painted(self.setup_pages.bridge, switch)
+
+    def switch_worker(self) -> None:
+        """The sidebar's Switch worker…"""
+        self._open_setup(
+            lambda: self.setup_pages.show_workers(
+                self.current_worker_id or "", self.current_worker_name or "", startup=False
             )
-            return False
+        )
+
+    def _on_worker_chosen(self, worker_id: str, name: str) -> None:
+        self.current_worker_id = worker_id
+        self.current_worker_name = name
+        self.sidebar.set_worker(name)
+        logger.info(f"Logged in as: {name} ({worker_id})")
+        self._leave_setup()
 
     # ========================================================================
     # CLIENT MANAGEMENT (NEW)
@@ -816,46 +888,18 @@ class MainWindow(QMainWindow):
             self, "PackingTool", "FULFILLMENT_SERVER_PATH", config_fallback
         ).exec()
 
-    def open_sku_mapping_dialog(self):
-        """
-        Open SKU mapping dialog for current client.
-
-        Phase 1.3: Uses ProfileManager for centralized storage on file server.
-        All changes are synchronized across all PCs with file locking.
-        """
+    def open_sku_mapping(self) -> None:
+        """The sidebar's SKU mapping: the full-window page for the current client."""
         if not self.current_client_id:
-            logger.warning("Attempted to open SKU mapping without selecting client")
-            QMessageBox.warning(
-                self, "No Client Selected", "Please select a client first!"
-            )
-            return
+            return  # the sidebar's item is disabled until a client is chosen
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label))
 
-        logger.info(f"Opening SKU mapping dialog for client {self.current_client_id}")
-
-        # Phase 1.3: Use ProfileManager directly for centralized storage
-        dialog = SKUMappingDialog(self.current_client_id, self.profile_manager, self)
-
-        if dialog.exec():  # User clicked "Save & Close"
-            # Mappings are already saved by the dialog
-            logger.info("SKU mapping dialog closed with save")
-
-            # If a session is active, reload the SKU map into logic instance
-            if self.logic:
-                try:
-                    new_map = self.profile_manager.load_sku_mapping(
-                        self.current_client_id
-                    )
-                    self.logic.set_sku_map(new_map)
-                    self._toast("SKU mapping saved and shared with every PC.")
-                    logger.info("SKU mapping reloaded into active session")
-                except Exception as e:
-                    logger.exception("Failed to reload SKU mapping into session")
-                    QMessageBox.warning(
-                        self,
-                        "Reload Warning",
-                        f"Mappings saved successfully but failed to reload into current session:\n\n{e}\n\n"
-                        f"Please restart the session to use new mappings.",
-                    )
+    def _on_mapping_saved(self, mapping: dict) -> None:
+        """A Save on the mapping page: the open session matches by it at once."""
+        if self.logic:
+            self.logic.set_sku_map(mapping)
 
     def _start_heartbeat_timer(self):
         """Start timer to update session lock heartbeat."""
@@ -1036,6 +1080,12 @@ class MainWindow(QMainWindow):
             # The start worker is still running; closing now would leave its
             # thread and the lock behind. The start ends in seconds.
             event.ignore()
+            return
+        if self._setup_showing() and self.setup_pages.dirty():
+            # Unsaved mappings: the page asks, and the window stays
+            # (spec 2026-10-09 section 6.6).
+            event.ignore()
+            self.setup_pages.ask_leave()
             return
         logger.info("Application closing, performing cleanup...")
 
