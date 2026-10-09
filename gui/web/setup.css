@@ -1,0 +1,4 @@
+/* The setup document's own sheet (UI refresh phase 5): Worker selection and
+   SKU mapping. Filled in by the next task. */
+
+.setup { position: relative; height: 100%; overflow: hidden; }
