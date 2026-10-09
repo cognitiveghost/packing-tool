@@ -100,7 +100,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.su-card-line { color: var(--text-secondary); }
+.su-card-line { color: var(--text-secondary); font-size: var(--type-caption-size); }
 
 .su-new {
   align-items: center;

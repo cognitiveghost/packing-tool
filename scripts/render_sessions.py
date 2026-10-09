@@ -1,9 +1,9 @@
 """Offscreen renders of Sessions and Session details, mockup frames 7a-7h and 8a-8f.
 
-    .venv/bin/python scripts/render_sessions.py [output dir]
+    .venv/bin/python scripts/render_sessions.py [output dir] [--size WIDTHxHEIGHT]
 
-Writes <frame>-<theme>.png at 1366x768 in both themes, by default into
-docs/design/ui-refresh/renders/phase4/. It builds a MainWindow against a
+Writes <frame>-<theme>.png at the size given (1366x768 by default), by default
+into docs/design/ui-refresh/renders/final/<size>/. It builds a MainWindow against a
 throwaway server with its own QSettings, so it touches neither the file
 server nor this PC's saved theme, client or server path. The pages are not
 driven through the registry: the bridge is given payloads built by the pure
@@ -30,8 +30,8 @@ sys.path.insert(0, str(ROOT))
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
+from render_args import parse_args
 
-DEFAULT_OUT = ROOT / "docs" / "design" / "ui-refresh" / "renders" / "phase4"
 # The mockup's moment, in this PC's time zone so the clock times read as drawn.
 NOW = datetime(2026, 10, 7, 14, 6, 31).astimezone()
 STAMP = "14:06:31"
@@ -246,7 +246,7 @@ def write_session_files(by_id: dict) -> None:
 
 
 def main(argv: list[str]) -> int:
-    out = Path(argv[0]) if argv else DEFAULT_OUT
+    out, width, height = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -303,7 +303,7 @@ def main(argv: list[str]) -> int:
         real_set = window.sidebar.set_connection
         window.sidebar.set_connection = lambda state, _path: real_set(state, r"\\fs01\packer")
         window._set_connection_state("ok")
-        window.resize(1366, 768)
+        window.resize(width, height)
         window.show()
         pages = window.session_tabs
         bridge = pages.bridge

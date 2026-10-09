@@ -1,10 +1,9 @@
 """Offscreen renders of Packing and Statistics, mockup frames 3a-3g, 4a-4c, 5a, 5b.
 
-    .venv/bin/python scripts/render_app_pages.py [output dir]
+    .venv/bin/python scripts/render_app_pages.py [output dir] [--size WIDTHxHEIGHT]
 
-Writes <frame>-<theme>.png, by default into
-docs/design/ui-refresh/renders/phase3/: 3a-3g and 4a-4c at 1366x768, 5a and 5b
-at 1920x1080, in both themes. It builds a MainWindow against a throwaway
+Writes <frame>-<theme>.png at the size given (1366x768 by default), by default
+into docs/design/ui-refresh/renders/final/<size>/. It builds a MainWindow against a throwaway
 server with a synthetic 120-order list, and its own QSettings, so it touches
 neither the file server nor this PC's saved theme, client or server path.
 
@@ -26,8 +25,8 @@ sys.path.insert(0, str(ROOT))
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
+from render_args import parse_args
 
-DEFAULT_OUT = ROOT / "docs" / "design" / "ui-refresh" / "renders" / "phase3"
 SESSION_ID = "2026-10-07_1"
 LIST_NAME = "Morning_wave"
 
@@ -72,7 +71,7 @@ def synthetic_orders() -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-    out = Path(argv[0]) if argv else DEFAULT_OUT
+    out, width, height = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -134,7 +133,7 @@ def main(argv: list[str]) -> int:
         real_set = window.sidebar.set_connection
         window.sidebar.set_connection = lambda state, _path: real_set(state, r"\\fs01\packer")
         window._set_connection_state("ok")
-        window.resize(1366, 768)
+        window.resize(width, height)
         window.show()
         pages = window.session_tabs
         bridge = pages.bridge
@@ -150,7 +149,7 @@ def main(argv: list[str]) -> int:
                 app.processEvents()
                 time.sleep(0.02)
 
-        def shoot(name: str, width: int = 1366, height: int = 768) -> None:
+        def shoot(name: str) -> None:
             for theme in ("light", "dark"):
                 apply_theme(app, theme)
                 window.resize(width, height)
@@ -221,7 +220,7 @@ def main(argv: list[str]) -> int:
         # 3d to 3f, 4b, 5a, 5b: in progress.
         logic = open_session()
         shoot("3d")
-        shoot("5a", 1920, 1080)
+        shoot("5a")
         window.search_input.setText("LST-07")
         shoot("3e")
         window.search_input.setText("99999")
@@ -229,7 +228,7 @@ def main(argv: list[str]) -> int:
         window.search_input.clear()
         pages.setCurrentIndex(PAGE_STATISTICS)
         shoot("4b")
-        shoot("5b", 1920, 1080)
+        shoot("5b")
         pages.setCurrentIndex(PAGE_PACKING)
         close_session(logic)
 

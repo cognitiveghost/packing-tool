@@ -534,6 +534,7 @@ Seams, all through public surfaces:
 | the name is re-checked on every key after a failed Create | the sentence goes when the text changes and is checked again on Create | the rules live in Python only |
 | "Just created" on a new card | also "Not active yet" for a worker made earlier who never packed | the mockup has no such worker |
 | no state for mappings that cannot be read | the banner with Retry | today it starts from an empty table |
+| card lines in the mockup's 10pt body | the two secondary lines of a worker card at caption size (10pt); the name stays at heading size | at 12pt "31 sessions · 2,870 orders" wrapped in the 240px card (found in the final render pass) |
 
 ## 12. Deleted
 

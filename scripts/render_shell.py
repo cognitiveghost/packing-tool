@@ -1,9 +1,9 @@
 """Offscreen renders of the shell, mockup frames 2a-2e, in both themes.
 
-    .venv/bin/python scripts/render_shell.py [output dir]
+    .venv/bin/python scripts/render_shell.py [output dir] [--size WIDTHxHEIGHT]
 
-Writes <frame>-<theme>.png at 1366x768 and 2b-<theme>-1920.png at 1920x1080,
-by default into docs/design/ui-refresh/renders/phase1/. Runs against a
+Writes <frame>-<theme>.png at the size given (1366x768 by default), by default
+into docs/design/ui-refresh/renders/final/<size>/. Runs against a
 throwaway server with synthetic data and its own QSettings, so it touches
 neither the file server nor this PC's saved theme or client.
 
@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -24,8 +25,8 @@ sys.path.insert(0, str(ROOT))
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
+from render_args import parse_args
 
-DEFAULT_OUT = ROOT / "docs" / "design" / "ui-refresh" / "renders" / "phase1"
 SERVER_LABEL = r"\\fs01\packer"
 
 ORDERS = [
@@ -100,7 +101,7 @@ def build(tmp: Path):
 
 
 def main(argv: list[str]) -> int:
-    out = Path(argv[0]) if argv else DEFAULT_OUT
+    out, width, height = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -129,12 +130,26 @@ def main(argv: list[str]) -> int:
             lambda _path, since: real_outage(SERVER_LABEL, since)
         )
 
-        def shoot(name: str, width: int = 1366, height: int = 768) -> None:
+        bridge = window.session_tabs.bridge
+
+        def settle() -> None:
+            # The pages are a web document: grab only after it has drawn what
+            # it was last sent.
+            deadline = time.monotonic() + 20
+            while bridge.painted_revision < bridge.revision:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("the page never painted; is QtWebEngine working?")
+                app.processEvents()
+                time.sleep(0.01)
+            for _ in range(10):
+                app.processEvents()
+                time.sleep(0.02)
+
+        def shoot(name: str) -> None:
             for theme in ("light", "dark"):
                 apply_theme(app, theme)
                 window.resize(width, height)
-                app.processEvents()
-                app.processEvents()
+                settle()
                 target = out / f"{name.format(theme=theme)}.png"
                 if not window.grab().save(str(target)):
                     raise OSError(f"could not write {target}")
@@ -148,7 +163,6 @@ def main(argv: list[str]) -> int:
         # 2b: session open.
         logic = open_session()
         shoot("2b-{theme}")
-        shoot("2b-{theme}-1920", 1920, 1080)
 
         # 2c: collapsed rail.
         window._set_sidebar_expanded(False)
