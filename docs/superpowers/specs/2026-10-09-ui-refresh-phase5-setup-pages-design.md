@@ -77,7 +77,6 @@ and `README.md` are current; the "For shared/" items of all five phases are one 
 | `gui/setup_bridge.py` (new) | `SetupBridge(PageBridge)` and `mount_setup_page(view)`. |
 | `gui/setup_pages.py` (new) | `SetupPages(QWidget)`: the view, and everything the two pages read from or write to the server. |
 | `gui/web/setup.html`, `setup.css`, `setup.js` (new) | the **setup document**: both pages. |
-| `gui/web/floor.css` | gains only what section 4.6 names. |
 | `gui/main_window.py` | the stack's third widget, the two ways in and the way back, the stray-scan queue. Loses `_select_worker`, `open_sku_mapping_dialog`, `_save_sku_mapping`, `_on_map_sku_from_packer`'s and `_on_map_barcode_from_packer`'s dialogs, `_unmapped_choices`. |
 | `packing_tool/profile_manager.py` | `load_sku_mapping(client_id, fresh=False)`: `fresh=True` skips the cache. |
 | `gui/sku_mapping_dialog.py`, `gui/worker_selection_dialog.py` | deleted. |
@@ -141,8 +140,8 @@ file each.
 - **`_leave_setup(after=None)`** calls `setup_pages.blank()`, waits for that paint (`when_painted`, 150 ms
   at most), then returns to `_setup_return`:
   - the shell: `_push_pages()`, `set_covered(False)`, switch;
-  - Packer Mode: switch, `resume_scanner()`, `set_focus_to_scanner()`, then `after()` if given, then every
-    queued stray scan through `on_scanner_input`, in order.
+  - Packer Mode: switch, `set_focus_to_scanner()`, then `after()` if given, then every queued stray scan
+    through `on_scanner_input`, in order. The scanner was never paused, so there is nothing to resume.
 - **Startup.** `__init__` no longer selects a worker before `_init_ui()`. After `load_available_clients()`,
   outside test mode, it calls `_open_setup` for Worker selection with `startup=True`; `_setup_return` is
   the shell. In test mode nothing changes: the dummy worker, and the shell on top.
@@ -158,12 +157,9 @@ Opened from the shell, today's teardown and message box stand and the page stays
 
 Python decides every card, row, count of changes and sentence that does not depend on what is being typed.
 The page keeps: the text in its inputs, the search text, which row is being edited, and which question is
-open. Two checks run in the page as the packer types, because a round trip per key is not worth it, and
-Python repeats both before it acts:
-
-- **already mapped**: the draft's barcode, normalised like `normalize_sku`, equals another row's `key`;
-- **not on this order** (quick map, *Map barcode…*): the draft's SKU, normalised, is none of the choices'
-  `key`s.
+open. One check runs in the page as the packer types, because a round trip per key is not worth it, and Python
+repeats it before it acts: **already mapped**, when the draft's barcode, normalised like `normalize_sku`,
+equals another row's `key`. Everything else is answered by the slot the page calls.
 
 ### 4.6 Sheets
 
@@ -171,8 +167,8 @@ Python repeats both before it acts:
 only from `theme_css_vars()`; the two shadows are `--card-shadow` and `--overlay-shadow`. The pages reuse
 from the kit and the floor kit: `.btn` (primary, secondary, ghost, danger, dashed, icon, compact), `.badge`,
 `.banner.danger`, `.input`, `.field`, `.scrim` and `.dialog`, `.state-card`, `.tbl-head` and `.tbl-row`,
-`.dot`, `.mono`. `floor.css` gains `.field` at floor height (44px, body size) and nothing else; a rule that
-only these pages use stays in `setup.css`.
+`.dot`, `.mono`. The kit's `.field` already takes the floor's control height, so `floor.css` does not change;
+a rule that only these pages use stays in `setup.css`.
 
 ## 5. Worker selection
 
@@ -195,7 +191,7 @@ worker**: a dashed card with a plus in a dashed circle.
  "leave": "Quit" | "Back to Ivan",
  "mode": "ready" | "failed",
  "error": {} | {"title": "Couldn’t load the worker list.", "text": …, "path": …},
- "cards": [{"id", "name", "initials", "stats", "last", "badge"}]}
+ "cards": [{"id", "name", "initials", "stats", "last", "badge", "picked": bool}]}
 ```
 
 - **Order:** `last_active` newest first; workers never active after them, by name.
@@ -278,8 +274,11 @@ lasts until the next load. Loaded rows are sorted by barcode; an added row goes 
   row being edited becomes the row it collided with).
 - Problems, in order: "Enter a barcode.", "Enter a SKU.", "This barcode already maps to *SKU*." (another
   row's `key` equals this barcode's; `replace` is the way through).
-- `counts()` → added, edited, deleted against the mapping as read. A row edited back to what was read is
-  not edited. `summary()` → "2 added, 1 edited, 1 deleted", zero parts left out.
+- `counts()` → added, edited, deleted, by barcode against the mapping as read: a barcode that was not
+  read is added, one whose SKU differs is edited, one that no row has now is deleted. So a row edited back
+  to what was read is not a change, and a row whose barcode was edited counts as one added and one deleted,
+  which is what the server gets. `summary()` → "2 added, 1 edited, 1 deleted", zero parts left out.
+- `status(row)` → `"new"`, `"edited"` or `""`, by the same rule.
 - `changes()` → `(add, remove)` for `update_sku_mapping`: every barcode whose SKU differs from what was
   read, and every barcode read that no row has now. An edited barcode is one remove and one add.
 - `loaded(mapping)` starts over from a mapping (after a save or a reload).
@@ -289,6 +288,7 @@ lasts until the next load. Loaded rows are sorted by barcode; an added row goes 
  "mode": "ready" | "failed",
  "rows": [{"id", "barcode", "sku", "key", "status": "" | "new" | "edited"}],
  "dirty": bool, "changes": 3, "summary": "2 added, 1 edited",
+ "lost": "Your 3 unsaved changes (2 added, 1 edited) will be lost." | "",
  "saved": bool,
  "error": {} | {"title", "text", "cause", "path", "action": "save" | "load" | ""},
  "quick": {} | section 7.1}
@@ -514,7 +514,7 @@ Seams, all through public surfaces:
 
 ### For shared/, from this phase
 
-- `.field` at floor height, with the rest of `gui/web/floor.css`.
+- `.field.invalid` (a danger edge on a bare input); the kit has it only for `.input`.
 - The stray-key listener and the toast script, as parts of `shared/web/page.js`.
 - An initials helper: both apps draw a worker's initials.
 
