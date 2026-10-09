@@ -51,7 +51,8 @@ from gui.components.connection_banner import ConnectionBanner
 from gui.components.sidebar import Sidebar
 from gui.packer_bridge import order_label, session_end_payload
 from gui.packer_mode_widget import PackerModeWidget
-from gui.session_browser.session_browser_widget import SessionBrowserWidget
+from gui.sessions_page import SessionsPage
+from gui.sessions_payload import session_key
 from gui.sku_mapping_dialog import SKUMappingDialog
 from gui.theme import apply_theme, current_tokens
 from gui.worker_selection_dialog import WorkerSelectionDialog
@@ -59,7 +60,6 @@ from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
 from packing_tool.profile_manager import NetworkError, ProfileManager
 from packing_tool.progress_publisher import ProgressPublisher
-from packing_tool.session_history_manager import SessionHistoryManager
 from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
@@ -239,10 +239,6 @@ class MainWindow(QMainWindow):
         self.worker_manager = WorkerManager(str(base_path))
         logger.info("WorkerManager initialized successfully")
 
-        # Initialize SessionHistoryManager
-        self.session_history_manager = SessionHistoryManager(self.profile_manager)
-        logger.info("SessionHistoryManager initialized successfully")
-
         # Initialize SessionRegistryManager (per-client index for fast browser loading)
         self.registry_manager = SessionRegistryManager(self.profile_manager)
         logger.info("SessionRegistryManager initialized successfully")
@@ -349,25 +345,10 @@ class MainWindow(QMainWindow):
 
         self.command_bar.open_session_button.clicked.connect(self.open_session_browser)
 
-        # The Session Browser — a destination now, not a dialog.
-        self.session_browser = SessionBrowserWidget(
-            profile_manager=self.profile_manager,
-            session_lock_manager=self.lock_manager,
-            session_history_manager=self.session_history_manager,
-            worker_manager=self.worker_manager,
-            registry_manager=self.registry_manager,
-        )
-        self.session_browser.resume_session_requested.connect(
-            self._handle_resume_session_from_browser
-        )
-        self.session_browser.start_packing_requested.connect(
-            self._handle_start_packing_from_browser
-        )
-
-        # Packing and Statistics are one web document; Sessions is the Qt
-        # page beside it until phase 4 (ADR 0003). AppPages speaks the
-        # QTabWidget calls the code below already makes.
-        self.session_tabs = AppPages(self.session_browser)
+        # Packing, Statistics, Sessions and Session details are one web
+        # document (ADR 0003). AppPages speaks the QTabWidget calls the code
+        # below already makes.
+        self.session_tabs = AppPages()
         pages = self.session_tabs.bridge
         pages.openSessionRequested.connect(lambda: self.open_session_browser())
         pages.startPackingRequested.connect(lambda: self.switch_to_packer_mode())
@@ -377,11 +358,32 @@ class MainWindow(QMainWindow):
         pages.pageRequested.connect(self._show_named_page)
         pages.retryStartRequested.connect(lambda: self._retry_start())
         pages.closeFailureRequested.connect(lambda: self._close_failure())
-        # load_available_clients() ran before this widget existed, so the
-        # client it settled on (restored last_client, if any) never reached
-        # the browser -- push it now that there is somewhere to push it.
-        if self.current_client_id:
-            self.session_browser.load_client(self.current_client_id)
+
+        # The Sessions pages' controller: the registry refresh, the take-over
+        # question and the exports. Lambdas, so a test (or a subclass) that
+        # replaces a handler is seen. on_client_changed gives it its client.
+        self.sessions = SessionsPage(
+            pages,
+            self.registry_manager,
+            self.lock_manager,
+            window=self,
+            is_showing=lambda: (
+                self._shell_showing()
+                and self.session_tabs.currentIndex() == PAGE_BROWSER
+            ),
+            client_label=lambda: self.client_combo.currentText(),
+            toast=lambda message: self._toast(message),
+            parent=self,
+        )
+        self.sessions.startRequested.connect(
+            lambda info: self._handle_start_packing_from_browser(info)
+        )
+        self.sessions.resumeRequested.connect(
+            lambda info: self._handle_resume_session_from_browser(info)
+        )
+        self.sessions.showPackingRequested.connect(
+            lambda: self.session_tabs.setCurrentIndex(PAGE_PACKING)
+        )
 
         for icon_name, label, tip in RAIL_ITEMS:
             index = self.nav_rail.add_item(icon(icon_name), label)
@@ -396,6 +398,7 @@ class MainWindow(QMainWindow):
         self.session_tabs.currentChanged.connect(
             lambda index: self.command_bar.set_page(PAGES[index])
         )
+        self.session_tabs.currentChanged.connect(lambda index: self._on_page_changed(index))
 
         # The rail's stylesheet follows the theme on its own, but its icons are
         # rasterised at the colour in force when they were built.
@@ -470,6 +473,11 @@ class MainWindow(QMainWindow):
         if index is not None:
             self.session_tabs.setCurrentIndex(index)
 
+    def _on_page_changed(self, index: int):
+        if index == PAGE_BROWSER:
+            # What Sessions shows should be now, not when it was last looked at.
+            self.sessions.page_shown()
+
     def _switch_theme(self, name: str):
         """Light or Dark, from the sidebar's segment or its collapsed toggle.
 
@@ -534,6 +542,7 @@ class MainWindow(QMainWindow):
             bridge.set_packing({})
             bridge.set_statistics({})
             self.command_bar.set_complete(False)
+            self._sync_sessions_context()
             return
 
         state = logic.session_packing_state
@@ -559,6 +568,7 @@ class MainWindow(QMainWindow):
         self.command_bar.set_complete(complete)
         # Frame 3g: with every order packed there is nothing left to scan.
         self.packer_mode_button.setEnabled(not complete)
+        self._sync_sessions_context()
 
     def _refresh_pages(self):
         """Push now if the shell is on screen; leaving Packer Mode pushes.
@@ -679,7 +689,7 @@ class MainWindow(QMainWindow):
         self.sidebar.set_client_chosen(chosen)
         self.command_bar.set_client_chosen(chosen)
         if not chosen:
-            # The document draws "Choose a client"; Sessions is still Qt.
+            # Every page draws "Choose a client"; Packing is the one to be on.
             self.session_tabs.setCurrentIndex(PAGE_PACKING)
         self._sync_shell()
 
@@ -691,6 +701,18 @@ class MainWindow(QMainWindow):
             clients=self.client_combo.itemData(0) is not None,
             server_down=self._connection_state == "down",
         )
+        self._sync_sessions_context()
+
+    def _sync_sessions_context(self):
+        """Tell Sessions which session is open on this PC and whether the
+        server answers: both decide what a row's action is (section 5.5)."""
+        open_key = ""
+        if self.logic is not None and self.current_session_path:
+            open_key = session_key({
+                "session_id": Path(self.current_session_path).name,
+                "packing_list_name": self.current_packing_list or "",
+            })
+        self.sessions.set_context(open_key, self._connection_state == "down")
 
     def on_client_changed(self, index: int):
         """
@@ -727,10 +749,9 @@ class MainWindow(QMainWindow):
 
         logger.debug(f"Current client set to: {client_id}")
 
-        # The browser has no picker of its own (Bundle 6): the command bar's
-        # is the only one, so it has to push the change.
-        if hasattr(self, "session_browser"):
-            self.session_browser.load_client(client_id)
+        # Sessions has no picker of its own (Bundle 6): the command bar's is
+        # the only one, so it has to push the change.
+        self.sessions.load_client(client_id)
         self._sync_client_state()
 
     def flash_border(self, color: str):
@@ -1065,14 +1086,11 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.warning(f"Failed to check session manager: {e}")
 
-            # 5. Stop auto-refresh timer in Session Browser if open
-            if hasattr(self, "session_browser_dialog"):
-                try:
-                    if hasattr(self.session_browser_dialog, "auto_refresh_timer"):
-                        self.session_browser_dialog.auto_refresh_timer.stop()
-                        logger.info("Session browser auto-refresh stopped")
-                except Exception as e:
-                    logger.warning(f"Failed to stop session browser timer: {e}")
+            # 5. Stop the Sessions timer and let its workers end
+            try:
+                self.sessions.shutdown()
+            except Exception as e:
+                logger.warning(f"Failed to stop the Sessions page: {e}")
 
             logger.info("Application cleanup completed successfully")
 
@@ -1090,6 +1108,7 @@ class MainWindow(QMainWindow):
         session_path: Path,
         client_id: str,
         packing_list_name: str,
+        take_over: dict | None = None,
     ) -> bool:
         """
         Start packing session for Shopify packing list (new or resumed).
@@ -1104,6 +1123,7 @@ class MainWindow(QMainWindow):
             session_path: Path to session directory (Sessions/CLIENT_X/2025-XX-XX_X/)
             client_id: Client identifier
             packing_list_name: Name of the packing list
+            take_over: The stale lock the packer agreed to take over (frame 7c), or None
 
         Returns:
             bool: True if session started successfully, False otherwise
@@ -1139,15 +1159,11 @@ class MainWindow(QMainWindow):
             self.current_packing_list = packing_list_name
             self.current_work_dir = str(work_dir)
 
-            # 3. Acquire lock on work directory (with stale lock handling)
-            success, error_msg = self._acquire_lock_with_stale_prompt(
-                client_id, work_dir
+            # 3. Acquire the lock on the work directory
+            success, error_msg, taken_from = self._acquire_lock(
+                client_id, work_dir, take_over
             )
             if not success:
-                if error_msg is None:
-                    # User chose not to force-release: not a failure.
-                    pages.set_session(session_payload())
-                    return False
                 raise RuntimeError(error_msg)
 
             logger.info(f"Lock acquired on {work_dir}")
@@ -1248,7 +1264,10 @@ class MainWindow(QMainWindow):
             self._open_packer_document()
 
             # 11. Update UI state
-            self._toast(f"Loaded {order_count} orders from {packing_list_name}.")
+            if taken_from:
+                self._toast(f"Took over {session_path.name} from {taken_from}.")
+            else:
+                self._toast(f"Loaded {order_count} orders from {packing_list_name}.")
             if self.logic.list_changes:
                 self._toast(list_changes_text(self.logic.list_changes), role="info")
 
@@ -2145,12 +2164,12 @@ class MainWindow(QMainWindow):
         self.command_bar.session_label.setToolTip(packing_list if session_id else "")
 
     def open_session_browser(self):
-        """Show the Session Browser page.
+        """Show the Sessions page.
 
-        What the old dialog-opening entry point became; the rail is the way
-        there now, but this stays as the one place that navigation happens.
+        The one place that navigation happens: the command bar's Open session
+        and the document's own button both come here.
         """
-        logger.info("Showing Session Browser page")
+        logger.info("Showing the Sessions page")
         self.session_tabs.setCurrentIndex(PAGE_BROWSER)
 
     def _start_or_resume_from_browser(
@@ -2160,13 +2179,14 @@ class MainWindow(QMainWindow):
         session_path,
         packing_list_path,
         work_dir=None,
-        resumed=False,
+        take_over=None,
     ):
         """
-        Shared logic for the Session Browser's "Resume" and "Start Packing" actions.
+        Shared logic for Sessions' "Resume session" and "Start packing".
 
         If work_dir is None, one is created via SessionManager.get_packing_work_dir()
         (the "start packing" case); otherwise the existing work_dir is reused (resume).
+        take_over is the stale lock the packer agreed to take over, or None.
         """
         if self._starting:
             return
@@ -2178,18 +2198,20 @@ class MainWindow(QMainWindow):
             return
 
         # One list at a time. is_active() covers only the legacy Excel path;
-        # an open Shopify list is self.logic (AUDIT-02-2).
+        # an open Shopify list is self.logic (AUDIT-02-2). The row's action is
+        # disabled while one is open, so this is for a start that still arrives.
         if self.logic is not None or (
             self.session_manager and self.session_manager.is_active()
         ):
             logger.warning(
                 "Attempted to start/resume packing while a session is already active"
             )
-            QMessageBox.warning(
-                self,
-                "Session Active",
-                "A session is already active. Please end it first.",
+            open_id = (
+                Path(self.current_session_path).name
+                if self.current_session_path
+                else "A session"
             )
+            self._toast(f"{open_id} is open. End it before opening another.", role="info")
             return
 
         self._last_start = {
@@ -2198,11 +2220,11 @@ class MainWindow(QMainWindow):
             "session_path": session_path,
             "packing_list_path": packing_list_path,
             "work_dir": work_dir,
-            "resumed": resumed,
+            "take_over": take_over,
         }
 
-        # The browser is a page now, so there is no dialog to accept -- the
-        # equivalent is going back to the page the work happens on.
+        # The work happens on the Packing page: that is where the opening
+        # steps (3b), a failure (3c) and the open list are drawn.
         self.session_tabs.setCurrentIndex(PAGE_PACKING)
 
         # Set current client if different
@@ -2240,55 +2262,22 @@ class MainWindow(QMainWindow):
                 return
             logger.info(f"Work directory created: {work_dir}")
 
-        # Use unified session start method
-        success = self.start_shopify_packing_session(
+        # The start's own toast says what loaded; a failure is frame 3c.
+        self.start_shopify_packing_session(
             packing_list_path=packing_list_path,
             work_dir=work_dir,
             session_path=session_path,
             client_id=client_id,
             packing_list_name=packing_list_name,
+            take_over=take_over,
         )
-
-        if not success:
-            return
-
-        # Get order count for success message
-        order_count = (
-            self.packing_data.get("total_orders", 0)
-            if hasattr(self, "packing_data")
-            else 0
-        )
-        list_name = (
-            self.packing_data.get("list_name", packing_list_name)
-            if hasattr(self, "packing_data")
-            else packing_list_name
-        )
-
-        if resumed:
-            QMessageBox.information(
-                self,
-                "Session Resumed",
-                f"Successfully resumed packing list: {list_name}\n"
-                f"Orders: {order_count}\n\n"
-                f"Continue packing from where you left off.",
-            )
-            logger.info("Session resumed successfully from Session Browser")
-        else:
-            QMessageBox.information(
-                self,
-                "Session Loaded",
-                f"Loaded packing list: {list_name}\n"
-                f"Orders: {order_count}\n\n"
-                f"Ready to start packing.",
-            )
-            logger.info("Packing session started successfully from Session Browser")
 
     def _handle_resume_session_from_browser(self, session_info: dict):
         """
         Handle resume request from Session Browser.
 
         Args:
-            session_info: Dict with session_path, client_id, packing_list_name, work_dir
+            session_info: Dict with session_path, client_id, packing_list_name, work_dir, session_id, take_over
         """
         logger.info(
             f"Resuming session from browser: {session_info.get('session_id', 'Unknown')}"
@@ -2306,7 +2295,7 @@ class MainWindow(QMainWindow):
             session_path,
             packing_list_path,
             work_dir=work_dir,
-            resumed=True,
+            take_over=session_info.get("take_over"),
         )
 
     def _handle_start_packing_from_browser(self, packing_info: dict):
@@ -2330,45 +2319,51 @@ class MainWindow(QMainWindow):
             packing_list_name,
             session_path,
             packing_list_path,
-            work_dir=None,
-            resumed=False,
         )
 
-    def _acquire_lock_with_stale_prompt(self, client_id: str, work_dir: Path):
+    def _acquire_lock(self, client_id: str, work_dir: Path, take_over: dict | None = None):
         """
-        Acquire a session lock, offering to force-release it if stale.
+        Take the session lock; take over a stale one only when the packer agreed to.
+
+        take_over is the stale lock frame 7c asked about. It is released only
+        if it is still that lock and still stale (AUDIT-02-1): while the
+        question was open its PC may have come back, or another PC taken it.
 
         Returns:
-            (True, None) on success.
-            (False, None) if the lock is stale and the user declined to force-release.
-            (False, error_msg) if the lock is actively held, or force-release+retry failed.
+            (True, None, None) when the lock was free.
+            (True, None, "<PC>") when it was taken over from that PC.
+            (False, sentence, None) when it was refused; the sentence is frame 3c's.
         """
-        success, error_msg, stale_lock = self.lock_manager.acquire_lock(
-            client_id,
-            work_dir,
-            worker_id=self.current_worker_id,
-            worker_name=self.current_worker_name,
-        )
+
+        def acquire():
+            return self.lock_manager.acquire_lock(
+                client_id,
+                work_dir,
+                worker_id=self.current_worker_id,
+                worker_name=self.current_worker_name,
+            )
+
+        def stale(lock) -> bool:
+            return bool(lock) and self.lock_manager.is_lock_stale(lock)
+
+        success, error_msg, lock = acquire()
+        taken_from = None
+        if not success and take_over is not None and stale(lock):
+            if self.lock_manager.force_release_lock(work_dir, expected=take_over):
+                taken_from = take_over.get("locked_by") or "another PC"
+            success, error_msg, lock = acquire()
         if success:
-            return True, None
-
-        if not (error_msg and "stale" in error_msg.lower()):
-            return False, error_msg
-
-        reply = QMessageBox.question(
-            self,
-            "Stale Lock Detected",
-            f"{error_msg}\n\nForce-release lock and continue?",
-            QMessageBox.Yes | QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return False, None
-
-        self.lock_manager.force_release_lock(work_dir, expected=stale_lock)
-        success, error_msg, _ = self.lock_manager.acquire_lock(
-            client_id,
-            work_dir,
-            worker_id=self.current_worker_id,
-            worker_name=self.current_worker_name,
-        )
-        return success, error_msg
+            return True, None, taken_from
+        if stale(lock):
+            # Nobody was asked about this lock: the list was behind, this is a
+            # Retry of 3c, or the lock changed while the question was open.
+            pc = lock.get("locked_by") or "Another PC"
+            return (
+                False,
+                (
+                    f"{pc} stopped responding while this list was open there. "
+                    "Resume it from Sessions to take it over."
+                ),
+                None,
+            )
+        return False, error_msg, None

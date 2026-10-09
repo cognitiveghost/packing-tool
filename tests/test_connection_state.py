@@ -128,7 +128,6 @@ def test_starting_from_sessions_is_refused_while_down(
         main_window, "start_shopify_packing_session",
         lambda **kwargs: started.append(kwargs) or True,
     )
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     main_window._start_or_resume_from_browser(
         "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
         work_dir=tmp_path,
@@ -208,6 +207,7 @@ def test_a_check_that_outlives_the_window_does_not_raise(
     errors = []
     monkeypatch.setattr(threading, "excepthook", lambda args: errors.append(args.exc_value))
     window.check_connection()
+    window.sessions.shutdown()
     shiboken6.delete(window)
     release.set()
     for thread in threading.enumerate():

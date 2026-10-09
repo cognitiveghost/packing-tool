@@ -193,6 +193,9 @@ def main_window(config_ini, server_root, qapp):
     )
     window = MainWindow(config_path=str(config_ini))
     yield window
+    # The client picker started a registry read on a QThread: let it end
+    # before the window goes.
+    window.sessions.shutdown()
     window.deleteLater()
 
 

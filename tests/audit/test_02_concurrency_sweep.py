@@ -60,22 +60,19 @@ def test_registry_writers_do_not_drop_each_others_entries(profile_manager):
 # ---------------------------------------------------------------------------
 
 
-def test_force_release_after_the_prompt_does_not_steal_a_fresh_lock(main_window, tmp_path, monkeypatch):
+def test_a_take_over_does_not_steal_a_lock_that_changed_meanwhile(main_window, tmp_path):
     work_dir = tmp_path / "L"
     work_dir.mkdir()
     _lock(work_dir, "PC-OLD", age_seconds=600)  # stale: its PC crashed
+    lock_file = work_dir / SessionLockManager.LOCK_FILENAME
+    asked_about = json.loads(lock_file.read_text(encoding="utf-8"))
 
-    def answer_yes_while_pc2_takes_it(*_args, **_kw):
-        # The prompt sat open; meanwhile PC-2 force-released and opened the list.
-        _lock(work_dir, "PC-2", age_seconds=0, pid=2)
-        return main_window_module.QMessageBox.Yes
+    # The question sat open; meanwhile PC-2 took the list over, then went quiet
+    # itself. The answer was about PC-OLD's lock, not this one.
+    _lock(work_dir, "PC-2", age_seconds=300, pid=2)
+    ok, _message, taken_from = main_window._acquire_lock("M", work_dir, take_over=asked_about)
 
-    import gui.main_window as main_window_module
-
-    monkeypatch.setattr(main_window_module.QMessageBox, "question", answer_yes_while_pc2_takes_it)
-    ok, _ = main_window._acquire_lock_with_stale_prompt("M", work_dir)
-
-    assert (ok, _lock_owner(work_dir)) == (False, "PC-2")
+    assert (ok, taken_from, _lock_owner(work_dir)) == (False, None, "PC-2")
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +85,6 @@ def test_opening_a_second_list_is_refused_while_one_is_packing(main_window, tmp_
     main_window.current_work_dir = str(tmp_path / "A")
     started = []
     monkeypatch.setattr(main_window, "start_shopify_packing_session", lambda **kw: started.append(kw) or False)
-    monkeypatch.setattr("gui.main_window.QMessageBox.warning", lambda *a, **k: None)
 
     main_window._start_or_resume_from_browser(
         "TESTCL", "B", tmp_path, tmp_path / "B.json", work_dir=tmp_path / "B"
