@@ -9,12 +9,10 @@ import json
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-from gui.main_window import MainWindow
 from packing_tool.profile_manager import ProfileManager, ProfileManagerError
 from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_registry_manager import SessionRegistryManager
@@ -98,11 +96,8 @@ def test_opening_a_second_list_is_refused_while_one_is_packing(main_window, tmp_
 
 
 def _map_on(pc: ProfileManager, barcode: str, sku: str) -> None:
-    """MainWindow._save_sku_mapping as it runs on one PC."""
-    window = SimpleNamespace(
-        profile_manager=pc, current_client_id="M", logic=None, packer_mode_widget=Mock()
-    )
-    assert MainWindow._save_sku_mapping(window, barcode, sku)
+    """One mapping from one PC, as a quick map writes it (gui/setup_pages.py)."""
+    pc.update_sku_mapping("M", {barcode: sku})
 
 
 def test_a_mapping_saved_on_one_pc_survives_a_save_on_another(config_ini):

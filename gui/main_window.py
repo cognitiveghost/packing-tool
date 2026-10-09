@@ -29,7 +29,6 @@ from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
-    QInputDialog,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
@@ -53,6 +52,7 @@ from gui.packer_mode_widget import PackerModeWidget
 from gui.sessions_page import SessionsPage
 from gui.sessions_payload import session_key
 from gui.setup_pages import SetupPages
+from gui.setup_payload import order_choices, quick_payload
 from gui.theme import apply_theme, current_tokens
 from gui.workers import SessionEndWorker, SessionStartWorker
 from packing_tool import APP_NAME, __version__
@@ -127,24 +127,6 @@ def _local_stamp(iso) -> str:
         return datetime.fromisoformat(str(iso)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError):
         return ""
-
-
-def _unmapped_choices(order_state) -> list[tuple[str, str]]:
-    """This order's lines as (sku, label), the ones still owing scans first.
-
-    An unmatched scan happened while packing this order, so the SKU the packer
-    meant is almost always a line that is not finished yet.
-    """
-    return [
-        (
-            s["original_sku"],
-            f"{s['original_sku']} — {s['packed']} / {s['required']} packed",
-        )
-        for s in sorted(
-            order_state or [],
-            key=lambda s: s["packed"] >= s["required"],
-        )
-    ]
 
 
 def _under_pytest() -> bool:
@@ -455,6 +437,10 @@ class MainWindow(QMainWindow):
         self.setup_pages.quitRequested.connect(lambda: self.close())
         self.setup_pages.backRequested.connect(lambda: self._leave_setup())
         self.setup_pages.mappingSaved.connect(lambda mapping: self._on_mapping_saved(mapping))
+        self.setup_pages.quickMapped.connect(
+            lambda kind, barcode, sku, mapping: self._on_quick_mapped(kind, barcode, sku, mapping)
+        )
+        self.setup_pages.strayScanned.connect(lambda text: self._on_stray_scan(text))
         self._setup_return = self.session_widget  # where a setup page goes back to
         self._opening_setup = False
         self._leaving_setup = False
@@ -953,7 +939,7 @@ class MainWindow(QMainWindow):
 
         In Packer Mode the page says so and blocks (frame 6j), and the session
         is torn down when the packer exits. On any other page: teardown, then
-        a message box, as before.
+        a message box, as before. A quick map counts as Packer Mode.
         """
         _locked, info = self.lock_manager.is_locked(work_dir)
         holder = (info or {}).get("locked_by") or "Another PC"
@@ -963,14 +949,21 @@ class MainWindow(QMainWindow):
         if self._progress_publisher is not None:
             self._progress_publisher.stop()
         widget = self.packer_mode_widget
+        # A quick map is Packer Mode with a page over it (ADR 0004): the page
+        # goes, and the packer lands on the panel.
+        in_quick_map = self._setup_showing() and self._setup_return is widget
         # Not while it is leaving: the panel would paint on a page about to be
         # covered, and the packer would land on a dead session with no word.
-        if self.stacked_widget.currentWidget() is widget and not self._leaving_packer_mode:
+        if (
+            self.stacked_widget.currentWidget() is widget or in_quick_map
+        ) and not self._leaving_packer_mode:
             # The lock is gone and stays gone: nothing left to renew, and a
             # second report must not land on the panel.
             if hasattr(self, "heartbeat_timer"):
                 self.heartbeat_timer.stop()
             self.packer_mode_widget.show_takeover(holder, list_name)
+            if in_quick_map:
+                self._leave_setup()
             return
         self._teardown_session()
         QMessageBox.critical(
@@ -2014,105 +2007,71 @@ class MainWindow(QMainWindow):
                 self.flash_border("green")
         self.packer_mode_widget.set_focus_to_scanner()
 
-    def _save_sku_mapping(self, barcode: str, sku: str) -> bool:
-        """Save one barcode → SKU mapping, confirming an overwrite first.
-
-        Shared by both directions of the Map SKU flow: the per-item button
-        knows the SKU and asks for the barcode, and the unmatched-scan row
-        knows the barcode and asks for the SKU.
-        """
-        try:
-            existing = self.profile_manager.load_sku_mapping(self.current_client_id)
-            if barcode in existing and existing[barcode] != sku:
-                reply = QMessageBox.question(
-                    self,
-                    "Overwrite Mapping?",
-                    f"Barcode '{barcode}' already maps to '{existing[barcode]}'.\n\n"
-                    f"Replace with '{sku}'?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    return False
-
-            # One entry onto the mapping as it is on the server now (AUDIT-02-3)
-            mapping = self.profile_manager.update_sku_mapping(
-                self.current_client_id, {barcode: sku}
-            )
-
-            if self.logic:
-                self.logic.sku_map = {
-                    self.logic._normalize_sku(k): v for k, v in mapping.items()
-                }
-                logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
-            self.packer_mode_widget.show_notification(
-                f"Mapped: {barcode} → {sku}", "status_success"
-            )
-            return True
-        except Exception as e:
-            logger.exception("Failed to save quick SKU mapping")
-            QMessageBox.critical(self, "Error", f"Failed to save mapping:\n\n{e}")
-            return False
-
     def _on_map_sku_from_packer(self, sku: str):
-        """Quick-add barcode→SKU mapping from packer mode.
+        """Map SKU on an item row: the SKU is known, the packer scans the barcode.
 
-        Pre-populates the SKU so the worker only needs to scan/type the barcode.
-        The barcode field is left empty for the scanner to fill in.
+        A quick map (ADR 0004): the SKU mapping page, for this one add.
         """
         if not self.current_client_id:
             self.packer_mode_widget.set_focus_to_scanner()
             return
-
-        barcode, ok = QInputDialog.getText(
-            self,
-            "Map Barcode to SKU",
-            f"SKU:  {sku}\n\nScan or type the product barcode to map to this SKU:",
-        )
-        if not (ok and barcode and barcode.strip()):
-            self.packer_mode_widget.set_focus_to_scanner()
-            return
-
-        self._save_sku_mapping(barcode.strip(), sku)
-        self.packer_mode_widget.set_focus_to_scanner()
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        quick = quick_payload("sku", sku=sku)
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label, quick))
 
     def _on_map_barcode_from_packer(self, barcode: str):
-        """Map an unmatched scan to one of this order's SKUs, then replay it.
-
-        The reverse of _on_map_sku_from_packer: here the barcode is known and
-        the SKU is picked. Replaying the scan afterwards packs the item in the
-        same gesture -- the scan already happened, and making the packer scan
-        again to use a mapping they just made is a step with no purpose.
-        """
-        choices = (
-            _unmapped_choices(self.logic.current_order_state) if self.logic else []
-        )
+        """Map barcode… on a No match row: the barcode is known, the SKU is one
+        of this order's lines (owner decision, spec 2026-10-09 section 2)."""
+        choices = order_choices(self.logic.current_order_state) if self.logic else []
         if not (choices and self.current_client_id):
             self.packer_mode_widget.set_focus_to_scanner()
             return
+        client_id = self.current_client_id
+        label = self.client_combo.currentText()
+        quick = quick_payload("barcode", barcode=barcode, choices=choices)
+        self._open_setup(lambda: self.setup_pages.show_mapping(client_id, label, quick))
 
-        labels = [label for _sku, label in choices]
-        picked, ok = QInputDialog.getItem(
-            self,
-            "Map SKU",
-            f"Barcode {barcode}\n\nWhich item did you scan?",
-            labels,
-            0,
-            False,
-        )
-        if not (ok and picked):
-            self.packer_mode_widget.set_focus_to_scanner()
-            return
+    def _on_quick_mapped(self, kind: str, barcode: str, sku: str, mapping: dict):
+        """A quick map was saved: back to Packer Mode, and say so there.
 
-        sku = choices[labels.index(picked)][0]
-        if self._save_sku_mapping(barcode, sku):
-            # It matches an item now, so its "No match" row goes with the mapping.
-            self.logic.unknown_scans = [
-                scan for scan in self.logic.unknown_scans if scan != barcode
-            ]
-            self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
-            self.on_scanner_input(barcode)
-        self.packer_mode_widget.set_focus_to_scanner()
+        For a barcode the scan that had no match is replayed, which packs the
+        item in the same gesture: the scan already happened, and making the
+        packer scan again to use a mapping they just made is a step with no
+        purpose.
+        """
+        if self.logic:
+            self.logic.set_sku_map(mapping)
+            logger.info(f"Quick-mapped barcode '{barcode}' → SKU '{sku}'")
+
+        def after():
+            self.packer_mode_widget.show_notification(
+                f"Mapped: {barcode} → {sku}", "status_success"
+            )
+            if kind == "barcode" and self.logic:
+                # It matches an item now, so its "No match" row goes with the mapping.
+                self.logic.unknown_scans = [
+                    scan for scan in self.logic.unknown_scans if scan != barcode
+                ]
+                self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
+                self.on_scanner_input(barcode)
+
+        self._leave_setup(after)
+
+    def _on_stray_scan(self, text: str):
+        """A complete scan that reached no field of a setup page (ADR 0004).
+
+        Held while a page opened from Packer Mode is up and replayed by
+        _leave_setup once the scanner has the focus. One reported just after
+        the return is acted on at once. Anywhere else there is nothing to
+        scan into, and it is dropped.
+        """
+        from_packer = self._setup_return is self.packer_mode_widget
+        if self._setup_showing():
+            if from_packer:
+                self._stray_scans.append(text)
+        elif self.stacked_widget.currentWidget() is self.packer_mode_widget and self.logic:
+            self.on_scanner_input(text)
 
     def _on_extra_confirmed(self, norm_sku: str):
         """Handle 'Keep' for an extra item — user acknowledges it is intentional."""
