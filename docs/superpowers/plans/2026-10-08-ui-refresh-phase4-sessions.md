@@ -52,6 +52,7 @@ Inputs the spec implies that are most likely to bite a packer. Each has a test i
 | `gui/sessions_page.py` (new) | `SessionsPage` | 6 |
 | `gui/app_pages.py` | the view alone | 7 |
 | `gui/main_window.py` | builds `SessionsPage`, the take-over lock step, loses four message boxes | 7 |
+| `tests/conftest.py` | the `main_window` fixture stops the Sessions workers before the window goes | 7 |
 | `gui/session_browser/`, `packing_tool/session_history_manager.py` | deleted | 7 |
 | `scripts/render_sessions.py` (new) | renders of 7a to 7h and 8a to 8f | 8 |
 | `CONTEXT.md`, `docs/adr/0003-…md` | docs | 8 |
@@ -5972,4 +5973,1691 @@ Run: `.venv/bin/ruff check . --exclude shared`. Stage `gui/sessions_page.py`, `t
 
 ---
 
-<!-- NEXT -->
+### Task 7: `MainWindow` on `SessionsPage`, the take-over lock step, and the deletion
+
+**Files:**
+- Modify: `gui/app_pages.py` (whole file), `gui/main_window.py`
+- Modify: `tests/conftest.py` (the `main_window` fixture's teardown)
+- Create: `tests/test_sessions_mainwindow_seam.py`
+- Modify: `tests/test_app_pages.py` (whole file), `tests/test_shell.py`, `tests/test_session_browser_client.py` (whole file), `tests/test_confirmation_methods.py`, `tests/test_app_mainwindow_seam.py`, `tests/test_app_freshness.py`, `tests/audit/test_02_concurrency_sweep.py`, `tests/test_connection_state.py`, `tests/test_packer_logic_scanning.py` (one comment)
+- Delete: `gui/session_browser/` (seven files), `packing_tool/session_history_manager.py`, `tests/test_session_detail_page.py`, `tests/test_sessions_list_columns.py`, `tests/test_sessions_list_status.py`, `tests/test_sessions_list_empty.py`
+
+**Interfaces:**
+- Consumes: `SessionsPage` and its three signals (Task 6); `session_key` (Task 2); `AppBridge.details`, `.page`, `.set_page`, `.set_details` (Task 4); `SessionLockManager.acquire_lock(client_id, work_dir, worker_id=, worker_name=) -> (ok, message, lock | None)`, `.is_lock_stale(lock)`, `.force_release_lock(work_dir, expected=lock) -> bool` (unchanged, already in the repo).
+- Produces:
+  - `AppPages(parent=None)`: no `session_browser` argument, no `browser`, no `web_is_current`. `widget(i)` is `view` for every index.
+  - `MainWindow.sessions: SessionsPage`. `MainWindow.session_browser` and `MainWindow.session_history_manager` are gone.
+  - `MainWindow._acquire_lock(client_id, work_dir, take_over=None) -> tuple[bool, str | None, str | None]`: `(True, None, None)` taken; `(True, None, "<PC>")` taken over from that PC; `(False, sentence, None)` refused. It replaces `_acquire_lock_with_stale_prompt`.
+  - `MainWindow.start_shopify_packing_session(..., take_over=None)` and `MainWindow._start_or_resume_from_browser(client_id, packing_list_name, session_path, packing_list_path, work_dir=None, take_over=None)`. The `resumed` argument is gone.
+  - `MainWindow._sync_sessions_context()`.
+
+What does not change: `MainWindow._toast`. It already asks `pages.view.isVisible()`, which is now true on Sessions too.
+
+- [ ] **Step 1: Write the failing tests**
+
+(a) Replace the whole of `tests/test_app_pages.py`:
+
+```python
+"""AppPages: one web view for every page of the shell (ADR 0003)."""
+
+import pytest
+
+from gui.app_pages import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS, AppPages
+
+
+@pytest.fixture
+def pages(qtbot):
+    widget = AppPages()
+    qtbot.addWidget(widget)
+    return widget
+
+
+def test_it_has_three_pages_and_starts_on_packing(pages):
+    assert pages.count() == 3
+    assert pages.currentIndex() == PAGE_PACKING
+    assert pages.bridge.page == "packing"
+
+
+def test_every_index_is_the_same_view(pages):
+    for index in (PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER):
+        assert pages.widget(index) is pages.view
+    assert not hasattr(pages, "web_is_current")
+    assert not hasattr(pages, "browser")
+
+
+def test_statistics_is_another_page_of_the_document(pages):
+    seen = []
+    pages.currentChanged.connect(seen.append)
+    pages.setCurrentIndex(PAGE_STATISTICS)
+    assert seen == [PAGE_STATISTICS]
+    assert pages.bridge.page == "statistics"
+
+
+def test_sessions_is_a_page_of_the_document(pages):
+    seen = []
+    pages.currentChanged.connect(seen.append)
+    pages.setCurrentIndex(PAGE_BROWSER)
+    assert seen == [PAGE_BROWSER]
+    assert pages.currentIndex() == PAGE_BROWSER
+    assert pages.bridge.page == "sessions"
+    pages.setCurrentIndex(PAGE_PACKING)
+    assert pages.bridge.page == "packing"
+
+
+def test_sessions_returns_to_the_details_that_were_open(pages):
+    pages.setCurrentIndex(PAGE_BROWSER)
+    pages.bridge.set_details({"state": "ready"})
+    pages.bridge.set_page("details")
+    pages.setCurrentIndex(PAGE_PACKING)
+    assert pages.bridge.page == "packing"
+    pages.setCurrentIndex(PAGE_BROWSER)
+    assert pages.bridge.page == "details"
+
+    pages.setCurrentIndex(PAGE_PACKING)
+    pages.bridge.set_details({})
+    pages.setCurrentIndex(PAGE_BROWSER)
+    assert pages.bridge.page == "sessions"
+
+
+def test_setting_the_current_index_again_says_nothing(pages):
+    seen = []
+    pages.currentChanged.connect(seen.append)
+    pages.setCurrentIndex(PAGE_PACKING)
+    pages.setCurrentIndex(7)
+    assert seen == []
+    assert pages.currentIndex() == PAGE_PACKING
+```
+
+(b) Create `tests/test_sessions_mainwindow_seam.py`:
+
+```python
+"""MainWindow and the Sessions pages: the wiring, and the lock step of a start
+(spec 2026-10-08 phase 4, sections 6 and 9)."""
+
+import json
+from datetime import datetime, timedelta
+
+import pytest
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QMessageBox
+
+from gui.main_window import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS
+from packing_tool.session_lock_manager import SessionLockManager
+
+ORDERS = [("#1", "DHL", [{"sku": "A", "quantity": 1, "product_name": "A"}])]
+STALE_SENTENCE = (
+    "WH-PC-02 stopped responding while this list was open there. "
+    "Resume it from Sessions to take it over."
+)
+
+
+def _stamp(**ago) -> str:
+    return (datetime.now().astimezone() - timedelta(**ago)).isoformat()
+
+
+def _lock(work_dir, *, age_seconds, pc="WH-PC-02", pid=1) -> dict:
+    beat = _stamp(seconds=age_seconds)
+    lock = {"locked_by": pc, "user_name": "georgi", "lock_time": beat, "heartbeat": beat,
+            "process_id": pid, "worker_id": None, "worker_name": "Georgi"}
+    (work_dir / SessionLockManager.LOCK_FILENAME).write_text(json.dumps(lock), encoding="utf-8")
+    return lock
+
+
+def _owner(work_dir) -> str:
+    text = (work_dir / SessionLockManager.LOCK_FILENAME).read_text(encoding="utf-8")
+    return json.loads(text)["locked_by"]
+
+
+def _entry(session_id, status="paused", list_name="Afternoon_wave") -> dict:
+    return {
+        "session_id": session_id, "packing_list_name": list_name, "status": status,
+        "worker_name": "Maria", "pc_name": "WH-PC-02",
+        "started_at": _stamp(hours=3), "last_updated": _stamp(hours=1),
+        "total_orders": 10, "completed_orders": 4, "skipped_orders": 0, "total_items": 20,
+        "work_dir": "", "session_path": f"/srv/{session_id}", "metrics": None,
+    }
+
+
+def _resume_info(session_dir, work_dir, take_over=None) -> dict:
+    return {
+        "session_path": str(session_dir), "client_id": "TESTCL",
+        "packing_list_name": "DHL_Orders", "work_dir": str(work_dir),
+        "session_id": session_dir.name, "take_over": take_over,
+    }
+
+
+def _drain(window, qapp):
+    """Let the refresh the client picker started finish and its answer land."""
+    window.sessions.wait()
+    qapp.processEvents()
+    qapp.processEvents()
+
+
+@pytest.fixture
+def no_boxes(monkeypatch):
+    """Every message box raised, by kind. A test asserts it stayed empty."""
+    boxes = []
+    for kind in ("information", "warning", "critical", "question"):
+        monkeypatch.setattr(
+            QMessageBox, kind, lambda *a, _kind=kind, **k: boxes.append(_kind))
+    return boxes
+
+
+@pytest.fixture
+def toasts(main_window, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        main_window, "_toast", lambda message, role="success": seen.append(message))
+    return seen
+
+
+# --- the wiring (section 9) -------------------------------------------------------
+
+
+def test_the_browser_widget_and_the_history_manager_are_gone(main_window):
+    assert not hasattr(main_window, "session_browser")
+    assert not hasattr(main_window, "session_history_manager")
+    assert not hasattr(main_window, "_acquire_lock_with_stale_prompt")
+    assert main_window.session_tabs.widget(PAGE_BROWSER) is main_window.session_tabs.view
+
+
+def test_the_sessions_signals_reach_their_handlers(main_window, monkeypatch):
+    called = []
+    monkeypatch.setattr(main_window, "_handle_start_packing_from_browser",
+                        lambda info: called.append(("start", info)))
+    monkeypatch.setattr(main_window, "_handle_resume_session_from_browser",
+                        lambda info: called.append(("resume", info)))
+    main_window.session_tabs.setCurrentIndex(PAGE_STATISTICS)
+    main_window.sessions.startRequested.emit({"a": 1})
+    main_window.sessions.resumeRequested.emit({"b": 2})
+    main_window.sessions.showPackingRequested.emit()
+    assert called == [("start", {"a": 1}), ("resume", {"b": 2})]
+    assert main_window.session_tabs.currentIndex() == PAGE_PACKING
+
+
+def test_showing_sessions_refreshes_it(main_window, monkeypatch):
+    calls = []
+    monkeypatch.setattr(main_window.sessions, "page_shown", lambda: calls.append(1))
+    main_window.session_tabs.setCurrentIndex(PAGE_STATISTICS)
+    assert calls == []
+    main_window.session_tabs.setCurrentIndex(PAGE_BROWSER)
+    assert calls == [1]
+    assert main_window.session_tabs.bridge.page == "sessions"
+
+
+def test_the_open_session_and_the_connection_reach_the_rows(main_window_with_list, qapp):
+    window = main_window_with_list
+    _drain(window, qapp)
+    window.sessions.show_entries([
+        _entry("2026-01-01_1", "in_progress", "DHL_Orders"),
+        _entry("2026-01-02_1"),
+    ])
+
+    def rows():
+        return {row["id"]: row for row in window.session_tabs.bridge.sessions["rows"]}
+
+    # The fixture's list has no session folder yet: nothing is "open here".
+    assert rows()["2026-01-02_1"]["enabled"] is True
+
+    window.current_session_path = "/sessions/2026-01-01_1"
+    window._push_pages()
+    assert rows()["2026-01-01_1"]["action"] == "show"
+    assert rows()["2026-01-02_1"]["enabled"] is False
+    assert rows()["2026-01-02_1"]["note"] == (
+        "2026-01-01_1 is open on this PC. End it before opening another.")
+
+    window._teardown_session()
+    assert rows()["2026-01-02_1"]["enabled"] is True
+
+    window._set_connection_state("down")
+    assert rows()["2026-01-02_1"]["note"].startswith("Server unreachable")
+    window._set_connection_state("ok")
+    assert rows()["2026-01-02_1"]["enabled"] is True
+
+
+def test_closing_the_window_stops_the_sessions_timer(main_window):
+    main_window.closeEvent(QCloseEvent())
+    assert not main_window.sessions._timer.isActive()
+
+
+# --- the lock step (section 6) -------------------------------------------------------
+
+
+def test_a_free_list_is_locked(main_window, tmp_path):
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    assert main_window._acquire_lock("TESTCL", work_dir) == (True, None, None)
+    main_window.lock_manager.release_lock(work_dir)
+
+
+def test_a_take_over_releases_that_stale_lock_and_takes_it(main_window, tmp_path):
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    stale = _lock(work_dir, age_seconds=600)
+    assert main_window._acquire_lock("TESTCL", work_dir, stale) == (True, None, "WH-PC-02")
+    assert _owner(work_dir) == main_window.lock_manager.hostname
+    main_window.lock_manager.release_lock(work_dir)
+
+
+def test_a_stale_lock_nobody_was_asked_about_is_not_taken(main_window, tmp_path):
+    """The list was behind, or this is a Retry of frame 3c: no question was
+    answered, so nothing is released."""
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    _lock(work_dir, age_seconds=600)
+    assert main_window._acquire_lock("TESTCL", work_dir) == (False, STALE_SENTENCE, None)
+    assert _owner(work_dir) == "WH-PC-02"
+
+
+def test_a_live_lock_is_refused_with_the_locks_own_message(main_window, tmp_path):
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    live = _lock(work_dir, age_seconds=5)
+    ok, message, taken_from = main_window._acquire_lock("TESTCL", work_dir, live)
+    assert (ok, taken_from) == (False, None)
+    assert "WH-PC-02" in message and message != STALE_SENTENCE
+    assert _owner(work_dir) == "WH-PC-02"
+
+
+def test_a_stale_lock_with_no_take_over_is_frame_3c(main_window, session_factory, no_boxes):
+    session_dir, work_dir, _list_path = session_factory(client_id="TESTCL", orders=ORDERS)
+    _lock(work_dir, age_seconds=600)
+    main_window._handle_resume_session_from_browser(_resume_info(session_dir, work_dir))
+    session = main_window.session_tabs.bridge.session
+    assert session["state"] == "failed"
+    assert session["title"] == "Session could not be opened"
+    assert session["text"] == STALE_SENTENCE
+    assert _owner(work_dir) == "WH-PC-02"
+    assert main_window.logic is None
+    assert no_boxes == []
+
+
+def test_a_take_over_of_a_lock_that_came_back_is_refused(
+    main_window, session_factory, no_boxes
+):
+    """Review focus 5: the question (7c) was about a stale lock; its PC came
+    back before the packer answered. Nothing is removed, nothing opens."""
+    session_dir, work_dir, _list_path = session_factory(client_id="TESTCL", orders=ORDERS)
+    asked_about = _lock(work_dir, age_seconds=600)
+    _lock(work_dir, age_seconds=1)
+    main_window._handle_resume_session_from_browser(
+        _resume_info(session_dir, work_dir, take_over=asked_about))
+    session = main_window.session_tabs.bridge.session
+    assert session["state"] == "failed"
+    assert session["title"] == "Session could not be opened"
+    assert "WH-PC-02" in session["text"]
+    assert _owner(work_dir) == "WH-PC-02"
+    assert main_window.logic is None
+    assert main_window.session_tabs.currentIndex() == PAGE_PACKING
+    assert no_boxes == []
+
+
+# --- a whole start: toasts, no message boxes ------------------------------------------
+
+
+def test_a_resume_with_a_take_over_opens_the_session_and_says_so(
+    main_window, session_factory, no_boxes, toasts
+):
+    session_dir, work_dir, _list_path = session_factory(client_id="TESTCL", orders=ORDERS)
+    stale = _lock(work_dir, age_seconds=600)
+    try:
+        main_window._handle_resume_session_from_browser(
+            _resume_info(session_dir, work_dir, take_over=stale))
+        assert main_window.session_tabs.bridge.session["state"] == "open"
+        assert _owner(work_dir) == main_window.lock_manager.hostname
+        assert toasts[0] == f"Took over {session_dir.name} from WH-PC-02."
+        assert no_boxes == []
+        assert main_window.session_tabs.currentIndex() == PAGE_PACKING
+    finally:
+        main_window._teardown_session()
+
+
+def test_a_start_says_it_loaded_in_a_toast_and_no_box(
+    main_window, session_factory, no_boxes, toasts
+):
+    session_dir, _work_dir, list_path = session_factory(client_id="TESTCL", orders=ORDERS)
+    try:
+        main_window._handle_start_packing_from_browser({
+            "session_path": str(session_dir), "client_id": "TESTCL",
+            "packing_list_name": "DHL_Orders", "list_file": str(list_path),
+        })
+        assert main_window.session_tabs.bridge.session["state"] == "open"
+        assert toasts[0] == "Loaded 1 orders from DHL_Orders."
+        assert no_boxes == []
+    finally:
+        main_window._teardown_session()
+
+
+def test_a_start_with_a_session_open_is_a_toast(
+    main_window_with_list, no_boxes, toasts, monkeypatch, tmp_path
+):
+    window = main_window_with_list
+    window.current_session_path = "/sessions/2026-01-01_1"
+    started = []
+    monkeypatch.setattr(window, "start_shopify_packing_session",
+                        lambda **kwargs: started.append(kwargs) or False)
+    window._start_or_resume_from_browser(
+        "TESTCL", "B", tmp_path, tmp_path / "B.json", work_dir=tmp_path / "B")
+    assert started == []
+    assert toasts == ["2026-01-01_1 is open. End it before opening another."]
+    assert no_boxes == []
+```
+
+(c) `tests/test_app_freshness.py`. Replace the import block's first lines with:
+
+```python
+import json
+from datetime import datetime, timedelta
+
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+
+from gui.main_window import PAGE_BROWSER, PAGE_PACKING, PAGE_STATISTICS
+from gui.sessions_payload import session_key
+```
+
+Replace `test_a_page_shown_after_being_hidden_holds_the_current_session_only` (the parametrized test, decorator included) with:
+
+```python
+def _cover(window):
+    """Packer Mode's widget over the shell: since phase 4 the one thing that
+    hides the view (spec phase 4, section 10)."""
+    window.stacked_widget.setCurrentWidget(window.packer_mode_widget)
+
+
+def _uncover(window):
+    window.stacked_widget.setCurrentWidget(window.session_widget)
+
+
+@pytest.mark.parametrize("page, a_text, b_text", [
+    (PAGE_PACKING, "#A-1001", "#B-2002"),
+    (PAGE_STATISTICS, "SKU-AAA", "SKU-BBB"),
+])
+def test_a_page_shown_after_being_hidden_holds_the_current_session_only(
+    shown, qtbot, session_factory, packer_logic_factory, page, a_text, b_text
+):
+    window = shown
+    pages = window.session_tabs
+    view, bridge = pages.view, pages.bridge
+    pages.setCurrentIndex(page)
+    _open(window, _logic(session_factory, packer_logic_factory, "2026-01-01_1", "A-1001", "SKU-AAA"),
+          "2026-01-01_1")
+    _settle(qtbot, bridge)
+    assert a_text in _eval(qtbot, view, "document.body.textContent")
+
+    _cover(window)                               # the view is hidden
+    _open(window, _logic(session_factory, packer_logic_factory, "2026-01-02_1", "B-2002", "SKU-BBB"),
+          "2026-01-02_1")                        # session B replaces A underneath
+    pushed = bridge.revision
+
+    _uncover(window)                             # shown again
+    _settle(qtbot, bridge)
+    assert bridge.painted_revision >= pushed
+    text = _eval(qtbot, view, "document.body.textContent")
+    assert b_text in text
+    assert a_text not in text
+
+
+def _stamp(**ago) -> str:
+    return (datetime.now().astimezone() - timedelta(**ago)).isoformat()
+
+
+def _session(session_id, work_dir="") -> dict:
+    return {
+        "session_id": session_id, "packing_list_name": "DHL_Orders", "status": "completed",
+        "worker_name": "Maria", "pc_name": "WH-PC-02",
+        "started_at": _stamp(hours=3), "last_updated": _stamp(hours=1),
+        "total_orders": 1, "completed_orders": 1, "skipped_orders": 0, "total_items": 1,
+        "work_dir": str(work_dir), "session_path": f"/srv/{session_id}", "metrics": None,
+    }
+
+
+def _files(tmp_path, session_id, order):
+    work_dir = tmp_path / session_id / "packing" / "DHL_Orders"
+    work_dir.mkdir(parents=True)
+    summary = {
+        "session_id": session_id, "packing_list_name": "DHL_Orders",
+        "total_orders": 1, "completed_orders": 1, "metrics": {},
+        "orders": [{"order_number": order, "duration_seconds": 30, "items_count": 1,
+                    "items": [{"sku": "A", "quantity": 1, "row": 0}]}],
+        "skipped_orders": [],
+    }
+    (work_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return work_dir
+
+
+@pytest.fixture
+def sessions(shown, qapp, monkeypatch):
+    """The window's Sessions controller on its page, with the registry out of
+    the way: what it shows is what the test gives it."""
+    page = shown.sessions
+    page.wait()
+    qapp.processEvents()
+    qapp.processEvents()
+    monkeypatch.setattr(page, "refresh", lambda: None)
+    shown.session_tabs.setCurrentIndex(PAGE_BROWSER)
+    return page
+
+
+def test_sessions_shown_after_being_hidden_holds_the_current_list_only(shown, sessions, qtbot):
+    view, bridge = shown.session_tabs.view, shown.session_tabs.bridge
+    sessions.show_entries([_session("AAA-111")])
+    _settle(qtbot, bridge)
+    assert "AAA-111" in _eval(qtbot, view, "document.getElementById('sessions').textContent")
+
+    _cover(shown)
+    sessions.show_entries([_session("BBB-222")])
+    pushed = bridge.revision
+
+    _uncover(shown)
+    _settle(qtbot, bridge)
+    assert bridge.painted_revision >= pushed
+    text = _eval(qtbot, view, "document.getElementById('sessions').textContent")
+    assert "BBB-222" in text
+    assert "AAA-111" not in text
+
+
+def test_details_shown_after_being_hidden_hold_the_current_session_only(
+    shown, sessions, qtbot, tmp_path
+):
+    view, bridge = shown.session_tabs.view, shown.session_tabs.bridge
+    a = _session("AAA-111", _files(tmp_path, "AAA-111", "#A-1001"))
+    b = _session("BBB-222", _files(tmp_path, "BBB-222", "#B-2002"))
+    sessions.show_entries([a, b])
+
+    def open_details(entry):
+        sessions.open_details(session_key(entry))
+        qtbot.waitUntil(lambda: bridge.details.get("state") == "ready", timeout=10000)
+
+    open_details(a)
+    assert bridge.page == "details"
+    _settle(qtbot, bridge)
+    assert "A-1001" in _eval(qtbot, view, "document.getElementById('details').textContent")
+
+    _cover(shown)
+    open_details(b)
+    pushed = bridge.revision
+
+    _uncover(shown)
+    _settle(qtbot, bridge)
+    assert bridge.painted_revision >= pushed
+    text = _eval(qtbot, view, "document.getElementById('details').textContent")
+    assert "B-2002" in text
+    assert "A-1001" not in text
+    assert _eval(qtbot, view, "document.getElementById('d-id').textContent") == "BBB-222"
+```
+
+The file's other tests (`test_start_packing_waits_…`, `test_a_session_ended_inside_packer_mode_…`, `test_the_shortcuts_still_work_…`) stay as they are.
+
+(d) `tests/test_shell.py`:
+- Delete the line `from gui.session_browser.session_browser_widget import SessionBrowserWidget`.
+- In the `window` fixture, before `mw.deleteLater()`, add `mw.sessions.shutdown()`.
+- Replace `test_session_browser_is_a_page_not_a_dialog` with:
+
+```python
+def test_sessions_is_a_page_of_the_document(window):
+    assert window.session_tabs.widget(PAGE_BROWSER) is window.session_tabs.view
+    assert not hasattr(window, "session_browser")
+```
+
+- In `test_open_session_browser_navigates_instead_of_opening_a_dialog` add a last line: `assert window.session_tabs.bridge.page == "sessions"`.
+- Replace `test_the_browsers_signals_are_still_wired_to_main_window` with:
+
+```python
+def test_the_sessions_signals_are_wired_to_main_window(window):
+    for name in ("startRequested", "resumeRequested", "showPackingRequested"):
+        assert _is_connected(window.sessions, name)
+```
+
+- Replace `test_auto_refresh_is_quiet_while_the_browser_page_is_not_shown` with:
+
+```python
+def test_auto_refresh_is_quiet_while_sessions_is_not_shown(window, monkeypatch):
+    """A permanent page must not put a registry read on the warehouse share
+    while the packer is on another page."""
+    refreshes = []
+    monkeypatch.setattr(window.sessions, "refresh", lambda: refreshes.append(1))
+    window.session_tabs.setCurrentIndex(PAGE_PACKING)
+    window.sessions._on_tick()
+    assert refreshes == []
+    assert window.sessions._timer.isActive()  # still armed for the next visit
+```
+
+(e) Replace the whole of `tests/test_session_browser_client.py`:
+
+```python
+"""The command bar's client picker is the Sessions page's client picker.
+
+The Qt browser once carried a second, independent one down its left side, so
+the shell could be on one client while the browser showed another.
+"""
+
+
+def test_changing_the_client_in_the_command_bar_loads_it_in_sessions(main_window):
+    # Start on whichever client isn't the target, so the switch below is a
+    # real change and actually fires currentIndexChanged.
+    other_index = main_window.client_combo.findData("OTHERCL")
+    main_window.client_combo.setCurrentIndex(other_index)
+
+    loaded = []
+    main_window.sessions.load_client = loaded.append
+
+    index = main_window.client_combo.findData("TESTCL")
+    main_window.client_combo.setCurrentIndex(index)
+
+    assert loaded == ["TESTCL"]
+```
+
+(f) `tests/test_confirmation_methods.py`: delete the import of `OrdersTab` and the two tests that build one (`test_each_item_row_names_how_it_was_packed`, `test_the_order_row_flags_both_manual_kinds`); their ports are in `tests/test_session_details_payload.py` (Task 3). Keep `_order()` and `test_manual_confirms_count_confirm_and_force_units`. Replace the docstring with:
+
+```python
+"""Confirm clicks ("manual") and Force ("force_confirmed") are not scans.
+
+The metric once knew only manual, so Force was never counted. How Session
+details names each kind is in tests/test_session_details_payload.py.
+"""
+```
+
+(g) `tests/test_app_mainwindow_seam.py`:
+- In `test_a_toast_goes_to_the_page_when_it_is_showing`, the last assertion becomes `assert raised == ["Saved.", "On Sessions."]` (Sessions is the same view now).
+- In `test_a_start_cannot_be_entered_while_one_is_running`, rename both `_acquire_lock_with_stale_prompt` to `_acquire_lock`.
+- In `test_retry_starts_again_with_the_same_arguments`, the call loses `resumed=True`:
+
+```python
+    main_window._start_or_resume_from_browser(
+        "TESTCL", "DHL_Orders", tmp_path, tmp_path / "DHL_Orders.json",
+        work_dir=tmp_path,
+    )
+```
+
+(h) `tests/audit/test_02_concurrency_sweep.py`. Replace `test_force_release_after_the_prompt_does_not_steal_a_fresh_lock` with:
+
+```python
+def test_a_take_over_does_not_steal_a_lock_that_changed_meanwhile(main_window, tmp_path):
+    work_dir = tmp_path / "L"
+    work_dir.mkdir()
+    _lock(work_dir, "PC-OLD", age_seconds=600)  # stale: its PC crashed
+    lock_file = work_dir / SessionLockManager.LOCK_FILENAME
+    asked_about = json.loads(lock_file.read_text(encoding="utf-8"))
+
+    # The question sat open; meanwhile PC-2 took the list over, then went quiet
+    # itself. The answer was about PC-OLD's lock, not this one.
+    _lock(work_dir, "PC-2", age_seconds=300, pid=2)
+    ok, _message, taken_from = main_window._acquire_lock("M", work_dir, take_over=asked_about)
+
+    assert (ok, taken_from, _lock_owner(work_dir)) == (False, None, "PC-2")
+```
+
+In `test_opening_a_second_list_is_refused_while_one_is_packing` delete the line `monkeypatch.setattr("gui.main_window.QMessageBox.warning", lambda *a, **k: None)`: the refusal is a toast now.
+
+(i) `tests/test_connection_state.py`: in `test_starting_from_sessions_is_refused_while_down` delete the line `monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)`. If `QMessageBox` is then unused in the file, delete its import (ruff says).
+
+(j) `tests/test_packer_logic_scanning.py`, the comment near line 302: change `session_browser/orders_tab.py._load_orders() rendered it` to `Session details listed it`.
+
+(k) `tests/conftest.py`, the `main_window` fixture's end:
+
+```python
+    window = MainWindow(config_path=str(config_ini))
+    yield window
+    # The client picker started a registry read on a QThread: let it end
+    # before the window goes.
+    window.sessions.shutdown()
+    window.deleteLater()
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_app_pages.py tests/test_sessions_mainwindow_seam.py`
+Expected: `test_app_pages.py` fails with `TypeError: AppPages.__init__() missing 1 required positional argument: 'session_browser'`; `test_sessions_mainwindow_seam.py` errors in the fixture with `AttributeError: 'MainWindow' object has no attribute 'sessions'`.
+
+- [ ] **Step 3: `gui/app_pages.py`**
+
+Replace the whole file:
+
+```python
+"""The shell's pages: one web view (ADR 0003).
+
+Packing, Statistics, Sessions and Session details are pages of one document
+in one QWebEngineView. This widget speaks the part of QTabWidget MainWindow's
+call sites already use, so they kept `session_tabs` and did not change.
+"""
+
+from PySide6.QtCore import Signal
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from gui.app_bridge import mount_app_page
+
+PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER = range(3)
+
+
+class AppPages(QWidget):
+    currentChanged = Signal(int)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.view = QWebEngineView(self)
+        self.bridge = mount_app_page(self.view)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.view)
+        self._index = PAGE_PACKING
+
+    def count(self) -> int:
+        return 3
+
+    def currentIndex(self) -> int:
+        return self._index
+
+    def widget(self, index: int) -> QWidget:
+        return self.view
+
+    def _page_name(self, index: int) -> str:
+        """The bridge's name for the page an index shows."""
+        if index == PAGE_BROWSER:
+            # Details left for another page are the details come back to.
+            return "details" if self.bridge.details else "sessions"
+        return "statistics" if index == PAGE_STATISTICS else "packing"
+
+    def setCurrentIndex(self, index: int) -> None:
+        if index == self._index or index not in (PAGE_PACKING, PAGE_STATISTICS, PAGE_BROWSER):
+            return
+        self._index = index
+        self.bridge.set_page(self._page_name(index))
+        self.currentChanged.emit(index)
+```
+
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_app_pages.py`
+Expected: 6 passed.
+
+- [ ] **Step 4: `gui/main_window.py`**
+
+Make these edits in order. Line numbers are from before this task and drift as you go: find each by its text.
+
+(a) Imports. Delete:
+
+```python
+from gui.session_browser.session_browser_widget import SessionBrowserWidget
+```
+```python
+from packing_tool.session_history_manager import SessionHistoryManager
+```
+
+Add, in alphabetical place (after `from gui.packer_mode_widget import PackerModeWidget`):
+
+```python
+from gui.sessions_page import SessionsPage
+from gui.sessions_payload import session_key
+```
+
+(b) `__init__`. Delete these three lines:
+
+```python
+        # Initialize SessionHistoryManager
+        self.session_history_manager = SessionHistoryManager(self.profile_manager)
+        logger.info("SessionHistoryManager initialized successfully")
+```
+
+(c) `_init_ui`. Replace everything from the comment `# The Session Browser — a destination now, not a dialog.` down to and including
+
+```python
+        if self.current_client_id:
+            self.session_browser.load_client(self.current_client_id)
+```
+
+with:
+
+```python
+        # Packing, Statistics, Sessions and Session details are one web
+        # document (ADR 0003). AppPages speaks the QTabWidget calls the code
+        # below already makes.
+        self.session_tabs = AppPages()
+        pages = self.session_tabs.bridge
+        pages.openSessionRequested.connect(lambda: self.open_session_browser())
+        pages.startPackingRequested.connect(lambda: self.switch_to_packer_mode())
+        pages.endSessionRequested.connect(lambda: self.end_session())
+        pages.clearFilterRequested.connect(lambda: self.search_input.clear())
+        pages.chooseClientRequested.connect(lambda: self.client_combo.showPopup())
+        pages.pageRequested.connect(self._show_named_page)
+        pages.retryStartRequested.connect(lambda: self._retry_start())
+        pages.closeFailureRequested.connect(lambda: self._close_failure())
+
+        # The Sessions pages' controller: the registry refresh, the take-over
+        # question and the exports. Lambdas, so a test (or a subclass) that
+        # replaces a handler is seen. on_client_changed gives it its client.
+        self.sessions = SessionsPage(
+            pages,
+            self.registry_manager,
+            self.lock_manager,
+            window=self,
+            is_showing=lambda: (
+                self._shell_showing()
+                and self.session_tabs.currentIndex() == PAGE_BROWSER
+            ),
+            client_label=lambda: self.client_combo.currentText(),
+            toast=lambda message: self._toast(message),
+            parent=self,
+        )
+        self.sessions.startRequested.connect(
+            lambda info: self._handle_start_packing_from_browser(info)
+        )
+        self.sessions.resumeRequested.connect(
+            lambda info: self._handle_resume_session_from_browser(info)
+        )
+        self.sessions.showPackingRequested.connect(
+            lambda: self.session_tabs.setCurrentIndex(PAGE_PACKING)
+        )
+```
+
+(The deleted `if self.current_client_id:` block was dead: `_init_ui()` runs before `load_available_clients()`.)
+
+(d) `_init_ui`, after
+
+```python
+        self.session_tabs.currentChanged.connect(
+            lambda index: self.command_bar.set_page(PAGES[index])
+        )
+```
+
+add:
+
+```python
+        self.session_tabs.currentChanged.connect(lambda index: self._on_page_changed(index))
+```
+
+and add this method after `_show_named_page`:
+
+```python
+    def _on_page_changed(self, index: int):
+        if index == PAGE_BROWSER:
+            # What Sessions shows should be now, not when it was last looked at.
+            self.sessions.page_shown()
+```
+
+(e) `_push_pages`. Both exits tell Sessions what is open here. The `logic is None` branch becomes:
+
+```python
+        if logic is None:
+            bridge.set_packing({})
+            bridge.set_statistics({})
+            self.command_bar.set_complete(False)
+            self._sync_sessions_context()
+            return
+```
+
+and add `self._sync_sessions_context()` as the method's last line, after `self.packer_mode_button.setEnabled(not complete)`.
+
+(f) `_sync_client_state`. Only the comment changes:
+
+```python
+        if not chosen:
+            # Every page draws "Choose a client"; Packing is the one to be on.
+            self.session_tabs.setCurrentIndex(PAGE_PACKING)
+```
+
+(g) `_sync_shell`. Add a last line and a new method after it:
+
+```python
+    def _sync_shell(self):
+        self.session_tabs.bridge.set_shell(
+            client=bool(self.current_client_id),
+            # With none, the selector's one item is "(No clients available)",
+            # whose data is None. Not isEnabled(): an open session disables it.
+            clients=self.client_combo.itemData(0) is not None,
+            server_down=self._connection_state == "down",
+        )
+        self._sync_sessions_context()
+
+    def _sync_sessions_context(self):
+        """Tell Sessions which session is open on this PC and whether the
+        server answers: both decide what a row's action is (section 5.5)."""
+        open_key = ""
+        if self.logic is not None and self.current_session_path:
+            open_key = session_key({
+                "session_id": Path(self.current_session_path).name,
+                "packing_list_name": self.current_packing_list or "",
+            })
+        self.sessions.set_context(open_key, self._connection_state == "down")
+```
+
+(h) `on_client_changed`. Replace
+
+```python
+        # The browser has no picker of its own (Bundle 6): the command bar's
+        # is the only one, so it has to push the change.
+        if hasattr(self, "session_browser"):
+            self.session_browser.load_client(client_id)
+```
+
+with
+
+```python
+        # Sessions has no picker of its own (Bundle 6): the command bar's is
+        # the only one, so it has to push the change.
+        self.sessions.load_client(client_id)
+```
+
+(i) `closeEvent`. Replace the whole block that starts `# 5. Stop auto-refresh timer in Session Browser if open` (it tests `hasattr(self, "session_browser_dialog")`, which nothing has set for a long time) with:
+
+```python
+            # 5. Stop the Sessions timer and let its workers end
+            try:
+                self.sessions.shutdown()
+            except Exception as e:
+                logger.warning(f"Failed to stop the Sessions page: {e}")
+```
+
+(j) `start_shopify_packing_session`. The signature gains a last argument, and the docstring's `Args:` a line:
+
+```python
+        packing_list_name: str,
+        take_over: dict | None = None,
+    ) -> bool:
+```
+```
+            take_over: The stale lock the packer agreed to take over (frame 7c), or None
+```
+
+Step 3 of its body, from `# 3. Acquire lock on work directory (with stale lock handling)` to `raise RuntimeError(error_msg)`, becomes:
+
+```python
+            # 3. Acquire the lock on the work directory
+            success, error_msg, taken_from = self._acquire_lock(
+                client_id, work_dir, take_over
+            )
+            if not success:
+                raise RuntimeError(error_msg)
+```
+
+Step 11's first toast, `self._toast(f"Loaded {order_count} orders from {packing_list_name}.")`, becomes:
+
+```python
+            if taken_from:
+                self._toast(f"Took over {session_path.name} from {taken_from}.")
+            else:
+                self._toast(f"Loaded {order_count} orders from {packing_list_name}.")
+```
+
+(k) `_start_or_resume_from_browser`. Replace the whole method with:
+
+```python
+    def _start_or_resume_from_browser(
+        self,
+        client_id,
+        packing_list_name,
+        session_path,
+        packing_list_path,
+        work_dir=None,
+        take_over=None,
+    ):
+        """
+        Shared logic for Sessions' "Resume session" and "Start packing".
+
+        If work_dir is None, one is created via SessionManager.get_packing_work_dir()
+        (the "start packing" case); otherwise the existing work_dir is reused (resume).
+        take_over is the stale lock the packer agreed to take over, or None.
+        """
+        if self._starting:
+            return
+        if self._connection_state == "down":
+            self._toast(
+                "Server unreachable. Sessions cannot be opened until it answers.",
+                role="info",
+            )
+            return
+
+        # One list at a time. is_active() covers only the legacy Excel path;
+        # an open Shopify list is self.logic (AUDIT-02-2). The row's action is
+        # disabled while one is open, so this is for a start that still arrives.
+        if self.logic is not None or (
+            self.session_manager and self.session_manager.is_active()
+        ):
+            logger.warning(
+                "Attempted to start/resume packing while a session is already active"
+            )
+            open_id = (
+                Path(self.current_session_path).name
+                if self.current_session_path
+                else "A session"
+            )
+            self._toast(f"{open_id} is open. End it before opening another.", role="info")
+            return
+
+        self._last_start = {
+            "client_id": client_id,
+            "packing_list_name": packing_list_name,
+            "session_path": session_path,
+            "packing_list_path": packing_list_path,
+            "work_dir": work_dir,
+            "take_over": take_over,
+        }
+
+        # The work happens on the Packing page: that is where the opening
+        # steps (3b), a failure (3c) and the open list are drawn.
+        self.session_tabs.setCurrentIndex(PAGE_PACKING)
+
+        # Set current client if different
+        if self.current_client_id != client_id:
+            for i in range(self.client_combo.count()):
+                if self.client_combo.itemData(i) == client_id:
+                    self.client_combo.setCurrentIndex(i)
+                    break
+
+        # Create SessionManager for this client if not exists
+        if not self.session_manager or self.session_manager.client_id != client_id:
+            self.session_manager = SessionManager(
+                client_id=client_id,
+                profile_manager=self.profile_manager,
+                lock_manager=self.lock_manager,
+                worker_id=self.current_worker_id,
+                worker_name=self.current_worker_name,
+            )
+
+        if work_dir is None:
+            try:
+                work_dir = self.session_manager.get_packing_work_dir(
+                    session_path=str(session_path), packing_list_name=packing_list_name
+                )
+            except OSError as e:
+                # The usual way a packer first meets an outage: the work
+                # folder cannot be made on a share that has gone away.
+                logger.exception("Could not create the packing work directory")
+                self._show_start_failure(
+                    "Session could not be opened",
+                    f"The work folder for {packing_list_name} could not be made: {e}.",
+                    packing_list_name,
+                )
+                self.check_connection()
+                return
+            logger.info(f"Work directory created: {work_dir}")
+
+        # The start's own toast says what loaded; a failure is frame 3c.
+        self.start_shopify_packing_session(
+            packing_list_path=packing_list_path,
+            work_dir=work_dir,
+            session_path=session_path,
+            client_id=client_id,
+            packing_list_name=packing_list_name,
+            take_over=take_over,
+        )
+```
+
+(l) The two handlers. In `_handle_resume_session_from_browser` the docstring's `Args:` line becomes `session_info: Dict with session_path, client_id, packing_list_name, work_dir, session_id, take_over` and the call becomes:
+
+```python
+        self._start_or_resume_from_browser(
+            client_id,
+            packing_list_name,
+            session_path,
+            packing_list_path,
+            work_dir=work_dir,
+            take_over=session_info.get("take_over"),
+        )
+```
+
+In `_handle_start_packing_from_browser` the call becomes:
+
+```python
+        self._start_or_resume_from_browser(
+            client_id,
+            packing_list_name,
+            session_path,
+            packing_list_path,
+        )
+```
+
+(m) Replace the whole of `_acquire_lock_with_stale_prompt` with:
+
+```python
+    def _acquire_lock(self, client_id: str, work_dir: Path, take_over: dict | None = None):
+        """
+        Take the session lock; take over a stale one only when the packer agreed to.
+
+        take_over is the stale lock frame 7c asked about. It is released only
+        if it is still that lock and still stale (AUDIT-02-1): while the
+        question was open its PC may have come back, or another PC taken it.
+
+        Returns:
+            (True, None, None) when the lock was free.
+            (True, None, "<PC>") when it was taken over from that PC.
+            (False, sentence, None) when it was refused; the sentence is frame 3c's.
+        """
+
+        def acquire():
+            return self.lock_manager.acquire_lock(
+                client_id,
+                work_dir,
+                worker_id=self.current_worker_id,
+                worker_name=self.current_worker_name,
+            )
+
+        def stale(lock) -> bool:
+            return bool(lock) and self.lock_manager.is_lock_stale(lock)
+
+        success, error_msg, lock = acquire()
+        taken_from = None
+        if not success and take_over is not None and stale(lock):
+            if self.lock_manager.force_release_lock(work_dir, expected=take_over):
+                taken_from = take_over.get("locked_by") or "another PC"
+            success, error_msg, lock = acquire()
+        if success:
+            return True, None, taken_from
+        if stale(lock):
+            # Nobody was asked about this lock: the list was behind, this is a
+            # Retry of 3c, or the lock changed while the question was open.
+            pc = lock.get("locked_by") or "Another PC"
+            return (
+                False,
+                f"{pc} stopped responding while this list was open there. "
+                "Resume it from Sessions to take it over.",
+                None,
+            )
+        return False, error_msg, None
+```
+
+(n) `open_session_browser`: the docstring becomes
+
+```python
+        """Show the Sessions page.
+
+        The one place that navigation happens: the command bar's Open session
+        and the document's own button both come here.
+        """
+```
+
+and its log line `logger.info("Showing the Sessions page")`.
+
+- [ ] **Step 5: Delete the Qt package and what only served it**
+
+One git command per Bash call:
+
+```
+/usr/bin/git rm -r gui/session_browser
+/usr/bin/git rm packing_tool/session_history_manager.py
+/usr/bin/git rm tests/test_session_detail_page.py tests/test_sessions_list_columns.py tests/test_sessions_list_status.py tests/test_sessions_list_empty.py
+```
+
+Then check nothing still names them:
+
+Run: `grep -rn "session_browser\b\|session_history_manager\|SessionHistoryManager\|SessionBrowserWidget\|web_is_current\|_acquire_lock_with_stale_prompt" --include=*.py gui packing_tool tests scripts main.py run_dev.py`
+Expected: no line that imports or calls any of them. `open_session_browser` (the method) and `test_session_browser_client.py` (the file name) are fine. If `gui/workers.py` or another module still imports from `gui.session_browser`, Task 1 or 6 missed a move: fix the import there.
+
+- [ ] **Step 6: Run the whole suite**
+
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q`
+Expected: all pass. Notes for a failure:
+- `QThread: Destroyed while thread is still running` in a test that builds its own `MainWindow` (not through the `main_window` fixture): it needs `window.sessions.shutdown()` before the window goes, as step 1 (d) and (k) add. The other builders are `tests/test_packer_mainwindow_seam.py`, `tests/test_connection_state.py` (near line 207) and `tests/test_no_client.py`.
+- `test_a_resume_with_a_take_over_opens_the_session_and_says_so` and `test_a_start_says_it_loaded_in_a_toast_and_no_box` are the first tests to run a whole start through `MainWindow`. If the start fails, `bridge.session["text"]` says why; fix the cause, do not stub the start out.
+- `test_the_open_session_and_the_connection_reach_the_rows`: if a row is missing, the default date range dropped it; `_entry` dates its sessions three hours ago on purpose.
+- A freshness test that times out in `_settle`: the page did not report the revision it was last sent. Check that `renderSessions` / `renderDetails` in `app.js` end by reporting the paint as the Packing page's render does (phase 3's `report()` path), also when the page is `covered`.
+- In `tests/test_app_freshness.py` the details test waits for `bridge.details["state"] == "ready"`; if it reads `"error"`, print `bridge.details["error"]`: the summary `_files` writes must satisfy `load_session_details`.
+
+- [ ] **Step 7: Lint and commit**
+
+Run: `.venv/bin/ruff check . --exclude shared`. It will name any import the deletions left unused in `gui/main_window.py`; remove them (`QMessageBox` stays: other paths use it).
+
+Stage everything this task touched (`/usr/bin/git add gui/app_pages.py gui/main_window.py tests`). Message: `feat: MainWindow drives the web Sessions pages; the Qt Session Browser is deleted`.
+
+---
+
+### Task 8: The renders, and the docs
+
+**Files:**
+- Create: `scripts/render_sessions.py`
+- Create: `docs/design/ui-refresh/renders/phase4/*.png` (28 files, written by the script)
+- Modify: `CONTEXT.md`, `docs/adr/0003-the-shells-pages-are-one-web-document.md`
+- Modify, only if a render shows a difference from the mockup: `gui/web/app.css`, `gui/web/app.js`, `gui/web/app.html`, and section 12 of the spec
+
+**Interfaces:**
+- Consumes: `MainWindow.sessions` (`shutdown()`, and `refresh` replaced by a no-op), `AppPages`, `AppBridge.set_sessions / set_details / set_confirm / set_page` (Tasks 4, 7); `sessions_payload`, `details_payload`, `takeover_payload`, `refresh_failure`, `session_key` (Tasks 2, 3); `load_session_details`, `SessionFilesError` (Task 1); in the page, a session row is `[data-session]` with `dataset.session` its key, an order row is `[data-dorder]`, and the ids `d-query` and `d-back` exist (Tasks 4, 5).
+- Produces: nothing code calls. The PNGs go in the PR.
+
+- [ ] **Step 1: Write `scripts/render_sessions.py`**
+
+```python
+"""Offscreen renders of Sessions and Session details, mockup frames 7a-7h and 8a-8f.
+
+    .venv/bin/python scripts/render_sessions.py [output dir]
+
+Writes <frame>-<theme>.png at 1366x768 in both themes, by default into
+docs/design/ui-refresh/renders/phase4/. It builds a MainWindow against a
+throwaway server with its own QSettings, so it touches neither the file
+server nor this PC's saved theme, client or server path. The pages are not
+driven through the registry: the bridge is given payloads built by the pure
+functions in gui/sessions_payload.py from 40 synthetic sessions at a fixed
+"now", so every run draws the same thing. Session details come from files
+the script writes, read by the real loader.
+
+Offscreen Qt uses a fallback font for the Qt chrome: glyph widths differ a
+little from Windows.
+"""
+
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QApplication
+
+DEFAULT_OUT = ROOT / "docs" / "design" / "ui-refresh" / "renders" / "phase4"
+# The mockup's moment, in this PC's time zone so the clock times read as drawn.
+NOW = datetime(2026, 10, 7, 14, 6, 31).astimezone()
+STAMP = "14:06:31"
+CLIENT = "Acme Cosmetics (ACME)"
+SERVER = r"\\fs01\packer\Sessions\CLIENT_ACME"
+
+MARIA, PETYA, GEORGI, IVAN, DESI = (
+    ("W-002", "Maria"), ("W-004", "Petya"), ("W-007", "Georgi"),
+    ("W-009", "Ivan"), ("W-011", "Desislava"),
+)
+CATALOGUE = [
+    ("CLN-200", "Gel cleanser 200 ml"), ("TNR-150", "Toner 150 ml"),
+    ("SER-30ML", "Vitamin C serum 30 ml"), ("HYA-15ML", "Hyaluronic serum 15 ml"),
+    ("DAY-50ML", "Day cream 50 ml"), ("NGT-50ML", "Night cream 50 ml"),
+    ("CRM-15ML", "Eye cream 15 ml"), ("SPF-50", "Sunscreen SPF 50"),
+    ("LIP-RED", "Lip balm, red"), ("LST-07", "Lipstick, shade 07"),
+    ("MSK-5PK", "Sheet mask, 5 pack"), ("OIL-100", "Body oil 100 ml"),
+]
+
+
+def at(days_ago: int, clock: str) -> str:
+    """An ISO stamp: `days_ago` days before NOW's date, at HH:MM:SS."""
+    hour, minute, second = (int(part) for part in clock.split(":"))
+    day = NOW - timedelta(days=days_ago)
+    return day.replace(hour=hour, minute=minute, second=second).isoformat()
+
+
+def session_id(days_ago: int, n: int) -> str:
+    return f"{(NOW - timedelta(days=days_ago)).date().isoformat()}_{n}"
+
+
+def entry(root, days_ago, n, status, list_name, worker, pc, total, done, *, skipped=0,
+          items=0, started="08:02:11", touched="11:14:40", duration=None, metrics=None) -> dict:
+    """A registry entry for a started session."""
+    sid = session_id(days_ago, n)
+    return {
+        "session_id": sid, "packing_list_name": list_name, "status": status,
+        "worker_id": worker[0], "worker_name": worker[1], "pc_name": pc,
+        "started_at": at(days_ago, started), "last_updated": at(days_ago, touched),
+        "total_orders": total, "completed_orders": done, "skipped_orders": skipped,
+        "total_items": items, "duration_seconds": duration, "metrics": metrics,
+        "session_path": str(root / sid),
+        "work_dir": str(root / sid / "packing" / list_name),
+    }
+
+
+def unstarted(root, days_ago, n, list_name, total, items) -> dict:
+    """A registry entry for a list nobody has started."""
+    sid = session_id(days_ago, n)
+    return {
+        "session_id": sid, "packing_list_name": list_name, "status": "not_started",
+        "created_at": at(days_ago, "07:40:00"), "total_orders": total,
+        "completed_orders": 0, "skipped_orders": 0, "total_items": items, "work_dir": "",
+        "session_path": str(root / sid), "metrics": None,
+        "packing_list_path": str(root / sid / "packing_lists" / f"{list_name}.json"),
+    }
+
+
+def synthetic_sessions(root: Path) -> list[dict]:
+    """40 sessions, the same every run. The first seven are the ones the
+    mockup's frames name."""
+    made = [
+        entry(root, 0, 2, "stale", "Afternoon_wave", GEORGI, "WH-PC-02", 96, 52,
+              items=311, started="12:10:05", touched="13:52:00"),
+        entry(root, 0, 1, "in_progress", "Morning_wave", DESI, "WH-PC-03", 120, 38,
+              skipped=3, items=402, started="08:05:00", touched="14:05:50"),
+        entry(root, 1, 2, "paused", "Afternoon_wave", MARIA, "WH-PC-02", 110, 71,
+              skipped=2, items=402, started="08:08:00", touched="11:20:00"),
+        entry(root, 1, 1, "completed", "Morning_wave", PETYA, "WH-PC-01", 38, 38,
+              items=97, duration=11549,
+              metrics={"total_corrections": 1, "total_unknown_scans": 1}),
+        unstarted(root, 2, 1, "Express", 24, 61),
+        entry(root, 3, 1, "incomplete", "Morning_wave", IVAN, "WH-PC-01", 96, 57,
+              skipped=1, items=288, touched="15:31:00", duration=26929),
+        entry(root, 23, 1, "completed", "Morning_wave", MARIA, "WH-PC-02", 12, 12,
+              items=30),
+    ]
+    cycle = ["completed", "completed", "incomplete", "completed", "abandoned"]
+    workers = [MARIA, PETYA, GEORGI, IVAN]
+    lists = ["Morning_wave", "Afternoon_wave", "Express", "Returns_repack"]
+    for index in range(33):
+        status = cycle[index % 5]
+        total = 40 + (index * 17) % 90
+        if status == "completed":
+            done = total
+        elif status == "incomplete":
+            done = total - 5 - index % 30
+        else:
+            done = (index * 3) % 20
+        made.append(entry(
+            root, 4 + index % 25, 2 + index // 25, status, lists[index % 4],
+            workers[index % 4], f"WH-PC-0{1 + index % 3}", total, done,
+            skipped=index % 3, items=total * 3 + index,
+            started=f"{8 + index % 6:02d}:{(index * 7) % 60:02d}:00",
+            touched=f"{15 + index % 3:02d}:{(index * 11) % 60:02d}:00",
+            duration=3600 + index * 211 if status != "abandoned" else None,
+        ))
+    return made
+
+
+def packed_orders(count: int, days_ago: int, first: str, *, timed: bool = True) -> list[dict]:
+    """`count` packed-order records as PackerLogic writes them: one item per scan."""
+    orders = []
+    cursor = datetime.fromisoformat(at(days_ago, first))
+    for index in range(count):
+        duration = 60 + (index * 37) % 140
+        items, offset = [], 12
+        for line in range(1 + (index * 7) % 3):
+            sku, title = CATALOGUE[(index * 5 + line * 3) % len(CATALOGUE)]
+            for _unit in range(1 + (index + line) % 3):
+                scan = {"sku": sku, "title": title, "quantity": 1, "row": line,
+                        "confirmation_method": "scanned"}
+                if timed:
+                    scan["scanned_at"] = (cursor + timedelta(seconds=offset)).isoformat()
+                    scan["time_from_order_start_seconds"] = offset
+                items.append(scan)
+                offset += 6
+        order = {
+            "order_number": f"#{10400 + index}", "items_count": len(items), "items": items,
+            "corrections": 0, "extra_scans_count": 0, "unknown_scans_count": 0,
+        }
+        if timed:
+            order.update(
+                started_at=cursor.isoformat(),
+                completed_at=(cursor + timedelta(seconds=duration)).isoformat(),
+                duration_seconds=duration,
+                time_to_first_scan_seconds=12,
+            )
+        if index == 7:
+            # Frame 8d's order: a correction, two extras, an unknown, a forced line.
+            order.update(corrections=1, extra_scans_count=2, unknown_scans_count=1)
+            items[-1].update(quantity=6, confirmation_method="force_confirmed")
+            order["items_count"] = sum(scan["quantity"] for scan in items)
+        if index == 12:
+            items[0]["confirmation_method"] = "manual"
+        orders.append(order)
+        cursor += timedelta(seconds=duration + 25)
+    return orders
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def write_session_files(by_id: dict) -> None:
+    """The files Session details reads, for the four sessions the frames open."""
+    from packing_tool.packer_logic import compute_order_timing_metrics
+
+    # 8a, 8d, 8e: a finished session with timing.
+    done = by_id[session_id(1, 1)]
+    orders = packed_orders(38, 1, "08:14:02")
+    metrics = dict(compute_order_timing_metrics(orders))
+    hours = done["duration_seconds"] / 3600
+    units = sum(order["items_count"] for order in orders)
+    metrics["orders_per_hour"] = round(len(orders) / hours, 1)
+    metrics["items_per_hour"] = round(units / hours, 1)
+    write_json(Path(done["work_dir"]) / "session_summary.json", {
+        "session_id": done["session_id"], "client_id": "ACME",
+        "packing_list_name": done["packing_list_name"],
+        "worker_id": done["worker_id"], "worker_name": done["worker_name"],
+        "pc_name": done["pc_name"], "started_at": done["started_at"],
+        "completed_at": done["last_updated"], "duration_seconds": done["duration_seconds"],
+        "total_orders": 38, "completed_orders": 38, "total_items": units,
+        "metrics": metrics, "orders": orders, "skipped_orders": [],
+    })
+
+    # 8b: a session still being packed has a state file and no summary.
+    live = by_id[session_id(0, 1)]
+    work = Path(live["work_dir"])
+    write_json(work / "packing_state.json", {
+        "started_at": live["started_at"], "last_updated": live["last_updated"],
+        "pc_name": live["pc_name"], "progress": {"total_orders": 120},
+        "completed": packed_orders(38, 0, "08:06:10"),
+        "in_progress": {
+            "#10440": [{"original_sku": "SPF-50", "required": 2, "packed": 1, "row": 0},
+                       {"original_sku": "OIL-100", "required": 3, "packed": 2, "row": 1}],
+            "#10441": [{"original_sku": "LST-07", "required": 1, "packed": 0, "row": 0}],
+        },
+        "skipped_orders": ["#10444", "#10457", "#10471"],
+        "skipped_orders_timing": {
+            "#10444": at(0, "10:02:00"), "#10457": at(0, "11:15:30"),
+            "#10471": at(0, "12:48:10"),
+        },
+    })
+    write_json(work.parent / "session_info.json", {
+        "session_id": live["session_id"], "client_id": "ACME",
+        "packing_list_name": live["packing_list_name"],
+        "worker_id": live["worker_id"], "worker_name": live["worker_name"],
+        "pc_name": live["pc_name"], "started_at": live["started_at"],
+    })
+
+    # 8c: an old session whose files hold no scan times.
+    old = by_id[session_id(23, 1)]
+    untimed = packed_orders(12, 23, "08:14:02", timed=False)
+    write_json(Path(old["work_dir"]) / "session_summary.json", {
+        "session_id": old["session_id"], "client_id": "ACME",
+        "packing_list_name": old["packing_list_name"],
+        "worker_id": old["worker_id"], "worker_name": old["worker_name"],
+        "pc_name": old["pc_name"], "started_at": old["started_at"],
+        "completed_at": old["last_updated"], "duration_seconds": 0,
+        "total_orders": 12, "completed_orders": 12,
+        "total_items": sum(order["items_count"] for order in untimed),
+        "metrics": {}, "orders": untimed, "skipped_orders": [],
+    })
+
+    # 8f: a summary that is not JSON.
+    broken = by_id[session_id(3, 1)]
+    path = Path(broken["work_dir"]) / "session_summary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"session_id": "2026-10-04_1", "orders": [', encoding="utf-8")
+
+
+def main(argv: list[str]) -> int:
+    out = Path(argv[0]) if argv else DEFAULT_OUT
+    out.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        # Before any QSettings is made, and both formats, as tests/conftest.py
+        # does: QSettings(org, app) is NativeFormat, and a saved server path
+        # outranks config.ini.
+        for fmt in (QSettings.NativeFormat, QSettings.IniFormat):
+            QSettings.setPath(fmt, QSettings.UserScope, str(tmp / "settings"))
+        os.environ.pop("FULFILLMENT_SERVER_PATH", None)
+
+        app = QApplication.instance() or QApplication(sys.argv[:1])
+        from gui.main_window import PAGE_BROWSER, MainWindow
+        from gui.sessions_payload import (
+            details_payload,
+            refresh_failure,
+            session_key,
+            sessions_payload,
+            takeover_payload,
+        )
+        from gui.theme import apply_theme, load_saved_theme
+        from packing_tool.profile_manager import ProfileManager
+        from packing_tool.session_details import SessionFilesError, load_session_details
+
+        load_saved_theme(app)
+
+        server = tmp / "server"
+        server.mkdir()
+        config = tmp / "config.ini"
+        config.write_text(
+            "[Network]\n"
+            f"FileServerPath = {server}\n"
+            "ConnectionTimeout = 5\n"
+            f"LocalCachePath = {tmp / 'cache'}\n"
+            "[Logging]\nLogLevel = WARNING\nLogRetentionDays = 30\nMaxLogSizeMB = 10\n",
+            encoding="utf-8",
+        )
+        seed = ProfileManager(config_path=str(config))
+        seed.create_client_profile("ACME", "Acme Cosmetics")
+        root = server / "Sessions" / "CLIENT_ACME"
+        root.mkdir(parents=True, exist_ok=True)
+
+        entries = synthetic_sessions(root)
+        by_id = {made["session_id"]: made for made in entries}
+        write_session_files(by_id)
+
+        window = MainWindow(skip_worker_selection=True, config_path=str(config))
+        base = Path(window.profile_manager.base_path).resolve()
+        if not base.is_relative_to(tmp.resolve()):
+            raise RuntimeError(f"refusing to render against {base}: not the temp server")
+        window.current_worker_name = "Desislava Ilieva"
+        window.sidebar.set_worker(window.current_worker_name)
+        # The connection card shows the mockup's path, not the temp folder.
+        real_set = window.sidebar.set_connection
+        window.sidebar.set_connection = lambda state, _path: real_set(state, r"\\fs01\packer")
+        window._set_connection_state("ok")
+        window.resize(1366, 768)
+        window.show()
+        pages = window.session_tabs
+        bridge = pages.bridge
+
+        def settle() -> None:
+            deadline = time.monotonic() + 20
+            while bridge.painted_revision < bridge.revision:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("the page never painted; is QtWebEngine working?")
+                app.processEvents()
+                time.sleep(0.01)
+            for _ in range(10):
+                app.processEvents()
+                time.sleep(0.02)
+
+        def js(code: str) -> None:
+            """Run statements in the page: a click or a scroll the frame needs."""
+            settle()
+            done = []
+            pages.view.page().runJavaScript(
+                f"(function () {{ {code}; return true; }})()", 0, done.append)
+            deadline = time.monotonic() + 10
+            while not done:
+                if time.monotonic() > deadline:
+                    raise RuntimeError(f"the page never answered: {code}")
+                app.processEvents()
+                time.sleep(0.01)
+            if done[0] is not True:
+                raise RuntimeError(f"failed in the page: {code}")
+
+        def shoot(name: str) -> None:
+            for theme in ("light", "dark"):
+                apply_theme(app, theme)
+                settle()
+                target = out / f"{name}-{theme}.png"
+                if not window.grab().save(str(target)):
+                    raise OSError(f"could not write {target}")
+                print(target)
+
+        window.client_combo.setCurrentIndex(window.client_combo.findData("ACME"))
+        # The controller stays out of the way: its timer off, the read the
+        # client picker started finished, and no new read when the page shows.
+        window.sessions.shutdown()
+        for _ in range(5):
+            app.processEvents()
+        window.sessions.refresh = lambda: None
+        pages.setCurrentIndex(PAGE_BROWSER)
+
+        def listed(**kwargs) -> None:
+            kwargs.setdefault("stamp", STAMP)
+            shown = kwargs.pop("entries", entries)
+            bridge.set_sessions(sessions_payload(shown, now=NOW, **kwargs))
+
+        def select(sid: str) -> None:
+            key = json.dumps(session_key(by_id[sid]))
+            js("Array.from(document.querySelectorAll('[data-session]'))"
+               f".find(function (n) {{ return n.dataset.session === {key}; }}).click()")
+
+        def details(sid: str, *, read: bool = True, **kwargs) -> None:
+            made = by_id[sid]
+            files = load_session_details(made) if read else None
+            bridge.set_details(
+                details_payload(made, files, now=NOW, client=CLIENT, stamp=STAMP, **kwargs))
+            bridge.set_page("details")
+            js("document.getElementById('d-back').scrollIntoView()")
+
+        # 7a: the list. 7b: a row selected, the pane open.
+        listed()
+        shoot("7a")
+        select(session_id(1, 2))
+        shoot("7b")
+
+        # 7c: the take-over question over a stale session.
+        stale = by_id[session_id(0, 2)]
+        select(stale["session_id"])
+        bridge.set_confirm(takeover_payload(
+            stale,
+            {"locked_by": "WH-PC-02", "worker_name": "Georgi", "heartbeat": at(0, "13:52:00")},
+            now=NOW,
+        ))
+        shoot("7c")
+        bridge.set_confirm({})
+
+        # 7f: a refresh failed; the old list stays, with a row selected.
+        select(session_id(0, 1))
+        listed(failure=refresh_failure(
+            SERVER, "the network path was not found", "14:08:31", STAMP))
+        shoot("7f")
+
+        # 7d: nothing matches. 7e: the first load. 7g: no sessions yet.
+        listed(query="2025-12")
+        shoot("7d")
+        listed(entries=[], loaded=False, refreshing=True, stamp="")
+        shoot("7e")
+        listed(entries=[])
+        shoot("7g")
+
+        # 8a: a finished session. 8d: order #10407 opened. 8e: nothing matches.
+        listed()
+        finished = session_id(1, 1)
+        details(finished)
+        shoot("8a")
+        js("var row = Array.from(document.querySelectorAll('[data-dorder]'))"
+           ".find(function (n) { return n.dataset.dorder.indexOf('10407') >= 0; });"
+           " row.click(); row.scrollIntoView({block: 'center'})")
+        shoot("8d")
+        details(finished, query="10999")
+        js("document.getElementById('d-query').scrollIntoView()")
+        shoot("8e")
+
+        # 8b: still packing. 8c: no timing data.
+        details(session_id(0, 1))
+        shoot("8b")
+        details(session_id(23, 1))
+        shoot("8c")
+
+        # 8f: the files could not be read; the cause is the loader's own.
+        broken = session_id(3, 1)
+        try:
+            load_session_details(by_id[broken])
+        except SessionFilesError as error:
+            cause = error.cause
+        else:
+            raise RuntimeError("the broken summary was read")
+        details(broken, read=False, error={
+            "path": SERVER + "\\" + broken + r"\packing\Morning_wave\session_summary.json",
+            "cause": cause,
+        })
+        shoot("8f")
+
+        # 7h: no client. The bar, the sidebar and the page all say so.
+        bridge.set_details({})
+        window.client_combo.setCurrentIndex(-1)
+        pages.setCurrentIndex(PAGE_BROWSER)
+        shoot("7h")
+
+        window.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+```
+
+- [ ] **Step 2: Run it**
+
+Run: `.venv/bin/python scripts/render_sessions.py`
+Expected: 28 paths printed, `7a-light.png` to `8f-dark.png`, under `docs/design/ui-refresh/renders/phase4/`. Notes for a failure:
+- `failed in the page: …` on a `select`: no `[data-session]` row has that key, so the row is not in the list. Print `[row["id"] for row in bridge.sessions["rows"]]`; a named session outside the default 30-day range of `NOW` is the usual cause.
+- `load_session_details` raising for 8a, 8b or 8c: the file `write_session_files` wrote does not satisfy the loader. Fix the script's data, not the loader.
+- If `window.client_combo.setCurrentIndex(-1)` leaves the page on Packing, that is `_sync_client_state` doing its job; the `pages.setCurrentIndex(PAGE_BROWSER)` after it is what shows 7h.
+
+- [ ] **Step 3: Look at every render beside its mockup frame**
+
+Unpack the mockup as `docs/design/ui-refresh/mockups/README.md` describes, into a folder outside the repo, and open each PNG with the Read tool. For each of the 14 frames, in both themes, check against the mockup frame of the same id (`Packer Screens.html` is the index; the notes on the 7 and 8 groups are part of the brief):
+
+- 7a: one toolbar row that does not wrap at 1366px (tabs with counts, search, the two dates, Refresh, the stamp over the switch, Export); head 40px; rows 44px; solid dots only on Paused and Incomplete; the foot's legend and "40 sessions".
+- 7b: the pane is 360px; the list lost Items and Last touched; the selected row has the tinted ground and the 4px rule; one primary action at full width, *View details* under it.
+- 7c: the dialog is centred over a scrim, 540px, *Cancel* then *Take over and resume*.
+- 7d, 7g: the centred glyph, title and sentence; 7d has *Clear filters*.
+- 7e: the status line, 12 still skeleton rows, counts "–".
+- 7f: the danger banner above the toolbar with the path in mono and *Retry*; the stamp red and bold; the list still drawn.
+- 7h: the centred card only.
+- 8a: head, facts in seven cells, five stat cards, the three groups, the Orders card.
+- 8b: the info strip; "so far" on Duration, the cards and the two time groups; Completed reads "Still packing".
+- 8c: the one sentence in place of the two time groups; Scan quality still there.
+- 8d: item rows on the raised ground, indented; the extra and unknown rows; the badges.
+- 8e: "No orders match" under the sticky head; "Showing 0 of 38 recorded orders".
+- 8f: the danger banner; the facts row; no cards, timing or orders; *Export Excel* disabled.
+- Both themes: nothing unreadable, no light surface left in Dark.
+
+Fix what differs in `gui/web/app.css`, `app.js` or `app.html` (within Global Constraints), re-run the script, and re-run `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_app_sessions_page.py tests/test_style_literals_guard.py`. A difference you decide to keep is a departure: add a row to section 12 of the spec, with why.
+
+- [ ] **Step 4: `CONTEXT.md`**
+
+Replace each paragraph that starts with the bold term, whole, with:
+
+```markdown
+**App document** — the web page that draws the shell's pages: Packing, Statistics, Sessions and Session details. One page in one web view (ADR 0003); Packer Mode's order document is a different page in its own view.
+```
+
+```markdown
+**App bridge** — the one `QWebChannel` object the app document talks to. It says which of the four pages shows, what the session is (none, opening, failed, open) and each page's data; the page reports clicks through slots.
+```
+
+```markdown
+**Session Browser** — the Sessions page and the Session details page behind a session: two pages of the app document. Its client picker is the command bar's; it has no picker of its own. Its destination in the sidebar is labelled "Sessions".
+```
+
+```markdown
+**Status chip** — the pill marking a session's status: its colour is the status's tone, and a solid dot means a person set the status where a hollow dot means the system inferred it.
+```
+
+In the **Session lock** paragraph, replace `a lock whose heartbeat stopped is *stale*` with `a lock with no heartbeat for 2 minutes is *stale*, and the Sessions list calls the session *stale* from the same moment`.
+
+Add after the **Status chip** paragraph, each followed by a blank line as the others are:
+
+```markdown
+**Session pane** — the 360px column beside the Sessions list while a row is selected: the session's facts and its one action (Start packing, Resume session, View details or Go to Packing). While it is open the list's Items and Last touched columns fold into it.
+
+**Take over** — resuming a session whose lock is stale. The page asks first, saying which PC had it, since when and what comes along; only that lock is released, and only if it is still stale. A session that is live on another PC cannot be taken over.
+```
+
+- [ ] **Step 5: ADR 0003**
+
+In `docs/adr/0003-the-shells-pages-are-one-web-document.md`, under Consequences, replace
+
+```markdown
+- One view is hidden only under Packer Mode, and, until phase 4, under the Qt Sessions page.
+```
+
+with
+
+```markdown
+- One view is hidden only under Packer Mode. (Until phase 4 it was also hidden under the Qt Sessions page;
+  Sessions and Session details are pages of the document since.)
+```
+
+- [ ] **Step 6: The graph, the suite, the commit**
+
+Run: `graphify update .`
+Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q`
+Expected: all pass.
+Run: `.venv/bin/ruff check . --exclude shared`
+Expected: no findings.
+
+Stage `scripts/render_sessions.py`, `docs/design/ui-refresh/renders/phase4`, `CONTEXT.md`, `docs/adr/0003-the-shells-pages-are-one-web-document.md`, and whatever step 3 changed. Message: `docs: renders of Sessions and Session details (7a to 7h, 8a to 8f), CONTEXT.md, ADR 0003`.
+
+---
+
+## For the PR
+
+The PR description carries these; none of them is code.
+
+- The 28 renders, embedded, each beside its frame id.
+- The departures from the mockup: section 12 of the spec, as it stands after Task 8.
+- "For shared/": section 13 of the spec.
+- **Needs a check on Windows** before merge, because offscreen Chromium on Linux cannot show it: the native date picker's popup of the two date inputs opens and is usable inside QtWebEngine; a click in the page and then F5, Esc and Alt+Left; Ctrl+1/2/3 after a click in the page; the two save dialogs open over the window.
+- Behaviour that changed on purpose: no "Session Loaded" / "Session Resumed" / "Session Active" / "Stale Lock Detected" message boxes (toasts, frame 3c and frame 7c replace them); the list calls a session Stale after 2 minutes, not 5; a failed refresh says so instead of showing "No sessions yet".

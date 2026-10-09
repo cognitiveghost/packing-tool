@@ -452,11 +452,14 @@ Both open a Qt save dialog from the bridge slot, in `SessionsPage`, with `window
   argument. `startRequested` and `resumeRequested` go to today's `_handle_start_packing_from_browser` and
   `_handle_resume_session_from_browser`; `showPackingRequested` shows the Packing page.
 - `session_tabs.currentChanged` calls `sessions.page_shown()` for `PAGE_BROWSER`.
-- `_push_pages`, `_sync_shell` and `_teardown_session` call `sessions.set_context(...)`. The open key is the
-  session id and the list name of the session open here.
+- `_push_pages` and `_sync_shell` call `sessions.set_context(...)`; ending a session reaches it through
+  `_push_pages`. The open key is the session id and the list name of the session open here.
 - `_sync_client_state` no longer has a Qt page to leave; it still shows Packing when no client is chosen.
-- `_toast` no longer asks whether the view is visible in a stack: the document is showing whenever the shell
-  is.
+- `_toast` does not change: it asks whether the view is visible, and the view is now visible on Sessions too,
+  so a toast raised there is the document's.
+- After a take-over the start's toast is "Took over … from …" in place of "Loaded N orders from …".
+- A *Retry* of frame 3c repeats the start with the same `take_over`. The lock is released only if it is
+  still the lock that was asked about, so a retry can never take a lock nobody was asked about.
 - `SessionHistoryManager` is no longer built.
 
 The command bar on Sessions is unchanged: the sidebar toggle, the client, the open session's id and ⋯.
