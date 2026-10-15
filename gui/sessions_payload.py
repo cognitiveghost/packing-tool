@@ -12,26 +12,28 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from gui.packer_bridge import order_label
+from shared.i18n import N_, _, _n, month_abbr
 from shared.metadata_utils import parse_timestamp
 
 # A status: its word, the badge's tone, and whether a packer declared it (a
-# solid dot) or the system inferred it (a hollow one).
+# solid dot) or the system inferred it (a hollow one). The label is English
+# here because exports write it; the page gets it translated (_row, details_payload).
 STATUS = {
-    "not_started": {"label": "Not started", "tone": "neutral", "manual": False},
-    "in_progress": {"label": "Active", "tone": "info", "manual": False},
-    "paused": {"label": "Paused", "tone": "warning", "manual": True},
-    "stale": {"label": "Stale", "tone": "warning", "manual": False},
-    "completed": {"label": "Completed", "tone": "success", "manual": False},
-    "incomplete": {"label": "Incomplete", "tone": "danger", "manual": True},
-    "abandoned": {"label": "Abandoned", "tone": "neutral", "manual": False},
+    "not_started": {"label": N_("Not started"), "tone": "neutral", "manual": False},
+    "in_progress": {"label": N_("Active"), "tone": "info", "manual": False},
+    "paused": {"label": N_("Paused"), "tone": "warning", "manual": True},
+    "stale": {"label": N_("Stale"), "tone": "warning", "manual": False},
+    "completed": {"label": N_("Completed"), "tone": "success", "manual": False},
+    "incomplete": {"label": N_("Incomplete"), "tone": "danger", "manual": True},
+    "abandoned": {"label": N_("Abandoned"), "tone": "neutral", "manual": False},
 }
 
 # (key, label, the statuses it holds; None is every status)
 TABS = (
-    ("all", "All", None),
-    ("open", "Open", ("not_started", "in_progress", "paused", "stale")),
-    ("finished", "Finished", ("completed", "incomplete")),
-    ("abandoned", "Abandoned", ("abandoned",)),
+    ("all", N_("All"), None),
+    ("open", N_("Open"), ("not_started", "in_progress", "paused", "stale")),
+    ("finished", N_("Finished"), ("completed", "incomplete")),
+    ("abandoned", N_("Abandoned"), ("abandoned",)),
 )
 
 DEFAULT_DAYS = 30
@@ -41,12 +43,10 @@ EXPORT_COLUMNS = (
     "Duration (s)", "Total Items", "Total Orders", "Completed Orders", "Skipped Orders",
 )
 _SEARCH_FIELDS = ("packing_list_name", "session_id", "worker_name", "worker_id", "pc_name")
-# Not strftime("%b"): Qt can switch the process locale under us.
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-_SERVER_DOWN = "Server unreachable. Sessions cannot be opened until it answers."
+_SERVER_DOWN = N_("Server unreachable. Sessions cannot be opened until it answers.")
 
 
-def _n(value: Any, default: int = 0) -> int:
+def _count(value: Any, default: int = 0) -> int:
     try:
         return int(float(value))
     except (TypeError, ValueError):
@@ -67,7 +67,7 @@ def _at(stamp: Any, now: datetime) -> datetime | None:
 
 
 def _day(day: date) -> str:
-    return f"{day.day} {_MONTHS[day.month - 1]}"
+    return f"{day.day} {month_abbr(day.month)}"
 
 
 def _clock(at: datetime, now: datetime) -> str:
@@ -75,10 +75,6 @@ def _clock(at: datetime, now: datetime) -> str:
     if at.date() == now.date():
         return f"{at:%H:%M}"
     return f"{_day(at)}, {at:%H:%M}"
-
-
-def plural(count: int, one: str, many: str) -> str:
-    return f"{count} {one if count == 1 else many}"
 
 
 def status_chip(status: str) -> dict:
@@ -136,7 +132,7 @@ def fmt_touched(entry: dict, now: datetime) -> str:
     when = ""
     if at is not None:
         recent = at.date() == now.date()
-        when = f"{at:%H:%M}" if recent else f"{fmt_age(stamp, now)} ago"
+        when = f"{at:%H:%M}" if recent else _("{age} ago", age=fmt_age(stamp, now))
     parts = [part for part in (worker, pc, when) if part]
     return " · ".join(parts) if parts else NOTHING
 
@@ -156,11 +152,11 @@ def _parse_day(text: Any) -> date | None:
 
 def _range_text(start: date | None, end: date | None) -> str:
     if start and end:
-        return f"between {_day(start)} and {_day(end)}"
+        return _("between {start} and {end}", start=_day(start), end=_day(end))
     if start:
-        return f"since {_day(start)}"
+        return _("since {start}", start=_day(start))
     if end:
-        return f"up to {_day(end)}"
+        return _("up to {end}", end=_day(end))
     return ""
 
 
@@ -212,29 +208,41 @@ def _why(entry: dict, key: str, now: datetime, open_key: str) -> str:
     pc = entry.get("pc_name") or ""
     at = _at(entry.get("last_updated") or entry.get("started_at"), now)
 
-    def timed(text: str) -> str:
-        return f"{text}, {_clock(at, now)}" if at else text
-
     if status == "not_started":
-        return "no orders packed yet"
+        return _("no orders packed yet")
     if status == "in_progress":
         if open_key and key == open_key:
-            return "open on this PC"
-        return f"scans arriving from {pc}" if pc else "scans arriving"
+            return _("open on this PC")
+        return _("scans arriving from {pc}", pc=pc) if pc else _("scans arriving")
     if status == "paused":
-        return timed(f"paused by {worker}" if worker else "paused")
+        if worker and at:
+            return _("paused by {worker}, {time}", worker=worker, time=_clock(at, now))
+        if worker:
+            return _("paused by {worker}", worker=worker)
+        if at:
+            return _("paused, {time}", time=_clock(at, now))
+        return _("paused")
     if status == "stale":
-        return timed(f"{pc} stopped responding" if pc else "stopped responding")
+        if pc and at:
+            return _("{pc} stopped responding, {time}", pc=pc, time=_clock(at, now))
+        if pc:
+            return _("{pc} stopped responding", pc=pc)
+        if at:
+            return _("stopped responding, {time}", time=_clock(at, now))
+        return _("stopped responding")
     if status == "completed":
-        return "every order packed"
+        return _("every order packed")
     if status == "incomplete":
-        left = max(_n(entry.get("total_orders")) - _n(entry.get("completed_orders")), 0)
-        closed = f"closed by {worker}" if worker else "closed"
-        return f"{closed} with {plural(left, 'order', 'orders')} unpacked"
+        left = max(_count(entry.get("total_orders")) - _count(entry.get("completed_orders")), 0)
+        if worker:
+            return _n("closed by {worker} with {n} order unpacked",
+                      "closed by {worker} with {n} orders unpacked", left, worker=worker)
+        return _n("closed with {n} order unpacked", "closed with {n} orders unpacked", left)
     if status == "abandoned":
         if at is None:
-            return "untouched"
-        return f"untouched for {plural(int((now - at).total_seconds() // 86400), 'day', 'days')}"
+            return _("untouched")
+        days = int((now - at).total_seconds() // 86400)
+        return _n("untouched for {n} day", "untouched for {n} days", days)
     return ""
 
 
@@ -244,33 +252,33 @@ def _action(entry: dict, key: str, *, open_key: str, server_down: bool) -> dict:
     has_files = bool(entry.get("work_dir"))
 
     def made(action, label, enabled=True, note="", warn=False):
-        return {"action": action, "actionLabel": label, "enabled": enabled,
+        return {"action": action, "actionLabel": _(label) if label else "", "enabled": enabled,
                 "note": note, "warn": warn}
 
     if open_key and key == open_key:
-        return made("show", "Go to Packing")
+        return made("show", N_("Go to Packing"))
     if status in ("completed", "abandoned") or status not in STATUS:
         if has_files or status in STATUS:
-            return made("details", "View details")
-        return made("", "", enabled=False, note="This session has no files to open.")
+            return made("details", N_("View details"))
+        return made("", "", enabled=False, note=_("This session has no files to open."))
 
     start = status == "not_started"
-    action, label = ("start", "Start packing") if start else ("resume", "Resume session")
-    pc = entry.get("pc_name") or "Another PC"
+    action, label = ("start", N_("Start packing")) if start else ("resume", N_("Resume session"))
+    pc = entry.get("pc_name") or ""
     if open_key:
         open_id = open_key.split("|", 1)[0]
         return made(action, label, False,
-                    f"{open_id} is open on this PC. End it before opening another.")
+                    _("{id} is open on this PC. End it before opening another.", id=open_id))
     if server_down:
-        return made(action, label, False, _SERVER_DOWN)
+        return made(action, label, False, _(_SERVER_DOWN))
     if status == "in_progress":
-        where = pc if pc != "Another PC" else "another PC"
         return made(action, label, False,
-                    f"Open on {where} right now. It can be taken over once that PC "
-                    "stops responding.")
+                    _("Open on {where} right now. It can be taken over once that PC "
+                      "stops responding.", where=pc or _("another PC")))
     if status == "stale":
         return made(action, label, True,
-                    f"{pc} stopped responding. You will be asked before this PC takes over.",
+                    _("{pc} stopped responding. You will be asked before this PC takes over.",
+                      pc=pc or _("Another PC")),
                     warn=True)
     return made(action, label)
 
@@ -284,10 +292,10 @@ def _row(entry: dict, now: datetime, *, open_key: str, server_down: bool) -> dic
     key = session_key(entry)
     status = entry.get("status", "")
     chip = status_chip(status)
-    total = _n(entry.get("total_orders"))
-    done = _n(entry.get("completed_orders"))
-    skipped = _n(entry.get("skipped_orders"))
-    items = _n(entry.get("total_items"))
+    total = _count(entry.get("total_orders"))
+    done = _count(entry.get("completed_orders"))
+    skipped = _count(entry.get("skipped_orders"))
+    items = _count(entry.get("total_items"))
     metrics = entry.get("metrics")
     metrics = metrics if isinstance(metrics, dict) else {}
     live = status == "in_progress"
@@ -297,28 +305,29 @@ def _row(entry: dict, now: datetime, *, open_key: str, server_down: bool) -> dic
     started = _at(entry.get("started_at"), now)
     if not seconds and live and started:
         seconds = max(0.0, (now - started).total_seconds())
-    duration = fmt_duration(seconds)
     if live and seconds:
-        duration += " so far"
+        duration = _("{duration} so far", duration=fmt_duration(seconds))
+    else:
+        duration = fmt_duration(seconds)
 
     pc = entry.get("pc_name") or ""
     touched = _at(entry.get("last_updated") or entry.get("started_at"), now)
     action = _action(entry, key, open_key=open_key, server_down=server_down)
     facts = [
-        ("Worker", _worker(entry) or NOTHING),
-        ("PC", (pc + (" (this PC)" if here and pc else "")) or NOTHING),
-        ("Duration", duration),
-        ("Items", str(items) if items else NOTHING),
-        ("Scan corrections", str(metrics.get("total_corrections", NOTHING))),
-        ("Unknown scans", str(metrics.get("total_unknown_scans", NOTHING))),
-        ("Last touched", _clock(touched, now) if touched else NOTHING),
+        (_("Worker"), _worker(entry) or NOTHING),
+        (_("PC"), (_("{pc} (this PC)", pc=pc) if here and pc else pc) or NOTHING),
+        (_("Duration"), duration),
+        (_("Items"), str(items) if items else NOTHING),
+        (_("Scan corrections"), str(metrics.get("total_corrections", NOTHING))),
+        (_("Unknown scans"), str(metrics.get("total_unknown_scans", NOTHING))),
+        (_("Last touched"), _clock(touched, now) if touched else NOTHING),
     ]
     return {
         "key": key,
         "id": str(entry.get("session_id", "")),
         "list": str(entry.get("packing_list_name", "")),
         "status": status,
-        "label": chip["label"],
+        "label": _(chip["label"]),
         "tone": chip["tone"],
         "manual": chip["manual"],
         "age": fmt_age(_started(entry), now),
@@ -326,9 +335,10 @@ def _row(entry: dict, now: datetime, *, open_key: str, server_down: bool) -> dic
         "pct": int(done / total * 100) if total else 0,
         "items": str(items) if items else NOTHING,
         "touched": fmt_touched(entry, now),
-        "setBy": "Set by a person" if chip["manual"] else "Set by the system",
+        "setBy": _("Set by a person") if chip["manual"] else _("Set by the system"),
         "why": _why(entry, key, now, open_key),
-        "ordersNote": f"{skipped} skipped" if skipped else "None skipped",
+        "ordersNote": (_("{n} skipped", n=skipped) if skipped
+                       else _("None skipped")),
         "facts": [{"label": label, "value": value} for label, value in facts],
         **action,
         "canDetails": bool(entry.get("work_dir")) and action["action"] != "details",
@@ -336,13 +346,27 @@ def _row(entry: dict, now: datetime, *, open_key: str, server_down: bool) -> dic
 
 
 def _no_match_text(tab: str, label: str, query: str, start: date | None, end: date | None) -> str:
+    """`label` is the tab's translated name. Each sentence is whole, so a language
+    can put the dates and the query where its grammar wants them."""
     span = _range_text(start, end)
     if query:
-        parts = ["Nothing", f"in {label}" if tab != "all" else "", span,
-                 f"has “{query}” in its id, packing list, worker or PC."]
-        return " ".join(part for part in parts if part)
-    parts = [f"No {label.lower()} sessions" if tab != "all" else "No sessions", span]
-    return " ".join(part for part in parts if part) + "."
+        if tab == "all":
+            if span:
+                return _("Nothing {span} has “{query}” in its id, packing list, worker or PC.",
+                         span=span, query=query)
+            return _("Nothing has “{query}” in its id, packing list, worker or PC.", query=query)
+        if span:
+            return _("Nothing in {label} {span} has “{query}” in its id, packing list, "
+                     "worker or PC.", label=label, span=span, query=query)
+        return _("Nothing in {label} has “{query}” in its id, packing list, worker or PC.",
+                 label=label, query=query)
+    if tab == "all":
+        if span:
+            return _("No sessions {span}.", span=span)
+        return _("No sessions.")
+    if span:
+        return _("No {label} sessions {span}.", label=label.lower(), span=span)
+    return _("No {label} sessions.", label=label.lower())
 
 
 def refresh_failure(path: Any, cause: str, at: str, previous: str) -> dict:
@@ -387,9 +411,9 @@ def sessions_payload(
     if not loaded:
         count = "–"
     elif typed:
-        count = f"{len(shown)} of {len(in_tab)} sessions"
+        count = _("{shown} of {total} sessions", shown=len(shown), total=len(in_tab))
     else:
-        count = plural(len(shown), "session", "sessions")
+        count = _n("{n} session", "{n} sessions", len(shown))
 
     return {
         "mode": mode,
@@ -402,7 +426,7 @@ def sessions_payload(
         "tabs": [
             {
                 "key": key,
-                "label": label,
+                "label": _(label),
                 "count": sum(1 for e in in_dates if held is None or e.get("status") in held),
             }
             for key, label, held in TABS
@@ -416,28 +440,41 @@ def sessions_payload(
         "count": count,
         "noMatch": mode == "ready" and not shown,
         "noMatchText": _no_match_text(
-            tab, labels[tab], typed, _parse_day(date_from), _parse_day(date_to)
+            tab, _(labels[tab]), typed, _parse_day(date_from), _parse_day(date_to)
         ),
-        "exportTitle": f"Export the {plural(len(shown), 'session', 'sessions')} shown",
+        "exportTitle": _n(
+            "Export the {n} session shown", "Export the {n} sessions shown", len(shown)
+        ),
     }
 
 
 def takeover_payload(entry: dict, lock: dict, now: datetime | None = None) -> dict:
     """Frame 7c: who had the session, since when, and what comes along."""
     now = _now(now)
-    pc = lock.get("locked_by") or entry.get("pc_name") or "Another PC"
+    pc = lock.get("locked_by") or entry.get("pc_name") or _("Another PC")
     worker = lock.get("worker_name") or ""
     at = _at(lock.get("heartbeat"), now)
-    when = f" at {_clock(at, now)}" if at else ""
-    who = f" while {worker} was packing" if worker else ""
-    done = _n(entry.get("completed_orders"))
-    total = _n(entry.get("total_orders"))
+    done = _count(entry.get("completed_orders"))
+    total = _count(entry.get("total_orders"))
+    if at and worker:
+        body = _("{pc} stopped responding at {time} while {worker} was packing. If it comes "
+                 "back, it is told the session moved here.",
+                 pc=pc, time=_clock(at, now), worker=worker)
+    elif at:
+        body = _("{pc} stopped responding at {time}. If it comes back, it is told the "
+                 "session moved here.", pc=pc, time=_clock(at, now))
+    elif worker:
+        body = _("{pc} stopped responding while {worker} was packing. If it comes back, it is "
+                 "told the session moved here.", pc=pc, worker=worker)
+    else:
+        body = _("{pc} stopped responding. If it comes back, it is told the session moved here.",
+                 pc=pc)
     return {
         "key": session_key(entry),
         "id": str(entry.get("session_id", "")),
-        "body": f"{pc} stopped responding{when}{who}. If it comes back, it is told the "
-                "session moved here.",
-        "carry": f"Everything saved so far comes with you: {done} of {total} orders packed.",
+        "body": body,
+        "carry": _("Everything saved so far comes with you: {done} of {total} orders packed.",
+                   done=done, total=total),
     }
 
 
@@ -451,14 +488,14 @@ def session_export_rows(entries: list[dict], *, labels: bool) -> list[list]:
     rows = []
     for entry in entries:
         status = entry.get("status", "")
-        total = _n(entry.get("total_orders"))
+        total = _count(entry.get("total_orders"))
         rows.append([
             status_chip(status)["label"] if labels else status,
             entry.get("packing_list_name", ""),
             entry.get("session_id", ""),
             _worker(entry),
             entry.get("pc_name") or "",
-            f"{_n(entry.get('completed_orders'))}/{total}" if total else NOTHING,
+            f"{_count(entry.get('completed_orders'))}/{total}" if total else NOTHING,
             _started(entry) or "",
             _blank(entry.get("duration_seconds")),
             _blank(entry.get("total_items")),
@@ -475,8 +512,8 @@ def session_export_rows(entries: list[dict], *, labels: bool) -> list[list]:
 # "manual" (one unit a click), Force writes "force_confirmed" (the rest of
 # the line). Anything else is a scan.
 _METHOD_FLAGS = (
-    ("force_confirmed", "Forced confirm", "danger"),
-    ("manual", "Manual confirm", "neutral"),
+    ("force_confirmed", N_("Forced confirm"), "danger"),
+    ("manual", N_("Manual confirm"), "neutral"),
 )
 
 
@@ -503,7 +540,7 @@ def _flag(label: str, tone: str) -> dict:
 
 
 def _method_flags(methods) -> list[dict]:
-    return [_flag(label, tone) for method, label, tone in _METHOD_FLAGS if method in methods]
+    return [_flag(_(label), tone) for method, label, tone in _METHOD_FLAGS if method in methods]
 
 
 def _note_row(name: str, count: str = "", flags: list | None = None) -> dict:
@@ -515,9 +552,9 @@ def _note_row(name: str, count: str = "", flags: list | None = None) -> dict:
 def _packed_order(order: dict, now: datetime) -> dict:
     number = str(order.get("order_number", "Unknown"))
     scans = [scan for scan in order.get("items") or [] if isinstance(scan, dict)]
-    corrections = _n(order.get("corrections"))
-    extra = _n(order.get("extra_scans_count"))
-    unknown = _n(order.get("unknown_scans_count"))
+    corrections = _count(order.get("corrections"))
+    extra = _count(order.get("extra_scans_count"))
+    unknown = _count(order.get("unknown_scans_count"))
 
     # One row per list line: its scans share `row` (older records: the SKU).
     lines: dict[Any, dict] = {}
@@ -529,13 +566,13 @@ def _packed_order(order: dict, now: datetime) -> dict:
             {"sku": sku, "name": str(scan.get("title") or ""), "units": 0,
              "first": scan, "methods": set()},
         )
-        line["units"] += _n(scan.get("quantity"), 1)
+        line["units"] += _count(scan.get("quantity"), 1)
         line["methods"].add(scan.get("confirmation_method"))
 
     items = []
     for line in lines.values():
         first = line["first"]
-        offset = _n(first.get("time_from_order_start_seconds"))
+        offset = _count(first.get("time_from_order_start_seconds"))
         items.append({
             "sku": line["sku"],
             "name": "" if line["name"] == line["sku"] else line["name"],
@@ -545,31 +582,33 @@ def _packed_order(order: dict, now: datetime) -> dict:
             "flags": _method_flags(line["methods"]),
         })
     if not scans:
-        items.append(_note_row("Item details not available"))
+        items.append(_note_row(_("Item details not available")))
     if extra:
         items.append(_note_row(
-            f"{plural(extra, 'extra scan', 'extra scans')} · not in this order",
-            str(extra), [_flag("Extra", "warning")]))
+            _n("{n} extra scan · not in this order", "{n} extra scans · not in this order", extra),
+            str(extra), [_flag(_("Extra"), "warning")]))
     if unknown:
         items.append(_note_row(
-            f"{plural(unknown, 'unknown scan', 'unknown scans')} · barcode not recognised",
-            str(unknown), [_flag(f"{unknown} unknown", "neutral")]))
+            _n("{n} unknown scan · barcode not recognised",
+               "{n} unknown scans · barcode not recognised", unknown),
+            str(unknown), [_flag(_("{n} unknown", n=unknown), "neutral")]))
 
     flags = _method_flags({scan.get("confirmation_method") for scan in scans})
     if extra:
-        flags.append(_flag(f"{extra} extra", "warning"))
+        flags.append(_flag(_("{n} extra", n=extra), "warning"))
     if corrections:
-        flags.append(_flag(plural(corrections, "correction", "corrections"), "info"))
+        flags.append(_flag(
+            _n("{n} correction", "{n} corrections", corrections), "info"))
     if unknown:
-        flags.append(_flag(f"{unknown} unknown", "neutral"))
+        flags.append(_flag(_("{n} unknown", n=unknown), "neutral"))
 
-    units = _n(order.get("items_count")) or sum(line["units"] for line in lines.values())
+    units = _count(order.get("items_count")) or sum(line["units"] for line in lines.values())
     return {
         "number": number,
         "label": order_label(number),
         "kind": "packed",
         "duration": fmt_time(order.get("duration_seconds")),
-        "count": plural(units, "item", "items"),
+        "count": _n("{n} item", "{n} items", units),
         "started": _hms(order.get("started_at"), now),
         "completed": _hms(order.get("completed_at"), now),
         "flags": flags,
@@ -579,23 +618,23 @@ def _packed_order(order: dict, now: datetime) -> dict:
 
 def _open_order(number: str, entries: list) -> dict:
     lines = [line for line in entries if isinstance(line, dict)]
-    packed = sum(_n(line.get("packed")) for line in lines)
-    required = sum(_n(line.get("required")) for line in lines)
+    packed = sum(_count(line.get("packed")) for line in lines)
+    required = sum(_count(line.get("required")) for line in lines)
     return {
         "number": number,
         "label": order_label(number),
         "kind": "in_progress",
         "duration": NOTHING,
-        "count": f"{packed} / {required} items",
+        "count": _("{packed} / {required} items", packed=packed, required=required),
         "started": NOTHING,
         "completed": NOTHING,
-        "flags": [_flag("In progress", "info")],
+        "flags": [_flag(_("In progress"), "info")],
         "items": [
             {
                 "sku": str(line.get("original_sku") or line.get("normalized_sku") or ""),
                 "name": "",
                 "offset": "",
-                "count": f"{_n(line.get('packed'))} / {_n(line.get('required'))}",
+                "count": f"{_count(line.get('packed'))} / {_count(line.get('required'))}",
                 "time": "",
                 "flags": [],
             }
@@ -614,7 +653,7 @@ def _skipped_order(skip: dict, now: datetime) -> dict:
         "count": NOTHING,
         "started": _hms(skip.get("skipped_at"), now),
         "completed": NOTHING,
-        "flags": [_flag("Skipped", "warning")],
+        "flags": [_flag(_("Skipped"), "warning")],
         "items": [],
     }
 
@@ -719,31 +758,33 @@ def details_payload(
     )
     if not seconds and live and started:
         seconds = max(0.0, (now - started).total_seconds())
-    duration = fmt_duration(seconds) + (" so far" if live and seconds else "")
+    duration = fmt_duration(seconds)
+    if live and seconds:
+        duration = _("{duration} so far", duration=duration)
 
     facts = [
-        ("Client", client or NOTHING),
-        ("Packing list", name or NOTHING),
-        ("Worker", worker),
-        ("PC", pc or NOTHING),
-        ("Started", _stamp(started)),
-        ("Completed", "Still packing" if live else _stamp(ended)),
-        ("Duration", duration),
+        (_("Client"), client or NOTHING),
+        (_("Packing list"), name or NOTHING),
+        (_("Worker"), worker),
+        (_("PC"), pc or NOTHING),
+        (_("Started"), _stamp(started)),
+        (_("Completed"), _("Still packing") if live else _stamp(ended)),
+        (_("Duration"), duration),
     ]
     payload: dict[str, Any] = {
         "key": key,
         "id": str(entry.get("session_id", "")),
         "list": str(name),
         "status": status,
-        "label": chip["label"],
+        "label": _(chip["label"]),
         "tone": chip["tone"],
         "manual": chip["manual"],
-        "setBy": "Set by a person" if chip["manual"] else "Set by the system",
+        "setBy": _("Set by a person") if chip["manual"] else _("Set by the system"),
         "why": _why(entry, key, now, open_key),
         "state": "loading",
         "error": {},
         "active": live,
-        "pc": pc or "another PC",
+        "pc": pc or _("another PC"),
         "stamp": str(stamp),
         "facts": [{"label": label, "value": value} for label, value in facts],
         "canExport": False,
@@ -763,42 +804,44 @@ def details_payload(
     rows = _order_rows(details, now)
     metrics = summary.get("metrics") or {}
     timing = bool(metrics.get("avg_time_per_order"))
-    total = _n(record.get("total_orders")) or _n(entry.get("total_orders"))
-    done = _n(record.get("completed_orders"), len(packed))
-    units = sum(_n(order.get("items_count")) for order in packed)
-    list_units = _n(entry.get("total_items"))
+    total = _count(record.get("total_orders")) or _count(entry.get("total_orders"))
+    done = _count(record.get("completed_orders"), len(packed))
+    units = sum(_count(order.get("items_count")) for order in packed)
+    list_units = _count(entry.get("total_items"))
     skipped = sum(1 for row in rows if row["kind"] == "skipped")
-    so_far = "so far" if live else ""
-    rate_note = so_far if timing else "No timing data"
+    so_far = _("so far") if live else ""
+    rate_note = so_far if timing else _("No timing data")
     per_hour = metrics.get("orders_per_hour") or 0
     items_hour = metrics.get("items_per_hour") or 0
 
     def named(label: str, seconds: Any) -> str:
-        """ "Fastest · #10408": the order whose time this is."""
+        """ "Fastest · #10408": the order whose time this is. `label` is translated."""
         for order in packed:
             if seconds and order.get("duration_seconds") == seconds:
-                return f"{label} · {order_label(str(order.get('order_number', '')))}"
+                return _("{label} · {order}", label=label,
+                         order=order_label(str(order.get("order_number", ""))))
         return label
 
-    suffix = " so far" if live else ""
     fastest = metrics.get("fastest_order_seconds")
     slowest = metrics.get("slowest_order_seconds")
     groups = [] if not timing else [
-        {"title": "Order time" + suffix, "tiles": [
-            {"value": fmt_time(metrics.get("avg_time_per_order")), "label": "Average per order"},
-            {"value": fmt_time(fastest), "label": named("Fastest", fastest)},
-            {"value": fmt_time(slowest), "label": named("Slowest", slowest)},
+        {"title": _("Order time so far") if live else _("Order time"), "tiles": [
+            {"value": fmt_time(metrics.get("avg_time_per_order")),
+             "label": _("Average per order")},
+            {"value": fmt_time(fastest), "label": named(_("Fastest"), fastest)},
+            {"value": fmt_time(slowest), "label": named(_("Slowest"), slowest)},
         ]},
-        {"title": "Item time" + suffix, "tiles": [
-            {"value": fmt_time(metrics.get("avg_time_per_item")), "label": "Average per item"},
+        {"title": _("Item time so far") if live else _("Item time"), "tiles": [
+            {"value": fmt_time(metrics.get("avg_time_per_item")),
+             "label": _("Average per item")},
             {"value": fmt_time(metrics.get("avg_time_to_first_scan")),
-             "label": "Average to first scan"},
+             "label": _("Average to first scan")},
         ]},
     ]
 
-    corrections = sum(_n(order.get("corrections")) for order in packed)
-    extra = sum(_n(order.get("extra_scans_count")) for order in packed)
-    unknown = sum(_n(order.get("unknown_scans_count")) for order in packed)
+    corrections = sum(_count(order.get("corrections")) for order in packed)
+    extra = sum(_count(order.get("extra_scans_count")) for order in packed)
+    unknown = sum(_count(order.get("unknown_scans_count")) for order in packed)
 
     typed = str(query or "").strip().lstrip("#").strip()
     needle = typed.lower()
@@ -808,31 +851,33 @@ def details_payload(
         "state": "ready",
         "canExport": bool(detail_export_rows(details)),
         "cards": [
-            {"value": str(done), "of": f"of {total}" if total else "", "label": "Orders packed",
-             "note": so_far or (f"{total - done} not packed" if total > done else "")},
-            {"value": str(units), "of": f"of {list_units}" if list_units else "",
-             "label": "Items packed", "note": so_far},
+            {"value": str(done), "of": _("of {total}", total=total) if total else "",
+             "label": _("Orders packed"),
+             "note": so_far or (_("{n} not packed", n=total - done) if total > done else "")},
+            {"value": str(units), "of": _("of {total}", total=list_units) if list_units else "",
+             "label": _("Items packed"), "note": so_far},
             {"value": f"{per_hour:.1f}" if timing and per_hour else NOTHING, "of": "",
-             "label": "Orders per hour", "note": rate_note},
+             "label": _("Orders per hour"), "note": rate_note},
             {"value": str(round(items_hour)) if timing and items_hour else NOTHING, "of": "",
-             "label": "Items per hour", "note": rate_note},
-            {"value": str(skipped), "of": "", "label": "Skipped orders",
-             "note": "not packed" if skipped else ""},
+             "label": _("Items per hour"), "note": rate_note},
+            {"value": str(skipped), "of": "", "label": _("Skipped orders"),
+             "note": _("not packed") if skipped else ""},
         ],
         "timing": timing,
-        "metricsNote": "Only data from completed orders is shown."
-                       + (" Figures so far." if live else ""),
+        "metricsNote": (_("Only data from completed orders is shown. Figures so far.") if live
+                        else _("Only data from completed orders is shown.")),
         "groups": groups,
         "scan": [
-            {"value": str(corrections), "label": "Scan corrections"},
+            {"value": str(corrections), "label": _("Scan corrections")},
             {"value": f"{corrections / len(packed):.2f}" if packed else NOTHING,
-             "label": "Corrections per order"},
-            {"value": str(unknown), "label": "Unknown scans"},
-            {"value": str(extra), "label": "Extra scans"},
+             "label": _("Corrections per order")},
+            {"value": str(unknown), "label": _("Unknown scans")},
+            {"value": str(extra), "label": _("Extra scans")},
         ],
         "orders": listed,
         "total": len(rows),
-        "showing": f"Showing {len(listed)} of {len(rows)} recorded orders",
+        "showing": _("Showing {shown} of {total} recorded orders",
+                     shown=len(listed), total=len(rows)),
         "noMatch": bool(needle) and not listed,
         "needle": typed,
     })

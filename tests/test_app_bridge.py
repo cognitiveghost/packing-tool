@@ -73,6 +73,23 @@ def test_the_page_carries_the_theme_marker_exactly_once():
     assert PAGE.read_text(encoding="utf-8").count(THEME_MARKER) == 1
 
 
+def test_the_app_document_draws_in_bulgarian_when_the_language_is_bg(qtbot):
+    from main import APP_ROOT
+    from shared import i18n
+
+    i18n.set_language("bg", i18n.catalogue_files(APP_ROOT, "bg"))
+    view = QWebEngineView()
+    qtbot.addWidget(view)
+    bridge = mount_app_page(view)
+    view.resize(1166, 708)
+    view.show()
+    _until_js(qtbot, view, "document.documentElement.dataset.bridge === 'ready'")
+    bridge.set_shell(client=True, clients=True, server_down=False)
+    _settle(qtbot, bridge)
+    assert _eval(qtbot, view, "document.documentElement.lang") == "bg"
+    assert _text(view, qtbot, "open-session") == "Отвори сесия"
+
+
 def test_the_page_reports_the_revision_it_painted(page, qtbot):
     _view, bridge = page
     bridge.set_shell(client=True, clients=True, server_down=False)
