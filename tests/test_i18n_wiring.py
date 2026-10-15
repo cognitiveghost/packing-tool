@@ -86,3 +86,17 @@ def test_a_vetoed_language_restart_starts_nothing(main_window, monkeypatch):
         QSettings("PackingTool", "Language").remove("language")
     assert relaunch.pending() is not None  # armed for aboutToQuit only
     assert started == []
+
+
+def test_a_long_bulgarian_connection_state_is_elided_inside_the_card(qtbot):
+    from PySide6.QtGui import QFontMetrics
+
+    from gui.components.sidebar import _PATH_WIDTH
+
+    i18n.set_language("bg", i18n.catalogue_files(main.APP_ROOT, "bg"))
+    bar = _sidebar(qtbot)
+    bar.set_connection("down", r"\\fs01\packer")
+    bar.connection_label.ensurePolished()
+    # The full state stays one hover away on the card.
+    assert "Няма връзка със сървъра" in bar.connection_box.toolTip()
+    assert QFontMetrics(bar.connection_label.font()).horizontalAdvance(bar.connection_label.text()) <= _PATH_WIDTH

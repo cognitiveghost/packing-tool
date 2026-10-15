@@ -13,30 +13,9 @@ APP_PY = c.files(ROOT / "gui", "*.py") + [ROOT / "main.py"]
 APP_HTML = c.files(ROOT / "gui" / "web", "*.html")
 APP_JS = c.files(ROOT / "gui" / "web", "*.js")
 
-# Every Python file is scanned for Qt-call literals. The scanner cannot see text
-# kept in dicts; those are wrapped by hand, and the lists below grow as pages move.
-GUARDED_PY: list[Path] = [
-    ROOT / "gui" / "app_bridge.py",
-    ROOT / "gui" / "command_bar.py",
-    ROOT / "gui" / "components" / "connection_banner.py",
-    ROOT / "gui" / "components" / "sidebar.py",
-    ROOT / "gui" / "main_window.py",
-    ROOT / "gui" / "packer_bridge.py",
-    ROOT / "gui" / "packer_mode_widget.py",
-    ROOT / "gui" / "sessions_page.py",
-    ROOT / "gui" / "sessions_payload.py",
-    ROOT / "gui" / "setup_payload.py",
-]
-GUARDED_HTML: list[Path] = [
-    ROOT / "gui" / "web" / "app.html",
-    ROOT / "gui" / "web" / "packer.html",
-    ROOT / "gui" / "web" / "setup.html",
-]
-GUARDED_JS: list[Path] = [
-    ROOT / "gui" / "web" / "app.js",
-    ROOT / "gui" / "web" / "packer.js",
-    ROOT / "gui" / "web" / "setup.js",
-]
+GUARDED_PY: list[Path] = APP_PY
+GUARDED_HTML: list[Path] = APP_HTML
+GUARDED_JS: list[Path] = APP_JS
 # Text that is never translated, with the reason.
 ALLOW = {
     "Fulfilment Tool",   # brand

@@ -32,6 +32,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from render_args import parse_args
 
+from shared import i18n
+
 # The mockup's moment, in this PC's time zone so the clock times read as drawn.
 NOW = datetime(2026, 10, 7, 14, 6, 31).astimezone()
 STAMP = "14:06:31"
@@ -246,7 +248,7 @@ def write_session_files(by_id: dict) -> None:
 
 
 def main(argv: list[str]) -> int:
-    out, width, height = parse_args(argv)
+    out, width, height, lang = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -272,6 +274,7 @@ def main(argv: list[str]) -> int:
         from packing_tool.session_details import SessionFilesError, load_session_details
 
         load_saved_theme(app)
+        i18n.set_language(lang, i18n.catalogue_files(ROOT, lang))
 
         server = tmp / "server"
         server.mkdir()

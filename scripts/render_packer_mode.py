@@ -30,6 +30,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from render_args import parse_args
 
+from shared import i18n
+
 # The mockup's order, with SPF-50 at 8 units so one row offers Force confirm.
 LINES = [
     ("LIP-RED", "Lip balm, red", 2),
@@ -65,7 +67,7 @@ def packed_state(packed):
 
 
 def main(argv: list[str]) -> int:
-    out, width, height = parse_args(argv)
+    out, width, height, lang = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -80,6 +82,7 @@ def main(argv: list[str]) -> int:
         from gui.theme import apply_theme, load_saved_theme
 
         load_saved_theme(app)
+        i18n.set_language(lang, i18n.catalogue_files(ROOT, lang))
         widget = PackerModeWidget()
         widget.resize(width, height)
         widget.show()

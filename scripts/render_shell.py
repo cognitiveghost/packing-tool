@@ -27,6 +27,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from render_args import parse_args
 
+from shared import i18n
+
 SERVER_LABEL = r"\\fs01\packer"
 
 ORDERS = [
@@ -101,7 +103,7 @@ def build(tmp: Path):
 
 
 def main(argv: list[str]) -> int:
-    out, width, height = parse_args(argv)
+    out, width, height, lang = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -117,6 +119,7 @@ def main(argv: list[str]) -> int:
         from gui.theme import apply_theme, load_saved_theme
 
         load_saved_theme(app)
+        i18n.set_language(lang, i18n.catalogue_files(ROOT, lang))
         window, open_session = build(tmp)
         base = Path(window.profile_manager.base_path).resolve()
         if not base.is_relative_to(tmp.resolve()):

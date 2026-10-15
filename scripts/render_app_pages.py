@@ -27,6 +27,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from render_args import parse_args
 
+from shared import i18n
+
 SESSION_ID = "2026-10-07_1"
 LIST_NAME = "Morning_wave"
 
@@ -71,7 +73,7 @@ def synthetic_orders() -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-    out, width, height = parse_args(argv)
+    out, width, height, lang = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -92,6 +94,7 @@ def main(argv: list[str]) -> int:
         from packing_tool.profile_manager import ProfileManager
 
         load_saved_theme(app)
+        i18n.set_language(lang, i18n.catalogue_files(ROOT, lang))
 
         server = tmp / "server"
         server.mkdir()

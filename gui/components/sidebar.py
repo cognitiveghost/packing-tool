@@ -332,7 +332,6 @@ class Sidebar(QWidget):
         label, _role = _CONNECTION[state]  # KeyError on an unknown state
         self._state = state
         self._server_path = server_path
-        self.connection_label.setText(_(label))
         metrics = QFontMetrics(self.path_label.font())
         self.path_label.setText(
             metrics.elidedText(server_path, Qt.ElideMiddle, _PATH_WIDTH)
@@ -343,6 +342,12 @@ class Sidebar(QWidget):
         self.connection_icon.setToolTip(status_tip)
         self.retry_button.setVisible(state == "down")
         self._style_connection(current_tokens())
+        # Elided, not clipped: the full state is in the card's tooltip.
+        self.connection_label.ensurePolished()
+        label_metrics = QFontMetrics(self.connection_label.font())
+        self.connection_label.setText(
+            label_metrics.elidedText(_(label), Qt.ElideRight, _PATH_WIDTH)
+        )
 
     def set_client_chosen(self, chosen: bool) -> None:
         for index in range(len(self.rail._buttons)):
