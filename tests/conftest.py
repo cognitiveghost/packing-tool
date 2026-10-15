@@ -17,6 +17,11 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import js_coverage
+
+# Before anything starts QtWebEngine: the port is read once, at its start.
+js_coverage.enable_remote_debugging()
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -29,6 +34,48 @@ def qapp():
     """A QApplication is required for QObject subclasses with Signals (PackerLogic)."""
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _js_coverage(qapp, request):
+    """JS_COVERAGE=1: attach to every page this run opens (tests/js_coverage.py)."""
+    if js_coverage.ENABLED:
+        collector = js_coverage.Collector()
+        collector.start(qapp)
+        request.config._js_coverage = collector
+    yield
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    # After the body, before fixture teardown destroys the test's views.
+    try:
+        return (yield)
+    finally:
+        collector = getattr(item.config, "_js_coverage", None)
+        if collector is not None:
+            collector.take()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    collector = getattr(session.config, "_js_coverage", None)
+    threshold = os.environ.get("JS_COVERAGE_FAIL_UNDER")
+    if collector is None or not threshold:
+        return
+    session.config._js_coverage_failures = collector.failures(float(threshold))
+    if session.config._js_coverage_failures and session.exitstatus == 0:
+        session.exitstatus = 1
+
+
+def pytest_terminal_summary(terminalreporter, config):
+    collector = getattr(config, "_js_coverage", None)
+    if collector is None:
+        return
+    terminalreporter.section("JS coverage (gui/web)")
+    for line in collector.summary_lines():
+        terminalreporter.write_line(line)
+    for failure in getattr(config, "_js_coverage_failures", []):
+        terminalreporter.write_line(f"FAIL: {failure}", red=True)
 
 
 @pytest.fixture(autouse=True)
