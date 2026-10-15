@@ -1445,6 +1445,9 @@ class MainWindow(QMainWindow):
                 _start_time = self.logic.run_started_at
                 _end_time = datetime.now().astimezone()
                 _packed_orders = self.logic.packed_order_numbers()
+                # What session_info.json records for this list: the same rule as
+                # packing_state.json and the registry (snapshot finding 2.1).
+                _list_status = "completed" if self.logic.all_orders_packed() else "incomplete"
                 _new_orders = [
                     o for o in _packed_orders if o not in self.logic.stats_recorded_orders
                 ]
@@ -1595,10 +1598,10 @@ class MainWindow(QMainWindow):
                             _sess_mgr.update_session_metadata(
                                 _cur_sess_path,
                                 _cur_pack_list,
-                                "completed",
+                                _list_status,
                                 completed_orders=_packed_orders,
                             )
-                            logger.info("Updated session metadata to 'completed'")
+                            logger.info(f"Updated session metadata to '{_list_status}'")
                     except Exception as exc:
                         logger.warning(f"update_session_metadata failed: {exc}")
 

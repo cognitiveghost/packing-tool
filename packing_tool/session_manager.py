@@ -689,7 +689,7 @@ class SessionManager:
         Args:
             session_path: Path to Shopify session
             packing_list_name: Name of packing list
-            status: Status ('in_progress', 'completed', 'paused')
+            status: Status ('in_progress', 'paused', 'completed', 'incomplete')
             completed_orders: Order numbers packed in this session, if any.
                 The Shopify tool reads these back for repeat-order detection.
                 Merged with any already recorded, so resuming a session does
