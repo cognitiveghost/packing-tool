@@ -112,3 +112,116 @@ def test_two_packing_lists_in_one_shopify_session_are_two_entries(registry):
     assert by_list["DHL_Orders"]["status"] == "completed"
     assert by_list["PostOne_Orders"]["status"] == "in_progress"
     assert by_list["PostOne_Orders"]["work_dir"] == "w2"
+
+
+# ---------------------------------------------------------------------------
+# build_from_scan / ensure_registry: the registry rebuilt from the Sessions tree
+# ---------------------------------------------------------------------------
+
+def _session_tree(profile_manager, session_id, lists, info=True):
+    """Sessions/CLIENT_M/<session_id>/ with a packing list file per name in `lists`."""
+    session_dir = profile_manager.get_sessions_root() / "CLIENT_M" / session_id
+    (session_dir / "packing_lists").mkdir(parents=True, exist_ok=True)
+    for name in lists:
+        (session_dir / "packing_lists" / f"{name}.json").write_text(
+            json.dumps({"list_name": name, "courier": "DHL", "orders": [{"order_number": "1"}]}),
+            encoding="utf-8",
+        )
+    if info:
+        (session_dir / "session_info.json").write_text(
+            json.dumps({"pc_name": "PC-7"}), encoding="utf-8"
+        )
+    return session_dir
+
+
+def _work_dir(session_dir, name, state=None, summary=None):
+    work_dir = session_dir / "packing" / name
+    work_dir.mkdir(parents=True, exist_ok=True)
+    if state is not None:
+        (work_dir / "packing_state.json").write_text(json.dumps(state), encoding="utf-8")
+    if summary is not None:
+        (work_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return work_dir
+
+
+STATE = {"progress": {"total_orders": 2, "completed_orders": 1, "total_items": 2}}
+
+
+def test_a_list_never_started_is_rebuilt_as_available(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    rebuilt = registry.build_from_scan("M")
+    assert rebuilt["sessions"] == {}
+    [available] = rebuilt["available_lists"].values()
+    assert available["courier"] == "DHL"
+    assert available["total_orders"] == 1
+
+
+def test_a_finished_list_is_rebuilt_from_its_summary(registry, profile_manager):
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    _work_dir(session_dir, "DHL_Orders", summary={"total_orders": 2, "completed_orders": 2})
+    [entry] = registry.build_from_scan("M")["sessions"].values()
+    assert entry["status"] == "completed"
+
+
+def test_a_list_ended_short_is_rebuilt_incomplete(registry, profile_manager):
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    _work_dir(session_dir, "DHL_Orders", summary={"total_orders": 2, "completed_orders": 1})
+    [entry] = registry.build_from_scan("M")["sessions"].values()
+    assert entry["status"] == "incomplete"
+
+
+def test_a_list_left_open_without_a_lock_is_rebuilt_paused(registry, profile_manager):
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    _work_dir(session_dir, "DHL_Orders", state=STATE)
+    [entry] = registry.build_from_scan("M")["sessions"].values()
+    assert entry["status"] == "paused"
+    assert entry["completed_orders"] == 1
+
+
+def test_a_list_being_packed_is_rebuilt_in_progress(registry, profile_manager):
+    """MainWindow locks the work folder (packing/<list>/.session.lock), not the session folder."""
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    work_dir = _work_dir(session_dir, "DHL_Orders", state=STATE)
+    _lock(work_dir, age_seconds=10)
+    [entry] = registry.build_from_scan("M")["sessions"].values()
+    assert entry["status"] == "in_progress"
+
+
+def test_a_corrupt_session_info_does_not_stop_the_rebuild(registry, profile_manager):
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"], info=False)
+    (session_dir / "session_info.json").write_text("{not json", encoding="utf-8")
+    _work_dir(session_dir, "DHL_Orders", state=STATE)
+    _session_tree(profile_manager, "2026-10-02_1", ["DPD_Orders"])
+    rebuilt = registry.build_from_scan("M")
+    assert len(rebuilt["sessions"]) == 1
+    assert len(rebuilt["available_lists"]) == 1
+
+
+def test_ensure_registry_writes_the_rebuild_once(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["DHL_Orders"])
+    assert registry.registry_exists("M") is False
+    assert registry.ensure_registry("M") is True
+    assert registry.registry_exists("M") is True
+    assert len(registry.get_available_lists("M")) == 1
+
+
+def test_a_client_with_no_sessions_folder_rebuilds_empty(registry):
+    rebuilt = registry.build_from_scan("NOBODY")
+    assert rebuilt["sessions"] == {} and rebuilt["available_lists"] == {}
+
+
+def test_pausing_a_finished_entry_leaves_it_finished(registry, tmp_path):
+    session_dir = tmp_path / "2026-10-01_1"
+    work_dir = session_dir / "packing" / "DHL_Orders"
+    work_dir.mkdir(parents=True)
+    registry.register_session_start(
+        client_id="M", session_id="2026-10-01_1", packing_list_name="DHL_Orders",
+        worker_id=None, worker_name=None, pc_name="PC-1", total_orders=1, total_items=1,
+        work_dir=str(work_dir), session_path=str(session_dir),
+    )
+    registry.register_session_complete(
+        "M", "2026-10-01_1", "DHL_Orders", {"total_orders": 1, "completed_orders": 1}
+    )
+    registry.register_session_paused("M", "2026-10-01_1", "DHL_Orders")
+    [entry] = registry.get_sessions("M")
+    assert entry["status"] == "completed"
