@@ -15,7 +15,14 @@ APP_JS = c.files(ROOT / "gui" / "web", "*.js")
 
 # Every Python file is scanned for Qt-call literals. The scanner cannot see text
 # kept in dicts; those are wrapped by hand, and the lists below grow as pages move.
-GUARDED_PY: list[Path] = []
+GUARDED_PY: list[Path] = [
+    ROOT / "gui" / "command_bar.py",
+    ROOT / "gui" / "components" / "connection_banner.py",
+    ROOT / "gui" / "components" / "sidebar.py",
+    ROOT / "gui" / "main_window.py",
+    ROOT / "gui" / "packer_mode_widget.py",
+    ROOT / "gui" / "sessions_page.py",
+]
 GUARDED_HTML: list[Path] = []
 GUARDED_JS: list[Path] = []
 # Text that is never translated, with the reason.
@@ -24,6 +31,7 @@ ALLOW = {
     "Packer Assistant",  # brand
     "Shopify",           # brand
     "Ctrl+S",            # keyboard shortcut, shown as typed
+    "Ctrl+E",            # keyboard shortcut, shown as typed
     "{APP_NAME} {__version__}",  # window title: the brand and the version, nothing to translate
 }
 

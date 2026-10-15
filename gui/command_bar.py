@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from shared.components.overflow import OverflowMenu, overflow_button
+from shared.i18n import N_, _
 from shared.icons import icon
 from shared.theme import font_css, on_theme_changed, set_button_role
 
@@ -33,8 +34,8 @@ CONTROL_HEIGHT = 44
 PAGES = ("packing", "statistics", "browser")
 _CLIENT_WIDTH = 250
 _FILTER_MIN, _FILTER_MAX = 170, 300
-_END_TIP = "End the current packing session"
-_START_TIP = "Start packing · opens Packer Mode"
+_END_TIP = N_("End the current packing session")
+_START_TIP = N_("Start packing · opens Packer Mode")
 
 
 def bar_css(tokens, selector: str = "CommandBar") -> str:
@@ -76,8 +77,8 @@ class CommandBar(QWidget):
 
         self.client_combo = QComboBox(self)
         self.client_combo.setFixedWidth(_CLIENT_WIDTH)
-        self.client_combo.setPlaceholderText("Choose a client")
-        self.client_combo.setToolTip("Client")
+        self.client_combo.setPlaceholderText(_("Choose a client"))
+        self.client_combo.setToolTip(_("Client"))
         layout.addWidget(self.client_combo)
 
         self.session_label = QLabel("", self)
@@ -85,7 +86,7 @@ class CommandBar(QWidget):
         layout.addWidget(self.session_label)
 
         self.filter_input = QLineEdit(self)
-        self.filter_input.setPlaceholderText("Filter orders")
+        self.filter_input.setPlaceholderText(_("Filter orders"))
         self.filter_input.setClearButtonEnabled(True)
         self.filter_input.setMinimumWidth(_FILTER_MIN)
         self.filter_input.setMaximumWidth(_FILTER_MAX)
@@ -95,12 +96,12 @@ class CommandBar(QWidget):
 
         layout.addStretch(1)
 
-        self.open_session_button = QPushButton("Open session", self)
+        self.open_session_button = QPushButton(_("Open session"), self)
         set_button_role(self.open_session_button, "primary")
-        self.start_packing_button = QPushButton("Start packing", self)
+        self.start_packing_button = QPushButton(_("Start packing"), self)
         set_button_role(self.start_packing_button, "primary")
-        self.start_packing_button.setToolTip(_START_TIP)
-        self.end_session_button = QPushButton("End session", self)
+        self.start_packing_button.setToolTip(_(_START_TIP))
+        self.end_session_button = QPushButton(_("End session"), self)
         set_button_role(self.end_session_button, "secondary")
         for button in (
             self.open_session_button,
@@ -129,7 +130,7 @@ class CommandBar(QWidget):
 
         self.overflow = OverflowMenu(self)
         self.overflow_button = overflow_button(self.overflow, self)
-        self.overflow_button.setToolTip("More")
+        self.overflow_button.setToolTip(_("More"))
         self.overflow_button.setFixedSize(CONTROL_HEIGHT, CONTROL_HEIGHT)
         layout.addWidget(self.overflow_button)
 
@@ -171,7 +172,7 @@ class CommandBar(QWidget):
             icon("panel-left-close" if expanded else "panel-left-open")
         )
         self.sidebar_button.setToolTip(
-            "Collapse sidebar" if expanded else "Expand sidebar"
+            _("Collapse sidebar") if expanded else _("Expand sidebar")
         )
 
     def _paint_hint(self) -> None:
@@ -191,7 +192,7 @@ class CommandBar(QWidget):
         self._complete = complete
         set_button_role(self.end_session_button, "primary" if complete else "secondary")
         self.start_packing_button.setToolTip(
-            "Every order is packed" if complete else _START_TIP
+            _("Every order is packed") if complete else _(_START_TIP)
         )
         self._paint_hint()
 
@@ -227,18 +228,18 @@ class CommandBar(QWidget):
         self.open_session_button.setHidden(not (packing and not self._has_session))
         self.open_session_button.setEnabled(self._client_chosen and self._reachable)
         if not self._reachable:
-            open_tip = "Open session · server unreachable"
+            open_tip = _("Open session · server unreachable")
         elif not self._client_chosen:
-            open_tip = "Open session · choose a client first"
+            open_tip = _("Open session · choose a client first")
         else:
-            open_tip = "Open session"
+            open_tip = _("Open session")
         self.open_session_button.setToolTip(open_tip)
 
         for button in (self.start_packing_button, self.end_session_button):
             button.setHidden(not (packing and self._has_session))
         self.end_session_button.setEnabled(self._has_session and self._reachable)
         self.end_session_button.setToolTip(
-            _END_TIP if self._reachable else "End session · server unreachable"
+            _(_END_TIP) if self._reachable else _("End session · server unreachable")
         )
         if hasattr(self, "_tokens"):
             self._paint_hint()

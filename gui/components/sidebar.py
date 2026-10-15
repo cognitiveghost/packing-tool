@@ -28,6 +28,7 @@ from gui.command_bar import BAR_HEIGHT
 from gui.setup_payload import initials
 from shared import i18n
 from shared.components.language_segment import LanguageSegment
+from shared.i18n import N_, _
 from shared.icons import icon
 from shared.navrail import RAIL_WIDTH, NavRail
 from shared.theme import current_tokens, font_css, on_theme_changed
@@ -36,9 +37,9 @@ SIDEBAR_WIDTH = 200
 ITEM_HEIGHT = 44
 # state -> (label, the status role whose colours it wears)
 _CONNECTION = {
-    "ok": ("Server connected", "success"),
-    "checking": ("Reconnecting…", "warning"),
-    "down": ("Server unreachable", "danger"),
+    "ok": (N_("Server connected"), "success"),
+    "checking": (N_("Reconnecting…"), "warning"),
+    "down": (N_("Server unreachable"), "danger"),
 }
 # 200 - footer margins 16 - card padding 20 - dot 10 - gap 8 = 146, less a few
 # px so the ellipsis never touches the card's edge.
@@ -134,8 +135,8 @@ class Sidebar(QWidget):
 
         self.sku_button = QToolButton(self.footer)
         self.sku_button.setObjectName("FooterItem")
-        self.sku_button.setText("SKU mapping")
-        self.sku_button.setToolTip("SKU mapping…")
+        self.sku_button.setText(_("SKU mapping"))
+        self.sku_button.setToolTip(_("SKU mapping…"))
         self.sku_button.setAutoRaise(True)
         self.sku_button.setIconSize(QSize(20, 20))
         self.sku_button.clicked.connect(self.skuMappingRequested.emit)
@@ -145,7 +146,7 @@ class Sidebar(QWidget):
         self.worker_card = QFrame(self.footer)
         self.worker_card.setObjectName("WorkerCard")
         self.worker_card.setMinimumHeight(56)
-        self.worker_card.setToolTip("Signed-in worker")
+        self.worker_card.setToolTip(_("Signed-in worker"))
         card = QHBoxLayout(self.worker_card)
         card.setContentsMargins(8, 6, 8, 6)
         card.setSpacing(10)
@@ -158,7 +159,7 @@ class Sidebar(QWidget):
         self.worker_name = QLabel(self.worker_card)
         self.worker_name.setObjectName("WorkerName")
         self.worker_name.setFixedWidth(_NAME_WIDTH)
-        self.worker_link = QPushButton("Switch worker…", self.worker_card)
+        self.worker_link = QPushButton(_("Switch worker…"), self.worker_card)
         self.worker_link.setObjectName("WorkerLink")
         self.worker_link.setFlat(True)
         self.worker_link.setCursor(Qt.PointingHandCursor)
@@ -183,8 +184,8 @@ class Sidebar(QWidget):
         segment = QHBoxLayout(self.theme_segment)
         segment.setContentsMargins(2, 2, 2, 2)
         segment.setSpacing(2)
-        self.light_button = self._segment_button("Light")
-        self.dark_button = self._segment_button("Dark")
+        self.light_button = self._segment_button(_("Light"))
+        self.dark_button = self._segment_button(_("Dark"))
         group = QButtonGroup(self.theme_segment)
         group.setExclusive(True)
         for button, name in ((self.light_button, "light"), (self.dark_button, "dark")):
@@ -229,7 +230,7 @@ class Sidebar(QWidget):
         self.connection_label = QLabel(self.connection_box)
         self.path_label = QLabel(self.connection_box)
         self.path_label.setFixedWidth(_PATH_WIDTH)
-        self.retry_button = QPushButton("Retry", self.connection_box)
+        self.retry_button = QPushButton(_("Retry"), self.connection_box)
         self.retry_button.setObjectName("RetryButton")
         self.retry_button.setFixedHeight(ITEM_HEIGHT)
         self.retry_button.clicked.connect(self.retryRequested.emit)
@@ -315,13 +316,15 @@ class Sidebar(QWidget):
             metrics.elidedText(self._worker, Qt.ElideRight, _NAME_WIDTH)
         )
         self.worker_name.setToolTip(self._worker)
-        self.worker_rail_button.setToolTip(f"{self._worker} · Switch worker…")
+        self.worker_rail_button.setToolTip(
+            _("{worker} · Switch worker…", worker=self._worker)
+        )
 
     def set_theme_name(self, name: str) -> None:
         self._theme_name = name
         (self.dark_button if name == "dark" else self.light_button).setChecked(True)
         self.theme_toggle.setToolTip(
-            "Switch to Light" if name == "dark" else "Switch to Dark"
+            _("Switch to Light") if name == "dark" else _("Switch to Dark")
         )
         self.theme_toggle.setIcon(icon("sun" if name == "dark" else "moon"))
 
@@ -329,14 +332,15 @@ class Sidebar(QWidget):
         label, _role = _CONNECTION[state]  # KeyError on an unknown state
         self._state = state
         self._server_path = server_path
-        self.connection_label.setText(label)
+        self.connection_label.setText(_(label))
         metrics = QFontMetrics(self.path_label.font())
         self.path_label.setText(
             metrics.elidedText(server_path, Qt.ElideMiddle, _PATH_WIDTH)
         )
         self.path_label.setToolTip(server_path)
-        self.connection_box.setToolTip(f"{label} · {server_path}")
-        self.connection_icon.setToolTip(f"{label} · {server_path}")
+        status_tip = _("{status} · {path}", status=_(label), path=server_path)
+        self.connection_box.setToolTip(status_tip)
+        self.connection_icon.setToolTip(status_tip)
         self.retry_button.setVisible(state == "down")
         self._style_connection(current_tokens())
 
