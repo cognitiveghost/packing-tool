@@ -23,8 +23,8 @@
 
     <div class="banner danger" id="unsaved" hidden>
       <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-      <span class="banner-title">Progress not saved — check the network</span>
-      <span class="banner-text">Scanning continues</span>
+      <span class="banner-title" data-i18n>Progress not saved — check the network</span>
+      <span class="banner-text" data-i18n>Scanning continues</span>
     </div>
 
     <div class="card pm-order" id="banner" hidden>
@@ -33,24 +33,24 @@
         <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span id="banner-notes-text"></span>
       </span>
-      <span class="badge warning" id="banner-repeat" hidden>Repeat</span>
+      <span class="badge warning" id="banner-repeat" data-i18n hidden>Repeat</span>
     </div>
 
     <div class="feedback feedback--info" id="feedback">
-      <span class="feedback__text" id="feedback-text">Scan an order barcode</span>
+      <span class="feedback__text" id="feedback-text" data-i18n>Scan an order barcode</span>
       <span class="feedback__raw" id="feedback-raw-box" hidden>
-        <span class="feedback__raw-label">Scanned</span>
+        <span class="feedback__raw-label" data-i18n>Scanned</span>
         <span class="feedback__raw-code" id="feedback-raw"></span>
       </span>
     </div>
 
     <div class="card pm-list" id="list">
-      <div class="pm-empty" id="list-empty">No order open</div>
-      <div class="pm-head" id="list-head" hidden><span>SKU</span><span>Product</span><span>Packed</span><span>Status</span><span></span></div>
+      <div class="pm-empty" id="list-empty" data-i18n>No order open</div>
+      <div class="pm-head" id="list-head" hidden><span data-i18n>SKU</span><span data-i18n>Product</span><span data-i18n>Packed</span><span data-i18n>Status</span><span></span></div>
       <div class="pm-rows" id="list-scroll" hidden>
         <div id="sku-list" hidden></div>
         <div id="extras" hidden>
-          <div class="pm-extras-title">Extra items scanned</div>
+          <div class="pm-extras-title" data-i18n>Extra items scanned</div>
           <div id="extras-rows"></div>
         </div>
         <div id="unmatched-rows"></div>
@@ -62,39 +62,39 @@
       <p class="state-panel-title" id="state-title"></p>
       <p class="state-panel-body" id="state-body"></p>
       <div class="state-panel-actions">
-        <button class="btn primary" type="button" data-action="endSession">End session</button>
-        <button class="btn secondary" type="button" data-action="exitPacking">Exit packing</button>
+        <button class="btn primary" type="button" data-action="endSession" data-i18n>End session</button>
+        <button class="btn secondary" type="button" data-action="exitPacking" data-i18n>Exit packing</button>
       </div>
     </div>
   </div>
 
   <aside class="side">
     <div class="side-block">
-      <div class="side-block-title">Session progress</div>
+      <div class="side-block-title" data-i18n>Session progress</div>
       <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-      <div class="progress-numbers" id="progress-numbers">0 / 0 orders &middot; 0 / 0 items</div>
+      <div class="progress-numbers" id="progress-numbers" data-i18n>0 / 0 orders &middot; 0 / 0 items</div>
     </div>
     <div class="side-block">
-      <div class="side-block-title">History</div>
+      <div class="side-block-title" data-i18n>History</div>
       <div class="history" id="history-rows"></div>
     </div>
     <div class="side-block">
-      <div class="side-block-title">Items by SKU</div>
+      <div class="side-block-title" data-i18n>Items by SKU</div>
       <div id="rollup-rows"></div>
     </div>
     <div class="side-block">
-      <div class="side-block-title">Summary</div>
-      <div class="summary-line"><span>Unique SKUs packed</span><strong id="summary-skus">0 / 0</strong></div>
+      <div class="side-block-title" data-i18n>Summary</div>
+      <div class="summary-line"><span data-i18n>Unique SKUs packed</span><strong id="summary-skus">0 / 0</strong></div>
     </div>
   </aside>
 
   <div class="scrim" id="question" hidden>
     <section class="dialog">
-      <p class="dialog-title"><span>Force confirm <span class="mono" id="question-sku"></span>?</span></p>
-      <p class="dialog-text">Marks the remaining <strong id="question-remaining"></strong><span id="question-rest"></span></p>
+      <p class="dialog-title"><span data-i18n>Force confirm</span> <span class="mono" id="question-sku"></span>?</p>
+      <p class="dialog-text"><span data-i18n>Marks the remaining</span> <strong id="question-remaining"></strong> <span id="question-rest"></span></p>
       <div class="dialog-actions">
-        <button class="btn secondary" type="button" data-action="answerNo">Cancel</button>
-        <button class="btn critical" type="button" data-action="answerYes">Force confirm</button>
+        <button class="btn secondary" type="button" data-action="answerNo" data-i18n>Cancel</button>
+        <button class="btn critical" type="button" data-action="answerYes" data-i18n>Force confirm</button>
       </div>
     </section>
   </div>
@@ -103,11 +103,11 @@
     <section class="dialog danger">
       <p class="dialog-title">
         <svg class="glyph" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-        This list is open on another PC
+        <span data-i18n>This list is open on another PC</span>
       </p>
-      <p class="dialog-text"><strong id="takeover-holder"></strong> has taken over <span class="mono" id="takeover-list"></span>. This PC has stopped packing it so the two don't overwrite each other's progress. Orders packed here up to now are saved.</p>
+      <p class="dialog-text"><strong id="takeover-holder"></strong> <span data-i18n>has taken over</span> <span class="mono" id="takeover-list"></span>. <span data-i18n>This PC has stopped packing it so the two don't overwrite each other's progress. Orders packed here up to now are saved.</span></p>
       <div class="dialog-actions">
-        <button class="btn primary" type="button" data-action="exitPacking">Exit packing</button>
+        <button class="btn primary" type="button" data-action="exitPacking" data-i18n>Exit packing</button>
       </div>
     </section>
   </div>

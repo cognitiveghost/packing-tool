@@ -21,12 +21,22 @@ GUARDED_PY: list[Path] = [
     ROOT / "gui" / "components" / "connection_banner.py",
     ROOT / "gui" / "components" / "sidebar.py",
     ROOT / "gui" / "main_window.py",
+    ROOT / "gui" / "packer_bridge.py",
     ROOT / "gui" / "packer_mode_widget.py",
     ROOT / "gui" / "sessions_page.py",
     ROOT / "gui" / "sessions_payload.py",
+    ROOT / "gui" / "setup_payload.py",
 ]
-GUARDED_HTML: list[Path] = [ROOT / "gui" / "web" / "app.html"]
-GUARDED_JS: list[Path] = [ROOT / "gui" / "web" / "app.js"]
+GUARDED_HTML: list[Path] = [
+    ROOT / "gui" / "web" / "app.html",
+    ROOT / "gui" / "web" / "packer.html",
+    ROOT / "gui" / "web" / "setup.html",
+]
+GUARDED_JS: list[Path] = [
+    ROOT / "gui" / "web" / "app.js",
+    ROOT / "gui" / "web" / "packer.js",
+    ROOT / "gui" / "web" / "setup.js",
+]
 # Text that is never translated, with the reason.
 ALLOW = {
     "Fulfilment Tool",   # brand

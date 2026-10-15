@@ -16,6 +16,7 @@ from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
 from gui.packer_bridge import (
     PAGE,
+    banner_payload,
     item_rows,
     mount_packer_page,
     unknown_rows,
@@ -551,6 +552,34 @@ def test_a_repeat_only_banner_shows_the_warning_chip_and_no_notes(page, qtbot):
     assert _eval(qtbot, view, "document.getElementById('banner').hidden") is False
     assert _eval(qtbot, view, "document.getElementById('banner-repeat').textContent") == "Repeat"
     assert _eval(qtbot, view, "document.getElementById('banner-notes').hidden") is True
+
+
+def test_the_document_draws_in_bulgarian_and_the_repeat_branch_is_the_same(qtbot):
+    from main import APP_ROOT
+    from shared import i18n
+
+    i18n.set_language("bg", i18n.catalogue_files(APP_ROOT, "bg"))
+    view = QWebEngineView()
+    qtbot.addWidget(view)
+    bridge = mount_packer_page(view)
+    view.resize(1366, 700)
+    view.show()
+    _until_js(qtbot, view, "document.documentElement.dataset.bridge === 'ready'")
+    assert _eval(qtbot, view, "document.getElementById('list-empty').textContent") == (
+        "Няма отворена поръчка"
+    )
+    # The Repeat decision is made on the English note; only the chip is translated.
+    bridge.set_banner(banner_payload("#10429", {"system_note": "Repeat"}))
+    _until_js(qtbot, view, "document.getElementById('banner-repeat').hidden === false")
+    assert _eval(qtbot, view, "document.getElementById('banner-repeat').textContent") == (
+        "Повтаряща се"
+    )
+    # A blocker mentions the word but is not a repeat; its note is shown as the data it is.
+    bridge.set_banner(banner_payload("#10429", {"system_note": "Cannot fulfill: Repeat SKU short"}))
+    _until_js(qtbot, view, "document.getElementById('banner-repeat').hidden === true")
+    assert _eval(qtbot, view, "document.getElementById('banner-notes-text').textContent") == (
+        "Cannot fulfill: Repeat SKU short"
+    )
 
 
 # The Qt -> web translation layer. Every other feedback test drives

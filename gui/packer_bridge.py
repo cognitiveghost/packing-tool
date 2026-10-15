@@ -22,6 +22,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from gui.theme import current_tokens
 from packing_tool.packer_logic import normalize_sku
+from shared.i18n import _, _n
 from shared.web_page import PageBridge, mount_page
 
 # Force confirm is for quantities nobody wants to scan one at a time. Below
@@ -103,7 +104,7 @@ def unknown_rows(scans: list[str]) -> list[dict[str, Any]]:
     return [
         {
             "row": -1,
-            "product": "Unknown SKU",
+            "product": _("Unknown SKU"),
             "sku": text,
             "required": 0,
             "packed": 0,
@@ -138,7 +139,7 @@ def banner_payload(
     ]
     box = _clean(metadata.get("order_min_box"))
     if box:
-        chips.append(f"Box {box}")
+        chips.append(_("Box {box}", box=box))
     for tag in list(metadata.get("tags") or []) + list(
         metadata.get("internal_tags") or []
     ):
@@ -165,7 +166,7 @@ def order_label(order_number: str | None) -> str:
     assumed either way.
     """
     if not order_number:
-        return "No order"
+        return _("No order")
     text = str(order_number)
     return text if text.startswith("#") else f"#{text}"
 
@@ -221,10 +222,10 @@ def _duration(seconds: int) -> str:
     hours, rest = divmod(int(seconds), 3600)
     minutes, secs = divmod(rest, 60)
     if hours:
-        return f"{hours}h {minutes}m"
+        return _("{hours}h {minutes}m", hours=hours, minutes=minutes)
     if minutes:
-        return f"{minutes}m"
-    return f"{secs}s"
+        return _("{minutes}m", minutes=minutes)
+    return _("{seconds}s", seconds=secs)
 
 
 def session_end_payload(
@@ -235,14 +236,43 @@ def session_end_payload(
     The skipped clause appears only when something was skipped, and the
     duration only when the session's start time is known -- a sentence that
     reports "0 skipped, in 0s" tells the packer about nothing that happened.
+    Each shape is a whole sentence, so a translation can order its clauses.
     """
-    parts = [f"{packed} of {total} orders packed"]
-    if skipped:
-        parts.append(f"{skipped} skipped")
-    parts.append(f"{items} {'item' if items == 1 else 'items'}")
-    if seconds:
-        parts.append(f"in {_duration(seconds)}")
-    return {"title": "Session complete", "body": ", ".join(parts) + "."}
+    fields = {
+        "packed": packed,
+        "total": total,
+        "skipped": skipped,
+        "duration": _duration(seconds) if seconds else "",
+    }
+    if skipped and seconds:
+        body = _n(
+            "{packed} of {total} orders packed, {skipped} skipped, {n} item, in {duration}.",
+            "{packed} of {total} orders packed, {skipped} skipped, {n} items, in {duration}.",
+            items,
+            **fields,
+        )
+    elif skipped:
+        body = _n(
+            "{packed} of {total} orders packed, {skipped} skipped, {n} item.",
+            "{packed} of {total} orders packed, {skipped} skipped, {n} items.",
+            items,
+            **fields,
+        )
+    elif seconds:
+        body = _n(
+            "{packed} of {total} orders packed, {n} item, in {duration}.",
+            "{packed} of {total} orders packed, {n} items, in {duration}.",
+            items,
+            **fields,
+        )
+    else:
+        body = _n(
+            "{packed} of {total} orders packed, {n} item.",
+            "{packed} of {total} orders packed, {n} items.",
+            items,
+            **fields,
+        )
+    return {"title": _("Session complete"), "body": body}
 
 
 # main_window.flash_border() has always been called with a colour word. The
