@@ -1,0 +1,9 @@
+[run]
+source = packing_tool, gui
+# shared/ is a mirror of shopify-fulfillment-tool's; it is tested there.
+
+[report]
+fail_under = 85
+show_missing = True
+skip_covered = True
+sort = Cover
