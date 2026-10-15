@@ -139,10 +139,10 @@ def test_the_bar_carries_the_session_actions(window):
     assert not hasattr(window, "sku_mapping_button")
 
 
-def test_the_overflow_keeps_only_server_connection_and_exit(window):
+def test_the_overflow_keeps_only_server_connection_updates_and_exit(window):
     """Worker, SKU mapping and the theme moved to the sidebar footer."""
     labels = [a.text() for a in window.command_bar.overflow.actions() if a.text()]
-    assert labels == ["Server connection…", "Exit"]
+    assert labels == ["Server connection…", "Check for updates…", "Exit"]
 
 
 def test_the_sidebar_footer_reaches_what_the_overflow_used_to(window, monkeypatch):

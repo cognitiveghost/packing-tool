@@ -62,8 +62,10 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.components.language_segment import switch_language
 from shared.components.toast import toast
 from shared.fonts import load_bundled_fonts
+from shared.i18n import _
 from shared.icons import icon
 from shared.server_connection import (
     ConnectionSettingsDialog,
@@ -76,6 +78,8 @@ from shared.theme import (
     theme_notifier,
     themed_tokens,
 )
+from shared.update_flow import UpdateFlow
+from shared.updater import AppIdentity
 from shared.web_page import switch_theme, when_painted
 
 logger = logging.getLogger(__name__)
@@ -391,6 +395,7 @@ class MainWindow(QMainWindow):
         self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping())
         self.sidebar.switchWorkerRequested.connect(lambda: self.switch_worker())
         self.sidebar.themeRequested.connect(lambda name: self._switch_theme(name))
+        self.sidebar.languageRequested.connect(lambda code: self._switch_language(code))
         self.sidebar.set_worker(self.current_worker_name or "")
         self.command_bar.sidebarToggled.connect(self._toggle_sidebar)
         self._shell_settings = QSettings("PackingTool", "Shell")
@@ -454,6 +459,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stacked_widget)
 
         self._init_overflow()
+        self.update_flow = UpdateFlow(
+            self, self.sidebar.update_button, self._toast,
+            AppIdentity("cognitiveghost/packing-tool", "PackerAssistant", "PackerAssistant.exe"),
+            __version__,
+        )
+        self.update_flow.start()
         self.sidebar.retryRequested.connect(self.check_connection)
         self._set_connection_state("ok")
 
@@ -495,11 +506,19 @@ class MainWindow(QMainWindow):
             set_theme=lambda theme: apply_theme(QApplication.instance(), theme),
         )
 
+    def _switch_language(self, code: str):
+        """English or Bulgarian, from the sidebar's segment. The window keeps its
+        language until the restart; the segment shows the saved choice."""
+        settings = QSettings("PackingTool", "Language")
+        switch_language(self, settings, code)
+        self.sidebar.language_segment.set_language(str(settings.value("language", "en")))
+
     def _init_overflow(self):
         """What is left behind the bar's ⋯ once the sidebar footer has the
         worker, SKU mapping and the theme (spec 2026-10-08 section 6.3)."""
         menu = self.command_bar.overflow
         menu.add_item("Server connection…", self._open_connection_settings)
+        menu.add_item(_("Check for updates…"), lambda: self.update_flow.check_now())
         menu.addSeparator()
         exit_item = menu.add_item("Exit", self.close)
         # Shown beside the label, as the mockup draws it. The OS closes the

@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
 
 from gui.command_bar import BAR_HEIGHT
 from gui.setup_payload import initials
+from shared import i18n
+from shared.components.language_segment import LanguageSegment
 from shared.icons import icon
 from shared.navrail import RAIL_WIDTH, NavRail
 from shared.theme import current_tokens, font_css, on_theme_changed
@@ -79,6 +81,7 @@ class Sidebar(QWidget):
     skuMappingRequested = Signal()
     switchWorkerRequested = Signal()
     themeRequested = Signal(str)
+    languageRequested = Signal(str)
     retryRequested = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -120,6 +123,14 @@ class Sidebar(QWidget):
         footer = QVBoxLayout(self.footer)
         footer.setContentsMargins(8, 8, 8, 8)
         footer.setSpacing(6)
+
+        # Hidden until UpdateFlow has a newer release to offer.
+        self.update_button = QToolButton(self.footer)
+        self.update_button.setObjectName("UpdateButton")
+        self.update_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.update_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.update_button.hide()
+        footer.addWidget(self.update_button)
 
         self.sku_button = QToolButton(self.footer)
         self.sku_button.setObjectName("FooterItem")
@@ -181,6 +192,11 @@ class Sidebar(QWidget):
             segment.addWidget(button)
             button.clicked.connect(lambda _c=False, n=name: self.themeRequested.emit(n))
         footer.addWidget(self.theme_segment)
+
+        self.language_segment = LanguageSegment(self.footer, height=ITEM_HEIGHT)
+        self.language_segment.set_language(i18n.language())
+        self.language_segment.languageRequested.connect(self.languageRequested.emit)
+        footer.addWidget(self.language_segment)
 
         self.theme_toggle = QToolButton(self.footer)
         self.theme_toggle.setObjectName("FooterItem")
@@ -272,17 +288,18 @@ class Sidebar(QWidget):
             # (56 - 32) / 2: the mark centred in the rail.
             self._header_row.setContentsMargins(12, 0, 12, 0)
         for widget in (self.title, self.worker_card, self.theme_segment,
-                       self.connection_box):
+                       self.language_segment, self.connection_box):
             widget.setVisible(expanded)
         for widget in (self.worker_rail_button, self.theme_toggle,
                        self.connection_icon):
             widget.setVisible(not expanded)
-        self.sku_button.setToolButtonStyle(
-            Qt.ToolButtonTextBesideIcon if expanded else Qt.ToolButtonIconOnly
-        )
-        self.sku_button.setFixedSize(
-            (SIDEBAR_WIDTH if expanded else RAIL_WIDTH) - 16, ITEM_HEIGHT
-        )
+        for button in (self.sku_button, self.update_button):
+            button.setToolButtonStyle(
+                Qt.ToolButtonTextBesideIcon if expanded else Qt.ToolButtonIconOnly
+            )
+            button.setFixedSize(
+                (SIDEBAR_WIDTH if expanded else RAIL_WIDTH) - 16, ITEM_HEIGHT
+            )
         self._apply_theme(current_tokens())
 
     def is_expanded(self) -> bool:
@@ -365,16 +382,24 @@ class Sidebar(QWidget):
             f"#WorkerRailButton {{ background-color: {t.surface};"
             f" border: 1px solid {t.border_strong}; border-radius: 16px;"
             f" margin: 6px; color: {t.text}; {font_css('caption', bold=True)} }}"
-            f"#ThemeSegment {{ background-color: {t.surface_sunken};"
+            f"#ThemeSegment, #LanguageSegment {{ background-color: {t.surface_sunken};"
             f" border: 1px solid {t.border}; border-radius: 8px; }}"
-            f"#ThemeSegment QToolButton {{ background-color: transparent;"
+            f"#ThemeSegment QToolButton, #LanguageSegment QToolButton {{"
+            f" background-color: transparent;"
             f" border: 1px solid transparent; border-radius: 6px;"
             f" color: {t.text_secondary}; {font_css('caption')} }}"
-            f"#ThemeSegment QToolButton:checked {{ background-color: {t.surface};"
-            f" border: 1px solid {t.border_subtle}; color: {t.text};"
-            f" font-weight: bold; }}"
+            f"#ThemeSegment QToolButton:checked, #LanguageSegment QToolButton:checked {{"
+            f" background-color: {t.surface}; border: 1px solid {t.border_subtle};"
+            f" color: {t.text}; font-weight: bold; }}"
+            f"#UpdateButton {{ background-color: {t.accent_fill}; color: {t.on_accent};"
+            f" border: none; border-radius: 6px; padding: 4px 8px;"
+            f" {font_css('caption', bold=True)} }}"
+            f"#UpdateButton:hover {{ background-color: {t.accent_fill_hover}; }}"
+            f"#UpdateButton:disabled {{ background-color: {t.accent_fill_active};"
+            f" color: {t.on_accent}; }}"
         )
-        self.mark.setPixmap(icon("package", color=t.on_accent).pixmap(18, 18))
+        self.mark.setPixmap(icon("scan-barcode", color=t.on_accent).pixmap(18, 18))
+        self.update_button.setIcon(icon("download", color=t.on_accent))
         self.sku_button.setIcon(icon("tag"))
         self.light_button.setIcon(icon("sun"))
         self.dark_button.setIcon(icon("moon"))
