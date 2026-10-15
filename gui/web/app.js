@@ -873,6 +873,7 @@ const IDS = {
 
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.app;
+  applyStrings(bridge);
   view.bridge = bridge;
   // The test harness drives the page through this handle; nothing in the
   // page reads it.

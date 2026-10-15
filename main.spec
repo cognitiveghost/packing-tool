@@ -8,6 +8,7 @@ a = Analysis(
         ('shared/assets', 'shared/assets'),
         ('gui/web', 'gui/web'),
         ('shared/web', 'shared/web'),
+        ('locales', 'locales'),
         ('config.ini.example', '.'),
     ],
     hiddenimports=[],

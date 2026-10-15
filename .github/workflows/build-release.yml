@@ -166,7 +166,7 @@ jobs:
         # and the window and taskbar show a blank icon.
         shell: pwsh
         run: |
-          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html", "app.html", "setup.html", "kit.css", "page.js", "packer-assistant.ico", "qico.dll") {
+          foreach ($name in "package.svg", "Inter-Regular.ttf", "QtWebEngineProcess.exe", "packer.html", "app.html", "setup.html", "kit.css", "page.js", "packer-assistant.ico", "qico.dll", "bg.json", "scan-barcode.svg", "download.svg") {
             if (-not (Get-ChildItem -Path "dist\PackerAssistant" -Recurse -Filter $name)) {
               throw "PyInstaller did not bundle $name -- the app would not start."
             }

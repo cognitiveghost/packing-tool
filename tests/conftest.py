@@ -124,6 +124,15 @@ def _reset_root_logger_handlers():
     _active_handlers.clear()
 
 
+@pytest.fixture(autouse=True)
+def english_ui():
+    """shared.i18n is process-global: a test that switched to BG must not leak it."""
+    from shared import i18n, relaunch
+    yield
+    i18n.set_language("en", [])
+    relaunch._reset()
+
+
 @pytest.fixture
 def server_root(tmp_path):
     root = tmp_path / "server"
