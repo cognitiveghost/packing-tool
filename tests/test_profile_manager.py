@@ -5,7 +5,12 @@ import json
 
 import pytest
 
-from packing_tool.profile_manager import ProfileManager, ValidationError
+from packing_tool.profile_manager import (
+    NetworkError,
+    ProfileManager,
+    ProfileManagerError,
+    ValidationError,
+)
 
 # ---------------------------------------------------------------------------
 # validate_client_id
@@ -251,3 +256,48 @@ def test_a_fresh_load_skips_the_cache(config_ini):
     assert pc2.load_sku_mapping("M") == {}  # the cache, up to 60 s old
     assert pc2.load_sku_mapping("M", fresh=True) == {"111": "SKU-1"}
     assert pc2.load_sku_mapping("M") == {"111": "SKU-1"}  # and the cache was renewed
+
+
+# ---------------------------------------------------------------------------
+# Error paths: what the Packer meets when the file server misbehaves
+# ---------------------------------------------------------------------------
+
+def test_an_unreachable_server_fails_construction_with_what_to_check(tmp_path):
+    # The reachability check creates a missing folder, so make one that cannot
+    # exist: a share whose parent is a file.
+    (tmp_path / "a-file").write_text("", encoding="utf-8")
+    config = tmp_path / "config.ini"
+    config.write_text(
+        "[Network]\n"
+        f"FileServerPath = {tmp_path / 'a-file' / 'share'}\n"
+        "ConnectionTimeout = 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(NetworkError, match="Cannot connect to file server"):
+        ProfileManager(config_path=str(config))
+
+
+def test_a_missing_config_file_falls_back_to_defaults():
+    assert ProfileManager._load_config("/no/such/config.ini").sections() == []
+
+
+def test_a_corrupt_client_config_reads_as_none(profile_manager):
+    profile_manager.create_client_profile("BAD", "Bad")
+    config_path = profile_manager.clients_dir / "CLIENT_BAD" / "packer_config.json"
+    config_path.write_text("{not json", encoding="utf-8")
+    assert profile_manager.load_client_config("BAD") is None
+
+
+def test_a_corrupt_packer_config_fails_the_sku_mapping_read_loudly(profile_manager):
+    profile_manager.create_client_profile("BAD", "Bad")
+    config_path = profile_manager.clients_dir / "CLIENT_BAD" / "packer_config.json"
+    config_path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ProfileManagerError, match="Could not read the SKU mapping"):
+        profile_manager.load_sku_mapping("BAD", fresh=True)
+
+
+def test_a_clients_folder_that_vanished_lists_no_clients(profile_manager):
+    import shutil
+
+    shutil.rmtree(profile_manager.clients_dir)
+    assert profile_manager.get_available_clients() == []

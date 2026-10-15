@@ -262,3 +262,46 @@ def test_a_lock_records_the_running_app_version():
     from packing_tool.session_lock_manager import SessionLockManager
 
     assert SessionLockManager(None).app_version == __version__
+
+
+# ---------------------------------------------------------------------------
+# Error paths
+# ---------------------------------------------------------------------------
+
+def test_a_lock_missing_its_fields_is_released_as_safe(lock_manager, tmp_path):
+    (tmp_path / SessionLockManager.LOCK_FILENAME).write_text("{}", encoding="utf-8")
+    assert lock_manager.release_lock(tmp_path) is True
+    assert not (tmp_path / SessionLockManager.LOCK_FILENAME).exists()
+
+
+def test_an_unreadable_lock_is_held_never_released(lock_manager, tmp_path, monkeypatch):
+    """A lock another PC is rewriting reads as broken for a moment: it is held, not free
+    (Phase 12 Bundle 2, B1), so release leaves it alone."""
+    monkeypatch.setattr("packing_tool.session_lock_manager.time.sleep", lambda _s: None)
+    lock = tmp_path / SessionLockManager.LOCK_FILENAME
+    lock.write_text("{not json", encoding="utf-8")
+    assert lock_manager.is_locked(tmp_path)[0] is True
+    assert lock_manager.release_lock(tmp_path) is False
+    assert lock.exists()
+
+
+def test_a_heartbeat_on_a_folder_that_vanished_reports_failure(lock_manager, tmp_path, monkeypatch):
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    ok, msg, _ = lock_manager.acquire_lock("M", work_dir)
+    assert ok, msg
+    monkeypatch.setattr("packing_tool.session_lock_manager.time.sleep", lambda _s: None)
+    (work_dir / SessionLockManager.LOCK_FILENAME).unlink()
+    work_dir.rmdir()
+    assert lock_manager.update_heartbeat(work_dir) is False
+
+
+def test_force_releasing_an_invalid_lock_removes_it(lock_manager, tmp_path):
+    (tmp_path / SessionLockManager.LOCK_FILENAME).write_text("{}", encoding="utf-8")
+    assert lock_manager.force_release_lock(tmp_path) is True
+    assert not (tmp_path / SessionLockManager.LOCK_FILENAME).exists()
+
+
+def test_stale_minutes_of_an_unreadable_heartbeat_is_zero(lock_manager):
+    assert lock_manager._get_stale_minutes({}) == 0
+    assert lock_manager._get_stale_minutes({"heartbeat": "not a time"}) == 0
