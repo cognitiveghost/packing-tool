@@ -53,7 +53,9 @@ jobs:
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest
+        # Both coverage gates: Python app code (.coveragerc) and the page
+        # scripts (tests/js_coverage.py). A plain `python -m pytest` measures nothing.
+        run: python scripts/coverage_check.py
 
   shared-sync-check:
     name: Check shared/ matches shopify-fulfillment-tool at the synced commit

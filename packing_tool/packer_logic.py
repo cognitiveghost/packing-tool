@@ -615,7 +615,7 @@ class PackerLogic(QObject):
             "packing_list_name": self.packing_list_name,
             "started_at": self.started_at,
             "last_updated": get_current_timestamp(),
-            "status": "completed" if completed_orders_count == total_orders and total_orders > 0 else "in_progress",
+            "status": "completed" if self.all_orders_packed() else "in_progress",
             "pc_name": self.worker_pc,
             "progress": {
                 "total_orders": total_orders,
@@ -1644,6 +1644,17 @@ class PackerLogic(QObject):
         """Every order this list has packed, on the current list or not: what Shopify must hear."""
         state = self.session_packing_state
         return list(state.get('completed_orders', [])) + list(state.get('completed_off_list', []))
+
+    def all_orders_packed(self) -> bool:
+        """True when the list has orders and every one of them is packed.
+
+        Skipped orders are not packed, and an order packed and then dropped from
+        the list (completed_off_list) is out of every count (AUDIT-01-3). The
+        state file, End Session and the registry all mean this by "completed"
+        (snapshot finding 2.1).
+        """
+        total = len(self.orders_data) if self.orders_data else 0
+        return total > 0 and len(self.session_packing_state.get('completed_orders', [])) == total
 
     def _reconcile_with_list(self) -> None:
         """Follow the packing list as it is now, if Shopify rewrote it after packing started.

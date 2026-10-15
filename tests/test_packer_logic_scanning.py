@@ -379,3 +379,73 @@ def test_keeping_one_unit_of_a_doubled_extra_leaves_the_other(loaded_logic):
     loaded_logic.confirm_keep_extra("skubbb")
 
     assert loaded_logic.current_extra_items.get("skubbb") == 1
+
+
+# ---------------------------------------------------------------------------
+# all_orders_packed -- the one rule End Session and the state file share
+# (snapshot finding 2.1)
+# ---------------------------------------------------------------------------
+
+def _pack(logic, order, skus):
+    logic.start_order_packing(order)
+    for sku in skus:
+        logic.process_sku_scan(sku)
+    logic.clear_current_order()
+
+
+def test_all_orders_packed_is_false_with_none_packed(loaded_logic):
+    assert loaded_logic.all_orders_packed() is False
+
+
+def test_all_orders_packed_is_false_with_one_left(loaded_logic):
+    _pack(loaded_logic, "ORDER-002", ["SKU-CCC"])
+    assert loaded_logic.all_orders_packed() is False
+
+
+def test_all_orders_packed_is_true_once_every_order_is_packed(loaded_logic):
+    _pack(loaded_logic, "ORDER-001", ["SKU-AAA", "SKU-AAA", "SKU-BBB"])
+    _pack(loaded_logic, "ORDER-002", ["SKU-CCC"])
+    assert loaded_logic.all_orders_packed() is True
+
+
+def test_a_skipped_order_is_not_packed(loaded_logic):
+    _pack(loaded_logic, "ORDER-002", ["SKU-CCC"])
+    loaded_logic.start_order_packing("ORDER-001")
+    loaded_logic.skip_order()
+    assert loaded_logic.all_orders_packed() is False
+
+
+def test_an_empty_list_is_never_all_packed(packer_logic_factory, session_factory):
+    _session_dir, work_dir, _list_path = session_factory(client_id="M", orders=[])
+    logic = packer_logic_factory("M", work_dir)
+    assert logic.all_orders_packed() is False
+
+
+def test_an_order_packed_then_dropped_from_the_list_is_out_of_the_count(loaded_logic):
+    """AUDIT-01-3: completed_off_list orders are out of every count."""
+    _pack(loaded_logic, "ORDER-002", ["SKU-CCC"])
+    state = loaded_logic.session_packing_state
+    state.setdefault("completed_off_list", []).append("ORDER-OLD")
+    assert loaded_logic.all_orders_packed() is False
+    _pack(loaded_logic, "ORDER-001", ["SKU-AAA", "SKU-AAA", "SKU-BBB"])
+    assert loaded_logic.all_orders_packed() is True
+
+
+def test_a_list_finished_on_a_second_run_is_all_packed(packer_logic_factory, session_factory):
+    """Review focus 1: the rule reads the restored state, not only this run's scans."""
+    orders = [
+        ("ORD-1", "DHL", [{"sku": "SKU-1", "quantity": 1, "product_name": "One"}]),
+        ("ORD-2", "DHL", [{"sku": "SKU-2", "quantity": 1, "product_name": "Two"}]),
+    ]
+    _session_dir, work_dir, list_path = session_factory(client_id="M", orders=orders)
+    first = packer_logic_factory("M", work_dir)
+    first.load_packing_list_json(list_path)
+    _pack(first, "ORD-1", ["SKU-1"])
+    first.save_state()
+    first.close()
+
+    second = packer_logic_factory("M", work_dir)
+    second.load_packing_list_json(list_path)
+    assert second.all_orders_packed() is False
+    _pack(second, "ORD-2", ["SKU-2"])
+    assert second.all_orders_packed() is True

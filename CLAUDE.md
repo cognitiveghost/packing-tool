@@ -19,6 +19,11 @@ python run_dev.py
 
 # Run test suite
 python -m pytest
+
+# Run the tests under both coverage gates (what CI runs): app code >= 85%,
+# each gui/web/*.js >= 80%. Extra arguments go to pytest, but the gates
+# assume the full suite: a subset run fails them.
+python scripts/coverage_check.py
 ```
 
 ---

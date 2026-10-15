@@ -32,6 +32,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from packing_tool.session_lock_manager import SessionLockManager
 from shared.atomic_write import atomic_write_json
 from shared.file_lock import FileLockError, locked_file
 from shared.metadata_utils import get_current_timestamp, parse_timestamp
@@ -316,7 +317,8 @@ class SessionRegistryManager:
         # Prefer summary (completed) over state file (in-progress / paused)
         summary_file = work_dir / "session_summary.json"
         state_file = work_dir / "packing_state.json"
-        lock_file = session_dir / ".session.lock"
+        # MainWindow locks the work folder (packing/<list>/), not the session folder.
+        lock_file = work_dir / SessionLockManager.LOCK_FILENAME
         info_file = session_dir / "session_info.json"
         pc_name = os.environ.get("COMPUTERNAME", "Unknown")
 
@@ -692,7 +694,7 @@ class SessionRegistryManager:
             # The Shopify path locks the work directory; Excel entries have no work_dir.
             lock_dir = entry.get("work_dir") or entry.get("session_path", "")
             if lock_dir:
-                lock_file = Path(lock_dir) / ".session.lock"
+                lock_file = Path(lock_dir) / SessionLockManager.LOCK_FILENAME
                 if lock_file.exists():
                     heartbeat_age = self._get_lock_heartbeat_age(lock_file)
                     if heartbeat_age is not None:
