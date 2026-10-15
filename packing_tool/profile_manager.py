@@ -247,11 +247,6 @@ class ProfileManager:
             logger.exception("Error listing clients")
             return []
 
-    def client_exists(self, client_id: str) -> bool:
-        """Check if client profile exists."""
-        client_dir = self.clients_dir / f"CLIENT_{client_id}"
-        return client_dir.exists()
-
     def create_client_profile(self, client_id: str, client_name: str) -> bool:
         """
         Create a new client profile with default configuration.
@@ -594,57 +589,6 @@ class ProfileManager:
     # ========================================================================
     # SESSION MANAGEMENT
     # ========================================================================
-
-    def get_session_dir(self, client_id: str, session_name: str | None = None) -> Path:
-        """
-        Get session directory path for a client.
-
-        Args:
-            client_id: Client identifier
-            session_name: Optional session name. If None, generates new timestamped name
-
-        Returns:
-            Path to session directory
-        """
-        client_sessions = self.sessions_dir / f"CLIENT_{client_id}"
-        client_sessions.mkdir(exist_ok=True)
-
-        if session_name:
-            return client_sessions / session_name
-
-        # Generate new session name with timestamp
-        timestamp = datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M")
-        return client_sessions / timestamp
-
-    def list_clients(self) -> list[str]:
-        """
-        Get list of all client IDs.
-
-        Returns:
-            List of client identifiers (without CLIENT_ prefix)
-        """
-        try:
-            if not self.clients_dir.exists():
-                logger.warning(f"Clients directory does not exist: {self.clients_dir}")
-                return []
-
-            clients = []
-            for client_dir in self.clients_dir.iterdir():
-                if not client_dir.is_dir():
-                    continue
-
-                # Extract client ID from CLIENT_X format
-                dir_name = client_dir.name
-                if dir_name.startswith("CLIENT_"):
-                    client_id = dir_name[7:]  # Remove "CLIENT_" prefix
-                    clients.append(client_id)
-
-            logger.debug(f"Found {len(clients)} clients")
-            return sorted(clients)
-
-        except Exception:
-            logger.exception("Error listing clients")
-            return []
 
     def get_sessions_root(self) -> Path:
         """

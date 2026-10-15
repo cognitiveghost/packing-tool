@@ -1124,17 +1124,7 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.warning(f"Failed to release lock: {e}")
 
-            # 4. End Excel session if active
-            if hasattr(self, "session_manager") and self.session_manager:
-                try:
-                    if self.session_manager.is_active():
-                        # Close without generating full report (unexpected close)
-                        # The session can be resumed later via Session Browser
-                        logger.info("Excel session detected, closing gracefully")
-                except Exception as e:
-                    logger.warning(f"Failed to check session manager: {e}")
-
-            # 5. Stop the Sessions timer and let its workers end
+            # 4. Stop the Sessions timer and let its workers end
             try:
                 self.sessions.shutdown()
             except Exception as e:
@@ -1337,46 +1327,19 @@ class MainWindow(QMainWindow):
             self._starting = False
 
     def end_session(self):
+        """End the open list: save its report, summary, stats and progress, then tear down.
+
+        Report: current_work_dir/reports/packing_completed.xlsx.
         """
-        Ends the current session gracefully.
-
-        This involves saving a final report, cleaning up session files, and
-        resetting the UI to its initial state.
-
-        For Shopify sessions (unified work directory):
-        - Report saved to: current_work_dir/reports/packing_completed.xlsx
-
-        For Excel sessions (legacy):
-        - Report saved to: session_dir/[original_filename]_completed.xlsx
-        """
-        # Check if any session is active (Excel or Shopify)
-        is_excel_session = self.session_manager and self.session_manager.is_active()
-        is_shopify_session = hasattr(self, "current_work_dir") and self.current_work_dir
-
-        if not (is_excel_session or is_shopify_session):
+        if not getattr(self, "current_work_dir", None):
             logger.warning("end_session called but no active session found")
             return
 
         try:
-            # Determine output path based on session type
-            if hasattr(self, "current_work_dir") and self.current_work_dir:
-                # Shopify session - save to unified work directory
-                report_dir = Path(self.current_work_dir) / "reports"
-                report_dir.mkdir(exist_ok=True, parents=True)
-                new_filename = "packing_completed.xlsx"
-                output_path = str(report_dir / new_filename)
-                logger.info(f"Saving Shopify session report to: {output_path}")
-            else:
-                # Excel session - save to session directory (legacy behavior)
-                output_dir = self.session_manager.get_output_dir()
-                original_filename = os.path.basename(
-                    self.session_manager.packing_list_path
-                )
-                new_filename = (
-                    f"{os.path.splitext(original_filename)[0]}_completed.xlsx"
-                )
-                output_path = os.path.join(output_dir, new_filename)
-                logger.info(f"Saving Excel session report to: {output_path}")
+            report_dir = Path(self.current_work_dir) / "reports"
+            report_dir.mkdir(exist_ok=True, parents=True)
+            output_path = str(report_dir / "packing_completed.xlsx")
+            logger.info(f"Saving session report to: {output_path}")
 
             # Generate status map from session packing state
             completed_orders_set = set(
@@ -1425,19 +1388,10 @@ class MainWindow(QMainWindow):
             # Generate session summary + record stats in background thread so the
             # UI stays responsive while writing to the (potentially slow) file server.
             if self.logic:
-                _is_shopify = (
-                    hasattr(self, "current_work_dir") and self.current_work_dir
+                _summary_path = os.path.join(
+                    self.current_work_dir, "session_summary.json"
                 )
-
-                if _is_shopify:
-                    _summary_path = os.path.join(
-                        self.current_work_dir, "session_summary.json"
-                    )
-                    _session_type = "shopify"
-                else:
-                    _barcodes_dir = self.session_manager.get_barcodes_dir()
-                    _summary_path = os.path.join(_barcodes_dir, "session_summary.json")
-                    _session_type = "excel"
+                _session_type = "shopify"
 
                 # --- Gather all stats data on the main thread (fast, no server I/O) ---
                 # Stats get what this run added: a list ended, resumed and ended
@@ -1475,18 +1429,12 @@ class MainWindow(QMainWindow):
                 except Exception:
                     logger.exception("Error calculating totals")
 
-                if _is_shopify:
-                    _session_id = derive_session_id(
-                        getattr(self, "current_session_path", "")
-                    )
-                    _pl_path_str = (
-                        getattr(self, "current_packing_list", "Unknown") or "Unknown"
-                    )
-                else:
-                    _session_id = self.session_manager.session_id
-                    _pl_path_str = str(
-                        self.session_manager.packing_list_path or "Unknown"
-                    )
+                _session_id = derive_session_id(
+                    getattr(self, "current_session_path", "")
+                )
+                _pl_path_str = (
+                    getattr(self, "current_packing_list", "Unknown") or "Unknown"
+                )
 
                 _duration_seconds = int((_end_time - _start_time).total_seconds())
                 _stats_recorded = threading.Event()
@@ -1688,10 +1636,6 @@ class MainWindow(QMainWindow):
         if self.logic:
             self.logic.end_session_cleanup()
             self.logic = None
-
-        # End Excel session if active
-        if self.session_manager and self.session_manager.is_active():
-            self.session_manager.end_session()
 
         # Clear Shopify session variables
         if hasattr(self, "current_work_dir"):
@@ -2216,12 +2160,10 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # One list at a time. is_active() covers only the legacy Excel path;
-        # an open Shopify list is self.logic (AUDIT-02-2). The row's action is
-        # disabled while one is open, so this is for a start that still arrives.
-        if self.logic is not None or (
-            self.session_manager and self.session_manager.is_active()
-        ):
+        # One list at a time: an open list is self.logic (AUDIT-02-2). The row's
+        # action is disabled while one is open, so this is for a start that
+        # still arrives.
+        if self.logic is not None:
             logger.warning(
                 "Attempted to start/resume packing while a session is already active"
             )

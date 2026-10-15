@@ -185,22 +185,19 @@ def test_load_sku_mapping_cache_hit_returns_a_copy_not_the_cached_object(profile
 
 
 # ---------------------------------------------------------------------------
-# Regression test: get_available_clients() and list_clients() are
-# near-duplicate functions meant to do the same thing but used to diverge on
-# a valid client_id. get_available_clients() used to strip the 'CLIENT_'
-# prefix with str.replace('CLIENT_', ''), which removes EVERY occurrence of
-# that substring, not just the leading one, disagreeing with list_clients()'s
-# dir_name[7:] slice for a client_id that legitimately contains 'CLIENT_'
-# after the first character.
+# Regression test: get_available_clients() used to strip the 'CLIENT_' prefix
+# with str.replace('CLIENT_', ''), which removes EVERY occurrence of that
+# substring, not just the leading one, so a valid client_id that contains
+# 'CLIENT_' after the first character came back mangled.
 # ---------------------------------------------------------------------------
 
-def test_get_available_clients_and_list_clients_agree(profile_manager):
+def test_a_client_id_containing_the_prefix_is_listed_whole(profile_manager):
     client_id = "XCLIENT_Y"  # valid per validate_client_id: doesn't start with CLIENT_
     is_valid, msg = ProfileManager.validate_client_id(client_id)
     assert is_valid, msg
     profile_manager.create_client_profile(client_id, "Edge Case Client")
 
-    assert profile_manager.get_available_clients() == profile_manager.list_clients()
+    assert client_id in profile_manager.get_available_clients()
 
 
 # ---------------------------------------------------------------------------
