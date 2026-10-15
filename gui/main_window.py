@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
     session management, data loading, and switching between different views.
 
     Attributes:
-        session_manager (SessionManager): Manages the lifecycle of packing sessions.
+        session_manager (SessionManager): Makes work folders and records packing progress.
         logic (PackerLogic | None): The core business logic for the current session.
         stats_manager (StatisticsManager): Manages persistent application statistics.
         session_widget (QWidget): The main widget for the session view.
@@ -1455,7 +1455,7 @@ class MainWindow(QMainWindow):
                 # handing off to the background worker.  AsyncStateWriter's
                 # flush() must only be called from the main/UI thread.
                 # Close the progress publisher first: its last "in_progress"
-                # write must land before _do_slow_writes' final "completed".
+                # write must land before _do_slow_writes' final status.
                 self._close_progress_publisher()
                 _logic_ref._state_writer.flush()
 
@@ -2197,13 +2197,7 @@ class MainWindow(QMainWindow):
 
         # Create SessionManager for this client if not exists
         if not self.session_manager or self.session_manager.client_id != client_id:
-            self.session_manager = SessionManager(
-                client_id=client_id,
-                profile_manager=self.profile_manager,
-                lock_manager=self.lock_manager,
-                worker_id=self.current_worker_id,
-                worker_name=self.current_worker_name,
-            )
+            self.session_manager = SessionManager(client_id=client_id)
 
         if work_dir is None:
             try:

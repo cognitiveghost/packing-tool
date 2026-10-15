@@ -23,29 +23,12 @@ SESSION_INFO_FILE = "session_info.json"
 class SessionManager:
     """Work directories and packing progress for one client's Shopify sessions."""
 
-    def __init__(
-        self,
-        client_id: str,
-        profile_manager,
-        lock_manager,
-        worker_id: str | None = None,
-        worker_name: str | None = None
-    ):
+    def __init__(self, client_id: str):
         """
         Args:
             client_id: Client identifier (e.g., "M", "R")
-            profile_manager: ProfileManager instance for path operations
-            lock_manager: SessionLockManager instance for session locking
-            worker_id: Worker ID (e.g., "worker_001")
-            worker_name: Worker display name
         """
         self.client_id = client_id
-        self.profile_manager = profile_manager
-        self.lock_manager = lock_manager
-        self.worker_id = worker_id
-        self.worker_name = worker_name
-
-        logger.info(f"SessionManager initialized for client {client_id} (Worker: {worker_name})")
 
 
     def get_packing_work_dir(self, session_path: str, packing_list_name: str) -> Path:

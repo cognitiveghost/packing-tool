@@ -79,13 +79,16 @@ def test_the_last_item_with_an_extra_pending_holds_the_order_open(packing):
 
 
 @pytest.mark.parametrize("answer", ["_on_extra_confirmed", "_on_extra_removed"])
-def test_resolving_the_last_extra_completes_the_order(packing, answer):
+def test_resolving_the_last_extra_completes_the_order(packing, answer, qtbot):
     window, logic = packing
+    widget = window.packer_mode_widget
     _scan(window, "ORD-1", "SKU-A", "SKU-A", "SKU-B")
     getattr(window, answer)(normalize_sku("SKU-A"))
     assert logic.current_order_number is None
     assert "ORD-1" in logic.session_packing_state["completed_orders"]
-    assert window.packer_mode_widget.bridge.history[0] == {"order": "ORD-1", "status": "complete"}
+    assert widget.bridge.history[0] == {"order": "ORD-1", "status": "complete"}
+    assert widget.bridge.items  # the finished order holds on screen
+    qtbot.waitUntil(lambda: widget.bridge.items == [], timeout=2000)  # then clears
 
 
 def test_removing_an_extra_before_the_order_is_done_says_so(packing):

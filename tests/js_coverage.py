@@ -63,6 +63,9 @@ def line_report(source: str, executed: list[bool]) -> tuple[int, list[int]]:
     A line is executable when it holds a non-whitespace character, covered
     when any of those ran. `executed` is indexed in UTF-16 units.
     """
+    # ponytail: line coverage over characters, not branches: `if (a) b();` counts
+    # as covered when only the test ran. Report V8's block ranges per branch if
+    # the gate needs to see untaken branches.
     executable, missed, offset = 0, [], 0
     for number, line in enumerate(source.split("\n"), start=1):
         has_code = ran = False

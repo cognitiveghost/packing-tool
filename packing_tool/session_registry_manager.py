@@ -694,7 +694,7 @@ class SessionRegistryManager:
             # The Shopify path locks the work directory; Excel entries have no work_dir.
             lock_dir = entry.get("work_dir") or entry.get("session_path", "")
             if lock_dir:
-                lock_file = Path(lock_dir) / ".session.lock"
+                lock_file = Path(lock_dir) / SessionLockManager.LOCK_FILENAME
                 if lock_file.exists():
                     heartbeat_age = self._get_lock_heartbeat_age(lock_file)
                     if heartbeat_age is not None:

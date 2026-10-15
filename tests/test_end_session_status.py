@@ -28,11 +28,7 @@ def _end_in_window(window, session_dir, work_dir, logic, monkeypatch):
     window.current_work_dir = str(work_dir)
     window.current_session_path = str(session_dir)
     window.current_packing_list = "DHL_Orders"
-    window.session_manager = SessionManager(
-        client_id="TESTCL",
-        profile_manager=window.profile_manager,
-        lock_manager=window.lock_manager,
-    )
+    window.session_manager = SessionManager(client_id="TESTCL")
     failures = []
     monkeypatch.setattr(
         "gui.main_window.QMessageBox.critical", lambda *a, **k: failures.append(a)

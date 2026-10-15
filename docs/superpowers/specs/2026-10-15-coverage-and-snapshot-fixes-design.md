@@ -26,7 +26,7 @@ Most of `session_manager.py`'s miss is dead code (section 4).
 **B1. Snapshot finding 2.1: an ended run with orders unpacked is recorded as `completed`.** Still
 present. `MainWindow.end_session` calls `SessionManager.update_session_metadata(list, "completed",
 …)` whatever the counts. `packing_state.json` and the registry already work the status out from the
-counts, so the three files disagree (LIDA `2026-10-02_1`: state `in_progress`, registry
+counts, so the three files disagree (one client's session: state `in_progress`, registry
 `incomplete`, `session_info.json` `completed`). In the snapshot, 110 of 677 packing runs ended with
 orders unpacked.
 

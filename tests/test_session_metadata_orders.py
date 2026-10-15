@@ -4,13 +4,7 @@ from packing_tool.session_manager import SessionManager
 
 
 def _mgr():
-    return SessionManager(
-        client_id="ALMADERM",
-        profile_manager=None,
-        lock_manager=None,
-        worker_id="worker_001",
-        worker_name="test",
-    )
+    return SessionManager(client_id="ALMADERM")
 
 
 def _seed_session_info(tmp_path):
