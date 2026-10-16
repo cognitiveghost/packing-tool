@@ -15,7 +15,7 @@ The steps are:
 
 ### 2. Start the app and choose a worker
 
-1. Open **Packing Tool**. The first screen says **Select your profile**.
+1. Open **Packing Tool**. Its window title and sidebar say **Packer Assistant**. The first screen says **Select your profile**.
 2. Click your name. The card says **Opening…** for a moment, then the **Packing** page opens.
 3. If your name is not listed, click **New worker**, type your name and click **Create**.
 4. To close the app from this screen, click **Quit**. Once you are in, click **Switch worker…** at the bottom of the sidebar to choose another worker.
