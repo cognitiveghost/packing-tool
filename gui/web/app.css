@@ -227,11 +227,12 @@
 .app-s-banner { flex: none; }
 .app-s-banner .banner-title { flex: none; }
 
-.app-s-bar { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.app-s-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .app-s-bar .segmented { flex: none; }
 /* Tighter than the kit's 12px: four tabs, two dates and the stamp share 1366px. */
 .app-s-bar .segment { padding: 0 8px; }
-.app-s-search { flex: 1 1 200px; min-width: 80px; }
+/* Basis 0: the toolbar wraps only when the search's minimum no longer fits, so English stays on one row. */
+.app-s-search { flex: 1 1 0; min-width: 80px; }
 
 .app-clear {
   flex: none;
@@ -286,8 +287,10 @@
 }
 .app-s-dates-rule { width: 1px; height: 24px; background: var(--border); }
 
+/* Wraps onto a second row in a long language (the stamp and export go together), so nothing is pushed off the window. */
 .app-s-stamp {
   flex: none;
+  margin-left: auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -302,7 +305,7 @@
 .app-s-main { flex: 1; min-height: 0; display: flex; gap: 16px; }
 
 .app-s-list {
-  --tbl-cols: 150px 150px 64px minmax(0, 1fr) 170px 76px 230px;
+  --tbl-cols: 180px 150px 64px minmax(0, 1fr) 170px 76px 230px;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -310,7 +313,7 @@
   overflow: hidden;
 }
 /* With the pane open, Items and Last touched fold into it. */
-.app-s-main.pane-open .app-s-list { --tbl-cols: 150px 150px 64px minmax(0, 1fr) 170px; }
+.app-s-main.pane-open .app-s-list { --tbl-cols: 180px 150px 64px minmax(0, 1fr) 170px; }
 .app-s-main.pane-open .app-s-wide { display: none; }
 .app-s-list > .tbl-head { padding: 0 12px; overflow: hidden; scrollbar-gutter: stable; }
 .app-s-list > .tbl-head > span { padding: 0 8px; }

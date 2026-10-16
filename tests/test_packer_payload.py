@@ -135,6 +135,19 @@ def test_banner_blocker_note_is_not_repeat():
     assert b["repeat"] is False and b["notes"] == "Cannot fulfill: Repeat SKU short"
 
 
+def test_repeat_and_cannot_fulfill_decide_the_same_in_bulgarian():
+    # The Repeat mark is decided on the raw English note; a BG language must not
+    # change which branch a note takes.
+    from main import APP_ROOT
+    from shared import i18n
+
+    i18n.set_language("bg", i18n.catalogue_files(APP_ROOT, "bg"))
+    assert banner_payload("#1", {"system_note": "Repeat"})["repeat"] is True
+    blocker = banner_payload("#1", {"system_note": "Cannot fulfill: Repeat SKU short"})
+    assert blocker["repeat"] is False
+    assert blocker["notes"] == "Cannot fulfill: Repeat SKU short"
+
+
 def test_no_metadata_still_names_the_order():
     assert banner_payload("10429", None) == {
         "order": "10429",

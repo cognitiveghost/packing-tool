@@ -27,6 +27,7 @@ from gui.setup_payload import (
 from packing_tool.packer_logic import normalize_sku
 from packing_tool.profile_manager import ProfileManagerError
 from packing_tool.session_details import error_cause
+from shared.i18n import _
 from shared.web_page import when_painted
 
 logger = logging.getLogger(__name__)
@@ -156,11 +157,11 @@ class SetupPages(QWidget):
             # Another PC took the name since this list was read.
             self._load_workers()
             return worker_name_problem(name, [w.name for w in self._workers]) or (
-                "That name can’t be used."
+                _("That name can’t be used.")
             )
         except Exception as error:
             logger.exception("Could not create the worker")
-            return f"Couldn’t create the worker: {error_cause(error)}."
+            return _("Couldn’t create the worker: {cause}.", cause=error_cause(error))
         self._workers = [*self._workers, worker]
         self._pick(worker.id)
         return ""
@@ -285,15 +286,15 @@ class SetupPages(QWidget):
                 (c for c in quick["choices"] if c["key"] == normalize_sku(sku)), None
             )
             if not normalize_sku(sku) or choice is None:
-                return "Not on this order. Pick one of the lines below."
+                return _("Not on this order. Pick one of the lines below.")
             sku = choice["sku"]
         if not normalize_sku(barcode):
-            return "Enter a barcode."
+            return _("Enter a barcode.")
         clash = self._editor.clash(barcode)
         remove: list[str] = []
         if clash is not None and normalize_sku(clash["sku"]) != normalize_sku(sku):
             if not replace:
-                return f"This barcode already maps to {clash['sku']}."
+                return _("This barcode already maps to {sku}.", sku=clash["sku"])
             if clash["barcode"] != barcode:
                 remove = [clash["barcode"]]
         try:
@@ -304,6 +305,6 @@ class SetupPages(QWidget):
             logger.exception("Could not save the quick mapping")
             self._error = mapping_error("quick", _cause(error), self._mapping_path())
             self._push_mapping()
-            return "Not saved. Try again."
+            return _("Not saved. Try again.")
         self.quickMapped.emit(quick["kind"], barcode, sku, mapping)
         return ""

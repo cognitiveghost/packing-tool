@@ -25,6 +25,7 @@ from gui.packer_bridge import (
     unknown_rows,
 )
 from gui.theme import current_tokens
+from shared.i18n import _
 from shared.theme import font_css, on_theme_changed
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class PackerModeWidget(QWidget):
         super().__init__(parent)
         self._sim_mode = sim_mode
 
-        self._feedback_text = "Scan an order barcode"
+        self._feedback_text = _("Scan an order barcode")
         self._feedback_role = "info"
         self._raw_scan = ""
         self._items = []
@@ -140,7 +141,7 @@ class PackerModeWidget(QWidget):
         bar.setContentsMargins(12, 0, 12, 0)
         bar.setSpacing(8)
 
-        self._order_label = QLabel("No order")
+        self._order_label = QLabel(_("No order"))
         self._order_label.setObjectName("packerOrder")
         self._order_label.setMinimumWidth(120)
         bar.addWidget(self._order_label)
@@ -151,7 +152,7 @@ class PackerModeWidget(QWidget):
         self.scanner_input = QLineEdit()
         self.scanner_input.setObjectName("packerScanner")
         self.scanner_input.setFixedSize(SCANNER_WIDTH, CONTROL_HEIGHT)
-        self.scanner_input.setPlaceholderText("Order number or SKU")
+        self.scanner_input.setPlaceholderText(_("Order number or SKU"))
         self.scanner_input.returnPressed.connect(self._on_scan)
         bar.addWidget(self.scanner_input)
 
@@ -159,7 +160,7 @@ class PackerModeWidget(QWidget):
         self._scanner_dot.setObjectName("packerScannerDot")
         self._scanner_dot.setFixedSize(12, 12)
         bar.addWidget(self._scanner_dot)
-        self._scanner_state = QLabel("Ready to scan")
+        self._scanner_state = QLabel(_("Ready to scan"))
         self._scanner_state.setObjectName("packerScannerState")
         bar.addWidget(self._scanner_state)
 
@@ -168,13 +169,13 @@ class PackerModeWidget(QWidget):
 
         bar.addStretch(1)
 
-        self.skip_order_button = QPushButton("Skip order")
+        self.skip_order_button = QPushButton(_("Skip order"))
         self.skip_order_button.setFocusPolicy(Qt.NoFocus)
         self.skip_order_button.setEnabled(False)
         self.skip_order_button.clicked.connect(self.skip_order_requested.emit)
         bar.addWidget(self.skip_order_button)
 
-        self.exit_button = QPushButton("Exit packing")
+        self.exit_button = QPushButton(_("Exit packing"))
         self.exit_button.setFocusPolicy(Qt.NoFocus)
         self.exit_button.clicked.connect(self.exit_packing_mode.emit)
         bar.addWidget(self.exit_button)
@@ -204,13 +205,13 @@ class PackerModeWidget(QWidget):
         layout = QHBoxLayout(group)
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(4)
-        label = QLabel("DEV")
+        label = QLabel(_("DEV"))
         label.setObjectName("SimGroupLabel")
         self.sim_input = QLineEdit()
         self.sim_input.setFixedWidth(SIM_INPUT_WIDTH)
-        self.sim_input.setPlaceholderText("Order number or SKU")
+        self.sim_input.setPlaceholderText(_("Order number or SKU"))
         self.sim_input.returnPressed.connect(self._on_sim_scan)
-        button = QPushButton("Simulate scan")
+        button = QPushButton(_("Simulate scan"))
         button.setFocusPolicy(Qt.NoFocus)
         button.clicked.connect(self._on_sim_scan)
         layout.addWidget(label)
@@ -262,7 +263,7 @@ class PackerModeWidget(QWidget):
             self._session_over or self._taken_over or bool(self._question) or self._paused
         )
         self.scanner_input.setEnabled(not off)
-        self._scanner_state.setText("Scanner disabled" if off else "Ready to scan")
+        self._scanner_state.setText(_("Scanner disabled") if off else _("Ready to scan"))
         self.skip_order_button.setEnabled(self._order_open and not off)
         self._restyle()
         if not off:
@@ -513,10 +514,10 @@ class PackerModeWidget(QWidget):
         self.bridge.set_banner(banner_payload("", None))
         self.bridge.set_extras([])
         self.bridge.set_sku_rollup([])
-        self._order_label.setText("No order")
+        self._order_label.setText(_("No order"))
         self.scanner_input.clear()
         self._raw_scan = ""
-        self.show_notification("Scan an order barcode", "status_info")
+        self.show_notification(_("Scan an order barcode"), "status_info")
         self._push_rows()
         self._sync_scanner()
 
@@ -528,7 +529,7 @@ class PackerModeWidget(QWidget):
         """
         self._session_over = True
         self.bridge.set_session_end(payload)
-        self._order_label.setText("Session complete")
+        self._order_label.setText(_("Session complete"))
         self._sync_scanner()
 
     def reset_for_new_session(self):

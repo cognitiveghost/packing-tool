@@ -34,10 +34,6 @@ function show(node, on) {
   node.hidden = !on;
 }
 
-function plural(count, one, many) {
-  return count + " " + (count === 1 ? one : many);
-}
-
 // The page's own state belongs to one session: a new id drops it.
 function syncSession() {
   const id = (view.bridge.session || {}).id || "";
@@ -64,10 +60,10 @@ function renderFrame() {
 
   show(els.noClient, on(!client));
   show(els.chooseClient, !!shell.clients);
-  els.noClientTitle.textContent = work ? "Choose a client to begin" : "Choose a client";
+  els.noClientTitle.textContent = work ? t("Choose a client to begin") : t("Choose a client");
   els.noClientText.textContent = work
-    ? "Sessions, packing lists and SKU mapping all belong to one client."
-    : "Pick a client in the bar above to see its sessions.";
+    ? t("Sessions, packing lists and SKU mapping all belong to one client.")
+    : t("Pick a client in the bar above to see its sessions.");
   show(els.noSession, on(client && state === "none" && packing));
   els.openSession.disabled = !!shell.serverDown;
   show(els.statsEmpty, on(client && state === "none" && stats));
@@ -82,7 +78,7 @@ function renderFrame() {
   renderConfirm();
 
   const open = state === "open";
-  els.headTitle.textContent = packing || !open ? session.list || "" : "Statistics";
+  els.headTitle.textContent = packing || !open ? session.list || "" : t("Statistics");
   els.headTitle.title = els.headTitle.textContent;
   show(els.headBadge, open);
   show(els.headId, open && packing);
@@ -93,7 +89,7 @@ function renderFrame() {
   els.headStart.disabled = !!session.complete;
 
   const step = session.step || 0;
-  els.stepCount.textContent = "Working · step " + step + " of 3";
+  els.stepCount.textContent = t("Working · step {step} of 3", {step: step});
   els.stepName.textContent = session.stepName || "";
   els.stepList.textContent = session.list || "";
   els.stepId.textContent = session.id || "";
@@ -107,16 +103,19 @@ function renderFrame() {
 
 // --- Packing ------------------------------------------------------------------
 
-const ORDER_BADGE = {
-  packed: ["Packed", "badge success"],
-  in_progress: ["In progress", "badge info"],
-  not_started: ["Not started", "badge neutral"],
-};
-const ITEM_BADGE = {
-  complete: ["Complete", "badge success"],
-  partial: ["Partial", "badge info"],
-  pending: ["Pending", "badge neutral"],
-};
+// Badge text is translated where it is drawn: t() reads the catalogue that
+// arrives with the bridge, so it cannot run when this file loads.
+function orderBadge(status) {
+  if (status === "packed") return badge("badge success", t("Packed"));
+  if (status === "in_progress") return badge("badge info", t("In progress"));
+  return badge("badge neutral", t("Not started"));
+}
+
+function itemBadge(state) {
+  if (state === "complete") return badge("badge success", t("Complete"));
+  if (state === "partial") return badge("badge info", t("Partial"));
+  return badge("badge neutral", t("Pending"));
+}
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CHEVRON_DOWN = "m6 9 6 6 6-6";
 const CHEVRON_RIGHT = "m9 18 6-6-6-6";
@@ -131,8 +130,8 @@ function glyph(d) {
   return svg;
 }
 
-function badge(pair) {
-  return el("span", pair[1], pair[0]);
+function badge(cls, text) {
+  return el("span", cls, text);
 }
 
 // Text that an ellipsis may cut keeps its whole self in the tooltip.
@@ -156,13 +155,13 @@ function orderRow(order) {
   const first = el("span", "app-order-no");
   first.appendChild(glyph(open ? CHEVRON_DOWN : CHEVRON_RIGHT));
   first.appendChild(el("span", "app-order-label", order.label));
-  if (order.skipped) first.appendChild(el("span", "badge warning", "Skipped"));
+  if (order.skipped) first.appendChild(el("span", "badge warning", t("Skipped")));
   row.appendChild(first);
 
   row.appendChild(cut("app-order-summary", order.summary));
   row.appendChild(el("span", "app-qty", order.packed + " / " + order.units));
   const status = el("span", "app-status");
-  status.appendChild(badge(ORDER_BADGE[order.status] || ORDER_BADGE.not_started));
+  status.appendChild(orderBadge(order.status));
   row.appendChild(status);
   row.appendChild(el("span", "app-order-courier", order.courier));
   return row;
@@ -174,7 +173,7 @@ function itemRow(item) {
   row.appendChild(cut("", item.product));
   row.appendChild(el("span", "app-qty", item.packed + " / " + item.required));
   const status = el("span", "app-status");
-  status.appendChild(badge(ITEM_BADGE[item.state] || ITEM_BADGE.pending));
+  status.appendChild(itemBadge(item.state));
   row.appendChild(status);
   row.appendChild(el("span"));
   return row;
@@ -195,23 +194,24 @@ function renderPacking() {
   const pct = totals.pct || 0;
 
   els.totDone.textContent = done;
-  els.totOrders.textContent = "of " + orders;
+  els.totOrders.textContent = t("of {total}", {total: orders});
   els.totPacked.textContent = totals.packed || 0;
-  els.totUnits.textContent = "of " + (totals.units || 0);
+  els.totUnits.textContent = t("of {total}", {total: totals.units || 0});
   els.totSkipped.textContent = totals.skipped || 0;
-  els.totSkippedNote.textContent = totals.skipped ? "still Not started" : "none";
+  els.totSkippedNote.textContent = totals.skipped ? t("still Not started") : t("none");
   els.totPct.textContent = pct + "%";
   els.totFill.style.width = pct + "%";
   els.totLeft.textContent = totals.complete
-    ? "All orders packed"
-    : plural(orders - done, "order", "orders") + " left · " + (totals.in_progress || 0) + " in progress";
+    ? t("All orders packed")
+    : tn("{n} order left · {inProgress} in progress", "{n} orders left · {inProgress} in progress",
+      orders - done, {inProgress: totals.in_progress || 0});
 
   show(els.complete, !!totals.complete);
-  els.completeText.textContent = done + " of " + orders + " orders packed.";
+  els.completeText.textContent = t("{done} of {total} orders packed.", {done: done, total: orders});
 
   const hits = packing.hits || 0;
   show(els.filterLine, !!query && hits > 0);
-  els.filterText.textContent = hits + " of " + orders + " orders contain ";
+  els.filterText.textContent = t("{hits} of {total} orders contain ", {hits: hits, total: orders});
   els.filterQuery.textContent = query;
   show(els.noMatch, !!query && hits === 0);
   els.noMatchQuery.textContent = query;
@@ -250,20 +250,21 @@ function toggleOrder(number) {
 // --- Statistics ---------------------------------------------------------------
 
 // Column: its label and the direction a first click sorts it.
-const SORT = {
-  sku: ["SKU", 1],
-  product: ["Product", 1],
-  total: ["Total qty", -1],
-  packed: ["Packed", -1],
-  left: ["Left", -1],
-  state: ["Status", 1],
-};
+const SORT = { sku: 1, product: 1, total: -1, packed: -1, left: -1, state: 1 };
 const STATE_ORDER = { pending: 0, partial: 1, packed: 2 };
-const SKU_BADGE = {
-  packed: ["Packed", "badge success"],
-  partial: ["Partial", "badge info"],
-  pending: ["Pending", "badge neutral"],
-};
+
+function sortLabel(key) {
+  return {
+    sku: t("SKU"), product: t("Product"), total: t("Total qty"),
+    packed: t("Packed"), left: t("Left"), state: t("Status"),
+  }[key];
+}
+
+function skuBadge(state) {
+  if (state === "packed") return badge("badge success", t("Packed"));
+  if (state === "partial") return badge("badge info", t("Partial"));
+  return badge("badge neutral", t("Pending"));
+}
 
 function sortedSkus(skus) {
   const key = view.sort.key;
@@ -286,8 +287,8 @@ function courierBlock(courier) {
   const block = el("div", "app-courier");
   const line = el("div", "app-courier-line");
   line.appendChild(el("span", "app-courier-name", courier.name));
-  line.appendChild(el("span", "app-courier-done", courier.done + " done"));
-  line.appendChild(el("span", "app-courier-of", "of " + courier.total));
+  line.appendChild(el("span", "app-courier-done", t("{done} done", {done: courier.done})));
+  line.appendChild(el("span", "app-courier-of", t("of {total}", {total: courier.total})));
   block.appendChild(line);
   const track = el("div", "track tall");
   const fill = el("div", "track-fill");
@@ -295,7 +296,7 @@ function courierBlock(courier) {
   track.appendChild(fill);
   block.appendChild(track);
   block.appendChild(el("span", "app-courier-left",
-    left ? plural(left, "order", "orders") + " left" : "All packed"));
+    left ? tn("{n} order left", "{n} orders left", left) : t("All packed")));
   return block;
 }
 
@@ -307,7 +308,7 @@ function skuRow(sku) {
   row.appendChild(el("span", "app-num", sku.packed));
   row.appendChild(el("span", "app-num app-left" + (sku.left ? "" : " zero"), sku.left));
   const status = el("span");
-  status.appendChild(badge(SKU_BADGE[sku.state] || SKU_BADGE.pending));
+  status.appendChild(skuBadge(sku.state));
   row.appendChild(status);
   return row;
 }
@@ -320,35 +321,41 @@ function renderStatistics() {
   const pct = stats.pct || 0;
 
   els.kpiOrders.textContent = stats.orders || 0;
-  els.kpiOrdersNote.textContent = plural(couriers.length, "courier", "couriers");
+  els.kpiOrdersNote.textContent = tn("{n} courier", "{n} couriers", couriers.length);
   els.kpiCompleted.textContent = stats.completed || 0;
-  els.kpiCompletedNote.textContent = (stats.in_progress || "none") + " in progress";
+  els.kpiCompletedNote.textContent = stats.in_progress
+    ? t("{n} in progress", {n: stats.in_progress})
+    : t("none in progress");
   els.kpiItems.textContent = stats.items || 0;
-  els.kpiItemsNote.textContent = (stats.packed || 0) + " packed";
+  els.kpiItemsNote.textContent = t("{n} packed", {n: stats.packed || 0});
   els.kpiSkus.textContent = stats.unique_skus || 0;
-  els.kpiSkusNote.textContent = (stats.fully_packed || 0) + " fully packed";
+  els.kpiSkusNote.textContent = t("{n} fully packed", {n: stats.fully_packed || 0});
   els.kpiPct.textContent = pct + "%";
   els.kpiFill.style.width = pct + "%";
-  els.kpiPctNote.textContent = (stats.completed || 0) + " of " + (stats.orders || 0) + " orders complete";
+  els.kpiPctNote.textContent = t("{done} of {total} orders complete",
+    {done: stats.completed || 0, total: stats.orders || 0});
 
   els.couriers.replaceChildren.apply(els.couriers, couriers.map(courierBlock));
 
   const key = view.sort.key;
   const dir = view.sort.dir;
-  els.skuMeta.textContent = plural(skus.length, "SKU", "SKUs") + " · sorted by " + SORT[key][0]
-    + (dir === -1 ? ", most first" : "");
+  const by = sortLabel(key);
+  els.skuMeta.textContent = dir === -1
+    ? tn("{n} SKU · sorted by {by}, most first", "{n} SKUs · sorted by {by}, most first",
+      skus.length, {by: by})
+    : tn("{n} SKU · sorted by {by}", "{n} SKUs · sorted by {by}", skus.length, {by: by});
   els.sortHeads.forEach(function (head) {
     const on = head.dataset.col === key;
     if (on) head.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
     else head.removeAttribute("aria-sort");
     const button = head.firstElementChild;
-    button.textContent = SORT[head.dataset.col][0] + (on ? (dir === 1 ? " ↑" : " ↓") : "");
+    button.textContent = sortLabel(head.dataset.col) + (on ? (dir === 1 ? " ↑" : " ↓") : "");
   });
   els.skuRows.replaceChildren.apply(els.skuRows, sortedSkus(skus).map(skuRow));
 }
 
 function sortBy(key) {
-  view.sort = { key: key, dir: view.sort.key === key ? -view.sort.dir : SORT[key][1] };
+  view.sort = { key: key, dir: view.sort.key === key ? -view.sort.dir : SORT[key] };
   renderStatistics();
 }
 
@@ -386,7 +393,7 @@ function sessionRow(row) {
   const node = el("button", "tbl-row app-srow");
   node.type = "button";
   node.dataset.session = row.key;
-  node.title = row.actionLabel ? "Double-click: " + row.actionLabel : "";
+  node.title = row.actionLabel ? t("Double-click: {action}", {action: row.actionLabel}) : "";
   const status = el("span");
   status.appendChild(chip(row));
   node.appendChild(status);
@@ -475,7 +482,7 @@ function renderSessions() {
   setInput(els.sTo, s.dateTo || "");
   show(els.sQueryClear, !!s.query);
   els.sRefresh.disabled = !!s.refreshing;
-  els.sStampLabel.textContent = s.refreshing ? "Refreshing…" : s.stamp ? "Last refreshed" : "";
+  els.sStampLabel.textContent = s.refreshing ? t("Refreshing…") : s.stamp ? t("Last refreshed") : "";
   els.sStamp.textContent = s.refreshing ? "" : s.stamp || "";
   els.sStampLine.classList.toggle("failed", !!s.failed);
   els.sAuto.setAttribute("aria-checked", String(!!s.auto));
@@ -588,9 +595,9 @@ function noTiming() {
   const node = el("div", "app-d-notiming");
   node.appendChild(glyph(INFO_GLYPH));
   const text = el("div", "app-d-notiming-text");
-  text.appendChild(el("span", "app-strong", "Timing metrics are not available for this session."));
+  text.appendChild(el("span", "app-strong", t("Timing metrics are not available for this session.")));
   text.appendChild(el("span", "app-d-notiming-note",
-    "Its files hold no scan times, so durations and rates cannot be worked out. Counts and flags are complete."));
+    t("Its files hold no scan times, so durations and rates cannot be worked out. Counts and flags are complete.")));
   node.appendChild(text);
   return node;
 }
@@ -685,7 +692,7 @@ function renderDetails() {
   els.dWhy.textContent = d.setBy + " · " + d.why;
   els.dWhy.title = els.dWhy.textContent;
   els.dExport.disabled = !d.canExport;
-  els.dExport.title = ready && !d.canExport ? "No order data to export" : "";
+  els.dExport.title = ready && !d.canExport ? t("No order data to export") : "";
 
   const error = d.error || {};
   show(els.dError, d.state === "error");
@@ -723,7 +730,7 @@ function renderDetails() {
   const groups = d.timing
     ? (d.groups || []).map(function (group) { return tilesGroup(group.title, group.tiles); })
     : [noTiming()];
-  groups.push(tilesGroup("Scan quality", d.scan || []));
+  groups.push(tilesGroup(t("Scan quality"), d.scan || []));
   els.dGroups.replaceChildren.apply(els.dGroups, groups);
 
   setInput(els.dQuery, d.query || "");
@@ -873,6 +880,7 @@ const IDS = {
 
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.app;
+  applyStrings(bridge);
   view.bridge = bridge;
   // The test harness drives the page through this handle; nothing in the
   // page reads it.

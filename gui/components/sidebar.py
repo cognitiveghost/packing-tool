@@ -26,6 +26,9 @@ from PySide6.QtWidgets import (
 
 from gui.command_bar import BAR_HEIGHT
 from gui.setup_payload import initials
+from shared import i18n
+from shared.components.language_segment import LanguageSegment
+from shared.i18n import N_, _
 from shared.icons import icon
 from shared.navrail import RAIL_WIDTH, NavRail
 from shared.theme import current_tokens, font_css, on_theme_changed
@@ -34,9 +37,9 @@ SIDEBAR_WIDTH = 200
 ITEM_HEIGHT = 44
 # state -> (label, the status role whose colours it wears)
 _CONNECTION = {
-    "ok": ("Server connected", "success"),
-    "checking": ("Reconnecting…", "warning"),
-    "down": ("Server unreachable", "danger"),
+    "ok": (N_("Server connected"), "success"),
+    "checking": (N_("Reconnecting…"), "warning"),
+    "down": (N_("Server unreachable"), "danger"),
 }
 # 200 - footer margins 16 - card padding 20 - dot 10 - gap 8 = 146, less a few
 # px so the ellipsis never touches the card's edge.
@@ -79,6 +82,7 @@ class Sidebar(QWidget):
     skuMappingRequested = Signal()
     switchWorkerRequested = Signal()
     themeRequested = Signal(str)
+    languageRequested = Signal(str)
     retryRequested = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -121,10 +125,18 @@ class Sidebar(QWidget):
         footer.setContentsMargins(8, 8, 8, 8)
         footer.setSpacing(6)
 
+        # Hidden until UpdateFlow has a newer release to offer.
+        self.update_button = QToolButton(self.footer)
+        self.update_button.setObjectName("UpdateButton")
+        self.update_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.update_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.update_button.hide()
+        footer.addWidget(self.update_button)
+
         self.sku_button = QToolButton(self.footer)
         self.sku_button.setObjectName("FooterItem")
-        self.sku_button.setText("SKU mapping")
-        self.sku_button.setToolTip("SKU mapping…")
+        self.sku_button.setText(_("SKU mapping"))
+        self.sku_button.setToolTip(_("SKU mapping…"))
         self.sku_button.setAutoRaise(True)
         self.sku_button.setIconSize(QSize(20, 20))
         self.sku_button.clicked.connect(self.skuMappingRequested.emit)
@@ -134,7 +146,7 @@ class Sidebar(QWidget):
         self.worker_card = QFrame(self.footer)
         self.worker_card.setObjectName("WorkerCard")
         self.worker_card.setMinimumHeight(56)
-        self.worker_card.setToolTip("Signed-in worker")
+        self.worker_card.setToolTip(_("Signed-in worker"))
         card = QHBoxLayout(self.worker_card)
         card.setContentsMargins(8, 6, 8, 6)
         card.setSpacing(10)
@@ -147,7 +159,7 @@ class Sidebar(QWidget):
         self.worker_name = QLabel(self.worker_card)
         self.worker_name.setObjectName("WorkerName")
         self.worker_name.setFixedWidth(_NAME_WIDTH)
-        self.worker_link = QPushButton("Switch worker…", self.worker_card)
+        self.worker_link = QPushButton(_("Switch worker…"), self.worker_card)
         self.worker_link.setObjectName("WorkerLink")
         self.worker_link.setFlat(True)
         self.worker_link.setCursor(Qt.PointingHandCursor)
@@ -172,8 +184,8 @@ class Sidebar(QWidget):
         segment = QHBoxLayout(self.theme_segment)
         segment.setContentsMargins(2, 2, 2, 2)
         segment.setSpacing(2)
-        self.light_button = self._segment_button("Light")
-        self.dark_button = self._segment_button("Dark")
+        self.light_button = self._segment_button(_("Light"))
+        self.dark_button = self._segment_button(_("Dark"))
         group = QButtonGroup(self.theme_segment)
         group.setExclusive(True)
         for button, name in ((self.light_button, "light"), (self.dark_button, "dark")):
@@ -181,6 +193,11 @@ class Sidebar(QWidget):
             segment.addWidget(button)
             button.clicked.connect(lambda _c=False, n=name: self.themeRequested.emit(n))
         footer.addWidget(self.theme_segment)
+
+        self.language_segment = LanguageSegment(self.footer, height=ITEM_HEIGHT)
+        self.language_segment.set_language(i18n.language())
+        self.language_segment.languageRequested.connect(self.languageRequested.emit)
+        footer.addWidget(self.language_segment)
 
         self.theme_toggle = QToolButton(self.footer)
         self.theme_toggle.setObjectName("FooterItem")
@@ -213,7 +230,7 @@ class Sidebar(QWidget):
         self.connection_label = QLabel(self.connection_box)
         self.path_label = QLabel(self.connection_box)
         self.path_label.setFixedWidth(_PATH_WIDTH)
-        self.retry_button = QPushButton("Retry", self.connection_box)
+        self.retry_button = QPushButton(_("Retry"), self.connection_box)
         self.retry_button.setObjectName("RetryButton")
         self.retry_button.setFixedHeight(ITEM_HEIGHT)
         self.retry_button.clicked.connect(self.retryRequested.emit)
@@ -272,17 +289,18 @@ class Sidebar(QWidget):
             # (56 - 32) / 2: the mark centred in the rail.
             self._header_row.setContentsMargins(12, 0, 12, 0)
         for widget in (self.title, self.worker_card, self.theme_segment,
-                       self.connection_box):
+                       self.language_segment, self.connection_box):
             widget.setVisible(expanded)
         for widget in (self.worker_rail_button, self.theme_toggle,
                        self.connection_icon):
             widget.setVisible(not expanded)
-        self.sku_button.setToolButtonStyle(
-            Qt.ToolButtonTextBesideIcon if expanded else Qt.ToolButtonIconOnly
-        )
-        self.sku_button.setFixedSize(
-            (SIDEBAR_WIDTH if expanded else RAIL_WIDTH) - 16, ITEM_HEIGHT
-        )
+        for button in (self.sku_button, self.update_button):
+            button.setToolButtonStyle(
+                Qt.ToolButtonTextBesideIcon if expanded else Qt.ToolButtonIconOnly
+            )
+            button.setFixedSize(
+                (SIDEBAR_WIDTH if expanded else RAIL_WIDTH) - 16, ITEM_HEIGHT
+            )
         self._apply_theme(current_tokens())
 
     def is_expanded(self) -> bool:
@@ -298,13 +316,15 @@ class Sidebar(QWidget):
             metrics.elidedText(self._worker, Qt.ElideRight, _NAME_WIDTH)
         )
         self.worker_name.setToolTip(self._worker)
-        self.worker_rail_button.setToolTip(f"{self._worker} · Switch worker…")
+        self.worker_rail_button.setToolTip(
+            _("{worker} · Switch worker…", worker=self._worker)
+        )
 
     def set_theme_name(self, name: str) -> None:
         self._theme_name = name
         (self.dark_button if name == "dark" else self.light_button).setChecked(True)
         self.theme_toggle.setToolTip(
-            "Switch to Light" if name == "dark" else "Switch to Dark"
+            _("Switch to Light") if name == "dark" else _("Switch to Dark")
         )
         self.theme_toggle.setIcon(icon("sun" if name == "dark" else "moon"))
 
@@ -312,16 +332,22 @@ class Sidebar(QWidget):
         label, _role = _CONNECTION[state]  # KeyError on an unknown state
         self._state = state
         self._server_path = server_path
-        self.connection_label.setText(label)
         metrics = QFontMetrics(self.path_label.font())
         self.path_label.setText(
             metrics.elidedText(server_path, Qt.ElideMiddle, _PATH_WIDTH)
         )
         self.path_label.setToolTip(server_path)
-        self.connection_box.setToolTip(f"{label} · {server_path}")
-        self.connection_icon.setToolTip(f"{label} · {server_path}")
+        status_tip = _("{status} · {path}", status=_(label), path=server_path)
+        self.connection_box.setToolTip(status_tip)
+        self.connection_icon.setToolTip(status_tip)
         self.retry_button.setVisible(state == "down")
         self._style_connection(current_tokens())
+        # Elided, not clipped: the full state is in the card's tooltip.
+        self.connection_label.ensurePolished()
+        label_metrics = QFontMetrics(self.connection_label.font())
+        self.connection_label.setText(
+            label_metrics.elidedText(_(label), Qt.ElideRight, _PATH_WIDTH)
+        )
 
     def set_client_chosen(self, chosen: bool) -> None:
         for index in range(len(self.rail._buttons)):
@@ -365,16 +391,24 @@ class Sidebar(QWidget):
             f"#WorkerRailButton {{ background-color: {t.surface};"
             f" border: 1px solid {t.border_strong}; border-radius: 16px;"
             f" margin: 6px; color: {t.text}; {font_css('caption', bold=True)} }}"
-            f"#ThemeSegment {{ background-color: {t.surface_sunken};"
+            f"#ThemeSegment, #LanguageSegment {{ background-color: {t.surface_sunken};"
             f" border: 1px solid {t.border}; border-radius: 8px; }}"
-            f"#ThemeSegment QToolButton {{ background-color: transparent;"
+            f"#ThemeSegment QToolButton, #LanguageSegment QToolButton {{"
+            f" background-color: transparent;"
             f" border: 1px solid transparent; border-radius: 6px;"
             f" color: {t.text_secondary}; {font_css('caption')} }}"
-            f"#ThemeSegment QToolButton:checked {{ background-color: {t.surface};"
-            f" border: 1px solid {t.border_subtle}; color: {t.text};"
-            f" font-weight: bold; }}"
+            f"#ThemeSegment QToolButton:checked, #LanguageSegment QToolButton:checked {{"
+            f" background-color: {t.surface}; border: 1px solid {t.border_subtle};"
+            f" color: {t.text}; font-weight: bold; }}"
+            f"#UpdateButton {{ background-color: {t.accent_fill}; color: {t.on_accent};"
+            f" border: none; border-radius: 6px; padding: 4px 8px;"
+            f" {font_css('caption', bold=True)} }}"
+            f"#UpdateButton:hover {{ background-color: {t.accent_fill_hover}; }}"
+            f"#UpdateButton:disabled {{ background-color: {t.accent_fill_active};"
+            f" color: {t.on_accent}; }}"
         )
-        self.mark.setPixmap(icon("package", color=t.on_accent).pixmap(18, 18))
+        self.mark.setPixmap(icon("scan-barcode", color=t.on_accent).pixmap(18, 18))
+        self.update_button.setIcon(icon("download", color=t.on_accent))
         self.sku_button.setIcon(icon("tag"))
         self.light_button.setIcon(icon("sun"))
         self.dark_button.setIcon(icon("moon"))

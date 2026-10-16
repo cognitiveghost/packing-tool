@@ -22,7 +22,6 @@ from gui.sessions_payload import (
     default_range,
     detail_export_rows,
     details_payload,
-    plural,
     refresh_failure,
     row_action,
     session_export_rows,
@@ -33,6 +32,7 @@ from gui.sessions_payload import (
 )
 from gui.workers import RegistryRefreshWorker, SessionDetailsWorker
 from packing_tool.session_details import UNREADABLE_SHAPE
+from shared.i18n import _, _n
 
 logger = logging.getLogger(__name__)
 
@@ -448,9 +448,9 @@ class SessionsPage(QObject):
         excel = fmt == "xlsx"
         path, _selected = QFileDialog.getSaveFileName(
             self._window,
-            "Save Excel" if excel else "Save CSV",
+            _("Save Excel") if excel else _("Save CSV"),
             f"sessions_{self._client_id}.{'xlsx' if excel else 'csv'}",
-            "Excel files (*.xlsx)" if excel else "CSV files (*.csv)",
+            _("Excel files (*.xlsx)") if excel else _("CSV files (*.csv)"),
         )
         if not path:
             return
@@ -465,10 +465,15 @@ class SessionsPage(QObject):
                     writer.writerows(rows)
         except Exception as error:
             logger.exception("Sessions export failed")
-            QMessageBox.critical(self._window, "Export Failed", str(error))
+            QMessageBox.critical(self._window, _("Export Failed"), str(error))
             return
         self._toast(
-            f"Exported {plural(len(rows), 'session', 'sessions')} to {Path(path).name}"
+            _n(
+                "Exported {n} session to {name}",
+                "Exported {n} sessions to {name}",
+                len(rows),
+                name=Path(path).name,
+            )
         )
 
     def _export_details(self) -> None:
@@ -478,9 +483,9 @@ class SessionsPage(QObject):
         session_id = self._detail_entry.get("session_id", "session")
         path, _selected = QFileDialog.getSaveFileName(
             self._window,
-            "Export Session Details",
+            _("Export Session Details"),
             f"session_{session_id}.xlsx",
-            "Excel Files (*.xlsx)",
+            _("Excel Files (*.xlsx)"),
         )
         if not path:
             return
@@ -489,7 +494,11 @@ class SessionsPage(QObject):
         except Exception as error:
             logger.exception("Session details export failed")
             QMessageBox.critical(
-                self._window, "Export Failed", f"Failed to export session details:\n{error}"
+                self._window,
+                _("Export Failed"),
+                _("Failed to export session details:\n{detail}", detail=str(error)),
             )
             return
-        self._toast(f"Exported {session_id} to {Path(path).name}")
+        self._toast(
+            _("Exported {session_id} to {name}", session_id=session_id, name=Path(path).name)
+        )

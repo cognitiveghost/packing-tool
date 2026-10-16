@@ -31,6 +31,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from render_args import parse_args
 
+from shared import i18n
+
 NOW = datetime(2026, 10, 7, 14, 6, tzinfo=timezone(timedelta(hours=3)))
 WORKERS_PATH = r"\\fs01\fulfilment\Workers"
 CONFIG_PATH = r"\\fs01\fulfilment\Clients\CLIENT_ACME\packer_config.json"
@@ -69,7 +71,7 @@ SIX = [
 
 
 def main(argv: list[str]) -> int:
-    out, width, height = parse_args(argv)
+    out, width, height, lang = parse_args(argv)
     out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as raw:
@@ -90,6 +92,7 @@ def main(argv: list[str]) -> int:
         from gui.theme import apply_theme, load_saved_theme
 
         load_saved_theme(app)
+        i18n.set_language(lang, i18n.catalogue_files(ROOT, lang))
         # No managers: the payloads below never go through the server.
         pages = SetupPages(None, None, now=lambda: NOW)
         pages.resize(width, height)

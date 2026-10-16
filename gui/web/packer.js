@@ -51,7 +51,7 @@ const BADGE = {
 function orderLabel(order) {
   // Same rule as packer_bridge.order_label, including the empty case.
   const text = String(order == null ? "" : order);
-  if (!text) return "No order";
+  if (!text) return t("No order");
   return text.startsWith("#") ? text : "#" + text;
 }
 
@@ -77,29 +77,29 @@ function itemRow(r) {
   row.appendChild(el("span", "sku-row__product", r.product));
   const qty = el("span", "sku-row__qty");
   qty.appendChild(el("span", "sku-row__num", String(r.packed)));
-  qty.appendChild(el("span", "sku-row__of", "of " + r.required));
+  qty.appendChild(el("span", "sku-row__of", t("of {total}", {total: r.required})));
   row.appendChild(qty);
   const badge = BADGE[r.state] || BADGE.pending;
   const status = el("span", "sku-row__status");
-  status.appendChild(el("span", badge.cls, badge.text));
+  status.appendChild(el("span", badge.cls, t(badge.text)));
   row.appendChild(status);
   const actions = el("span", "row-actions");
-  actions.appendChild(slot("Confirm", "confirm", r, "secondary", true, r.confirm, "Confirm one unit"));
+  actions.appendChild(slot(t("Confirm"), "confirm", r, "secondary", true, r.confirm, t("Confirm one unit")));
   actions.appendChild(
-    slot("Force confirm", "force", r, "secondary", r.force_slot, r.force, "Confirm all remaining units")
+    slot(t("Force confirm"), "force", r, "secondary", r.force_slot, r.force, t("Confirm all remaining units"))
   );
-  actions.appendChild(slot("Undo", "undo", r, "ghost", true, r.undo, "Take one back"));
-  actions.appendChild(slot("Map SKU", "map", r, "ghost", r.map, true, ""));
+  actions.appendChild(slot(t("Undo"), "undo", r, "ghost", true, r.undo, t("Take one back")));
+  actions.appendChild(slot(t("Map SKU"), "map", r, "ghost", r.map, true, ""));
   row.appendChild(actions);
   return row;
 }
 
 function unknownRow(r) {
   const row = el("div", "sku-row sku-row--unknown");
-  row.appendChild(el("span", "badge danger", "No match"));
+  row.appendChild(el("span", "badge danger", t("No match")));
   row.appendChild(el("span", "sku-row__code", r.sku));
-  row.appendChild(el("span", "sku-row__why", "Not a SKU or barcode this client knows"));
-  const btn = button("Map barcode…", "mapBarcode", "secondary");
+  row.appendChild(el("span", "sku-row__why", t("Not a SKU or barcode this client knows")));
+  const btn = button(t("Map barcode…"), "mapBarcode", "secondary");
   btn.dataset.sku = r.sku;
   row.appendChild(btn);
   return row;
@@ -147,14 +147,14 @@ function renderExtras() {
     row.appendChild(el("span", "sku-row__sku", r.sku));
     row.appendChild(el("span", "sku-row__product", ""));
     const qty = el("span", "sku-row__qty");
-    qty.appendChild(el("span", "sku-row__num", "× " + r.count));
+    qty.appendChild(el("span", "sku-row__num", t("× {count}", {count: r.count})));
     row.appendChild(qty);
     const status = el("span", "sku-row__status");
-    status.appendChild(el("span", "badge warning", "Extra"));
+    status.appendChild(el("span", "badge warning", t("Extra")));
     row.appendChild(status);
     const actions = el("span", "row-actions");
     ["keep", "remove"].forEach(function (action) {
-      const btn = button(action === "keep" ? "Keep" : "Remove", action, "secondary");
+      const btn = button(action === "keep" ? t("Keep") : t("Remove"), action, "secondary");
       btn.dataset.sku = r.sku;
       actions.appendChild(btn);
     });
@@ -185,9 +185,9 @@ function renderProgress() {
   const pct = total > 0 ? (done / total) * 100 : 0;
   // Trailing zeroes trimmed so a whole percentage reads as "50%".
   els.progressFill.style.width = String(Number(pct.toFixed(4))) + "%";
-  els.progressNumbers.textContent =
-    done + " / " + total + " orders · " +
-    (p.items_packed || 0) + " / " + (p.items_total || 0) + " items";
+  els.progressNumbers.textContent = t("{done} / {total} orders · {packed} / {items} items", {
+    done: done, total: total, packed: p.items_packed || 0, items: p.items_total || 0,
+  });
   els.summarySkus.textContent = (p.skus_packed || 0) + " / " + (p.skus_total || 0);
 }
 
@@ -196,7 +196,7 @@ function renderHistory() {
   els.historyRows.textContent = "";
   if (rows.length === 0) {
     const empty = el("div", "history-row");
-    empty.appendChild(el("span", "history-row__order side-empty", "No orders yet"));
+    empty.appendChild(el("span", "history-row__order side-empty", t("No orders yet")));
     els.historyRows.appendChild(empty);
     return;
   }
@@ -208,7 +208,7 @@ function renderHistory() {
       el(
         "span",
         "history-row__status" + (skipped ? " history-row__status--skipped" : ""),
-        skipped ? "Skipped" : "Packed"
+        skipped ? t("Skipped") : t("Packed")
       )
     );
     els.historyRows.appendChild(row);
@@ -219,7 +219,7 @@ function renderRollup() {
   const rows = state.bridge.skuRollup || [];
   els.rollupRows.textContent = "";
   if (rows.length === 0) {
-    els.rollupRows.appendChild(el("span", "side-empty", "No order open"));
+    els.rollupRows.appendChild(el("span", "side-empty", t("No order open")));
     return;
   }
   rows.forEach(function (r) {
@@ -251,8 +251,9 @@ function renderQuestion() {
   els.questionSku.textContent = open ? q.sku : "";
   els.questionRemaining.textContent = open ? String(q.remaining) : "";
   els.questionRest.textContent = open
-    ? " of " + q.required + " × " + q.product +
-      " as packed without scanning. This cannot be undone."
+    ? t("of {required} × {product} as packed without scanning. This cannot be undone.", {
+      required: q.required, product: q.product,
+    })
     : "";
 }
 
@@ -304,6 +305,7 @@ const IDS = {
 
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.packer;
+  applyStrings(bridge);
   state.bridge = bridge;
   // The test harness drives the page through this handle; nothing in the
   // page reads it.

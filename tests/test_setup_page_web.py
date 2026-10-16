@@ -135,6 +135,23 @@ def test_one_worker_is_two_columns(page, qtbot):
     ) == 2
 
 
+def test_the_worker_page_draws_in_bulgarian(qtbot):
+    from main import APP_ROOT
+    from shared import i18n
+
+    i18n.set_language("bg", i18n.catalogue_files(APP_ROOT, "bg"))
+    view, bridge = mounted(qtbot)
+    bridge.set_workers(workers_payload(SIX, now=NOW, startup=True))
+    bridge.set_page("workers")
+    settle(qtbot, bridge)
+    assert eval_js(qtbot, view, "document.querySelector('.su-w-title').textContent") == (
+        "Изберете своя профил"
+    )
+    # Ivan's last-active line is a whole sentence in BG, placeholders filled in.
+    card = eval_js(qtbot, view, "document.querySelector('[data-worker=w1]').textContent")
+    assert "Последна активност: днес, 14:06" in card
+
+
 def test_no_workers_says_so_above_the_new_card(page, qtbot):
     view, _bridge = page
     show_workers(page, qtbot, [])

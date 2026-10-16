@@ -19,28 +19,28 @@
 <div class="app" id="app">
 
   <section class="card state-card" id="no-client" hidden>
-    <h1 class="state-card-title" id="no-client-title">Choose a client to begin</h1>
-    <p class="state-card-text" id="no-client-text">Sessions, packing lists and SKU mapping all belong to one client.</p>
-    <button type="button" class="btn primary" id="choose-client" data-action="chooseClient">Choose a client</button>
+    <h1 class="state-card-title" id="no-client-title" data-i18n>Choose a client to begin</h1>
+    <p class="state-card-text" id="no-client-text" data-i18n>Sessions, packing lists and SKU mapping all belong to one client.</p>
+    <button type="button" class="btn primary" id="choose-client" data-action="chooseClient" data-i18n>Choose a client</button>
   </section>
 
   <section class="card state-card" id="no-session" hidden>
-    <h1 class="state-card-title">No session open</h1>
-    <p class="state-card-text">Open a session to see its orders here.</p>
-    <button type="button" class="btn primary" id="open-session" data-action="openSession">Open session</button>
+    <h1 class="state-card-title" data-i18n>No session open</h1>
+    <p class="state-card-text" data-i18n>Open a session to see its orders here.</p>
+    <button type="button" class="btn primary" id="open-session" data-action="openSession" data-i18n>Open session</button>
   </section>
 
   <section class="card state-card" id="stats-empty" hidden>
-    <h1 class="state-card-title">No packing data yet</h1>
-    <p class="state-card-text">Start a session from the Packing tab to see numbers here.</p>
-    <button type="button" class="btn primary" id="go-packing" data-action="goPacking">Go to Packing</button>
+    <h1 class="state-card-title" data-i18n>No packing data yet</h1>
+    <p class="state-card-text" data-i18n>Start a session from the Packing tab to see numbers here.</p>
+    <button type="button" class="btn primary" id="go-packing" data-action="goPacking" data-i18n>Go to Packing</button>
   </section>
 
   <header class="app-head" id="head" hidden>
     <div class="app-head-text">
       <div class="app-head-line">
         <span class="app-title" id="head-title"></span>
-        <span class="badge info" id="head-badge">Active</span>
+        <span class="badge info" id="head-badge" data-i18n>Active</span>
       </div>
       <div class="app-meta">
         <span class="mono" id="head-id"></span>
@@ -48,7 +48,7 @@
         <span id="head-meta"></span>
       </div>
     </div>
-    <button type="button" class="btn primary" id="head-start" data-action="startPacking" title="Opens Packer Mode">Start packing</button>
+    <button type="button" class="btn primary" id="head-start" data-action="startPacking" title="Opens Packer Mode" data-i18n data-i18n-attr="title">Start packing</button>
   </header>
 
   <section class="card app-opening" id="opening" hidden>
@@ -66,8 +66,8 @@
       <div class="banner-title" id="failed-title"></div>
       <div class="banner-text" id="failed-text"></div>
       <div class="banner-actions">
-        <button type="button" class="btn secondary" id="failed-retry" data-action="retryStart">Retry</button>
-        <button type="button" class="btn ghost" id="failed-close" data-action="closeFailure">Close</button>
+        <button type="button" class="btn secondary" id="failed-retry" data-action="retryStart" data-i18n>Retry</button>
+        <button type="button" class="btn ghost" id="failed-close" data-action="closeFailure" data-i18n>Close</button>
       </div>
     </div>
   </div>
@@ -75,19 +75,19 @@
   <div class="app-page" id="packing" hidden>
     <section class="card strip app-strip-packing">
       <div class="strip-cell">
-        <span class="strip-label">Orders complete</span>
+        <span class="strip-label" data-i18n>Orders complete</span>
         <span class="strip-line"><span class="strip-value" id="tot-done"></span><span class="strip-of" id="tot-orders"></span></span>
       </div>
       <div class="strip-cell">
-        <span class="strip-label">Items packed</span>
+        <span class="strip-label" data-i18n>Items packed</span>
         <span class="strip-line"><span class="strip-value" id="tot-packed"></span><span class="strip-of" id="tot-units"></span></span>
       </div>
       <div class="strip-cell">
-        <span class="strip-label">Orders skipped</span>
+        <span class="strip-label" data-i18n>Orders skipped</span>
         <span class="strip-line"><span class="strip-value" id="tot-skipped"></span><span class="strip-of" id="tot-skipped-note"></span></span>
       </div>
       <div class="strip-cell">
-        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="app-pct" id="tot-pct"></span></span>
+        <span class="strip-line"><span class="strip-label spacer" data-i18n>Progress</span><span class="app-pct" id="tot-pct"></span></span>
         <div class="track"><div class="track-fill" id="tot-fill"></div></div>
         <span class="strip-note" id="tot-left"></span>
       </div>
@@ -96,38 +96,38 @@
     <section class="app-complete" id="complete" hidden>
       <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
       <div class="app-complete-body">
-        <div class="app-complete-title">Packing list complete</div>
+        <div class="app-complete-title" data-i18n>Packing list complete</div>
         <div id="complete-text"></div>
       </div>
-      <button type="button" class="btn primary" id="complete-end" data-action="endSession">End session</button>
+      <button type="button" class="btn primary" id="complete-end" data-action="endSession" data-i18n>End session</button>
     </section>
 
     <div class="app-filter-line" id="filter-line" hidden>
       <span><span id="filter-text"></span><span class="mono app-strong" id="filter-query"></span></span>
-      <button type="button" class="btn ghost" id="filter-clear" data-action="clearFilter">Clear filter</button>
+      <button type="button" class="btn ghost" id="filter-clear" data-action="clearFilter" data-i18n>Clear filter</button>
     </div>
 
     <section class="card app-index">
       <div class="tbl-head">
-        <span class="app-head-first">Order / Item</span><span>Product</span><span class="app-qty">Quantity</span><span>Status</span><span>Courier</span>
+        <span class="app-head-first" data-i18n>Order / Item</span><span data-i18n>Product</span><span class="app-qty" data-i18n>Quantity</span><span data-i18n>Status</span><span data-i18n>Courier</span>
       </div>
       <div class="app-no-match" id="no-match" hidden>
         <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <div class="app-no-match-title">No orders match</div>
-        <div class="app-no-match-text">Nothing in this packing list contains “<span class="mono app-no-match-query" id="no-match-query"></span>”.</div>
-        <button type="button" class="btn secondary" id="no-match-clear" data-action="clearFilter">Clear filter</button>
+        <div class="app-no-match-title" data-i18n>No orders match</div>
+        <div class="app-no-match-text"><span data-i18n>Nothing in this packing list contains “</span><span class="mono app-no-match-query" id="no-match-query"></span><span data-i18n>”.</span></div>
+        <button type="button" class="btn secondary" id="no-match-clear" data-action="clearFilter" data-i18n>Clear filter</button>
       </div>
       <div class="app-rows" id="rows"></div>
     </section>
   </div>
   <div class="app-page" id="statistics" hidden>
     <section class="card strip app-strip-stats">
-      <div class="strip-cell"><span class="strip-label">Orders</span><span class="strip-value" id="kpi-orders"></span><span class="strip-note" id="kpi-orders-note"></span></div>
-      <div class="strip-cell"><span class="strip-label">Completed</span><span class="strip-value" id="kpi-completed"></span><span class="strip-note" id="kpi-completed-note"></span></div>
-      <div class="strip-cell"><span class="strip-label">Items</span><span class="strip-value" id="kpi-items"></span><span class="strip-note" id="kpi-items-note"></span></div>
-      <div class="strip-cell"><span class="strip-label">Unique SKUs</span><span class="strip-value" id="kpi-skus"></span><span class="strip-note" id="kpi-skus-note"></span></div>
+      <div class="strip-cell"><span class="strip-label" data-i18n>Orders</span><span class="strip-value" id="kpi-orders"></span><span class="strip-note" id="kpi-orders-note"></span></div>
+      <div class="strip-cell"><span class="strip-label" data-i18n>Completed</span><span class="strip-value" id="kpi-completed"></span><span class="strip-note" id="kpi-completed-note"></span></div>
+      <div class="strip-cell"><span class="strip-label" data-i18n>Items</span><span class="strip-value" id="kpi-items"></span><span class="strip-note" id="kpi-items-note"></span></div>
+      <div class="strip-cell"><span class="strip-label" data-i18n>Unique SKUs</span><span class="strip-value" id="kpi-skus"></span><span class="strip-note" id="kpi-skus-note"></span></div>
       <div class="strip-cell">
-        <span class="strip-line"><span class="strip-label spacer">Progress</span><span class="strip-value" id="kpi-pct"></span></span>
+        <span class="strip-line"><span class="strip-label spacer" data-i18n>Progress</span><span class="strip-value" id="kpi-pct"></span></span>
         <div class="track"><div class="track-fill" id="kpi-fill"></div></div>
         <span class="strip-note" id="kpi-pct-note"></span>
       </div>
@@ -135,22 +135,22 @@
 
     <div class="app-stats-row">
       <section class="card app-couriers">
-        <div class="app-strong">By courier</div>
+        <div class="app-strong" data-i18n>By courier</div>
         <div class="app-courier-list" id="couriers"></div>
       </section>
 
       <section class="card app-skus">
         <div class="app-skus-title">
-          <span class="app-strong spacer">SKU summary</span>
+          <span class="app-strong spacer" data-i18n>SKU summary</span>
           <span class="strip-note" id="sku-meta"></span>
         </div>
         <div class="tbl-head" role="row">
-          <span role="columnheader" data-col="sku"><button type="button" class="app-sort" data-sort="sku" title="Sort by SKU">SKU</button></span>
-          <span role="columnheader" data-col="product"><button type="button" class="app-sort" data-sort="product" title="Sort by Product">Product</button></span>
-          <span role="columnheader" data-col="total"><button type="button" class="app-sort num" data-sort="total" title="Sort by Total qty">Total qty</button></span>
-          <span role="columnheader" data-col="packed"><button type="button" class="app-sort num" data-sort="packed" title="Sort by Packed">Packed</button></span>
-          <span role="columnheader" data-col="left"><button type="button" class="app-sort num" data-sort="left" title="Sort by Left">Left</button></span>
-          <span role="columnheader" data-col="state"><button type="button" class="app-sort" data-sort="state" title="Sort by Status">Status</button></span>
+          <span role="columnheader" data-col="sku"><button type="button" class="app-sort" data-sort="sku" title="Sort by SKU" data-i18n data-i18n-attr="title">SKU</button></span>
+          <span role="columnheader" data-col="product"><button type="button" class="app-sort" data-sort="product" title="Sort by Product" data-i18n data-i18n-attr="title">Product</button></span>
+          <span role="columnheader" data-col="total"><button type="button" class="app-sort num" data-sort="total" title="Sort by Total qty" data-i18n data-i18n-attr="title">Total qty</button></span>
+          <span role="columnheader" data-col="packed"><button type="button" class="app-sort num" data-sort="packed" title="Sort by Packed" data-i18n data-i18n-attr="title">Packed</button></span>
+          <span role="columnheader" data-col="left"><button type="button" class="app-sort num" data-sort="left" title="Sort by Left" data-i18n data-i18n-attr="title">Left</button></span>
+          <span role="columnheader" data-col="state"><button type="button" class="app-sort" data-sort="state" title="Sort by Status" data-i18n data-i18n-attr="title">Status</button></span>
         </div>
         <div class="app-rows" id="sku-rows"></div>
       </section>
@@ -161,38 +161,38 @@
     <div class="banner danger app-s-banner" id="s-failed" hidden>
       <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       <div class="banner-body">
-        <div class="banner-title">Refresh failed</div>
-        <div class="banner-text"><span class="mono" id="s-failed-path"></span> could not be read at <span class="mono" id="s-failed-at"></span>: <span id="s-failed-cause"></span>.<span id="s-failed-from-line"> The list below is from <span class="mono" id="s-failed-from"></span>.</span></div>
+        <div class="banner-title" data-i18n>Refresh failed</div>
+        <div class="banner-text"><span class="mono" id="s-failed-path"></span> <span data-i18n>could not be read at</span> <span class="mono" id="s-failed-at"></span>: <span id="s-failed-cause"></span>.<span id="s-failed-from-line"> <span data-i18n>The list below is from</span> <span class="mono" id="s-failed-from"></span>.</span></div>
       </div>
-      <button type="button" class="btn secondary" id="s-failed-retry" data-action="refreshSessions">Retry</button>
+      <button type="button" class="btn secondary" id="s-failed-retry" data-action="refreshSessions" data-i18n>Retry</button>
     </div>
 
     <div class="app-s-bar">
-      <div class="segmented" role="radiogroup" aria-label="Status" id="s-tabs"></div>
+      <div class="segmented" role="radiogroup" aria-label="Status" id="s-tabs" data-i18n-attr="aria-label"></div>
       <label class="input app-s-search">
         <svg class="glyph" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" id="s-query" placeholder="Search sessions" autocomplete="off" spellcheck="false">
-        <button type="button" class="app-clear" id="s-query-clear" data-action="clearQuery" title="Clear search" aria-label="Clear search" hidden>
+        <input type="text" id="s-query" placeholder="Search sessions" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder">
+        <button type="button" class="app-clear" id="s-query-clear" data-action="clearQuery" title="Clear search" aria-label="Clear search" hidden data-i18n-attr="title,aria-label">
           <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </label>
-      <div class="app-s-dates" title="Date range">
-        <label><span>From</span><input type="date" id="s-from"></label>
+      <div class="app-s-dates" title="Date range" data-i18n-attr="title">
+        <label><span data-i18n>From</span><input type="date" id="s-from"></label>
         <span class="app-s-dates-rule"></span>
-        <label><span>To</span><input type="date" id="s-to"></label>
+        <label><span data-i18n>To</span><input type="date" id="s-to"></label>
       </div>
-      <button type="button" class="btn secondary icon" id="s-refresh" data-action="refreshSessions" title="Refresh  F5" aria-label="Refresh">
+      <button type="button" class="btn secondary icon" id="s-refresh" data-action="refreshSessions" title="Refresh  F5" aria-label="Refresh" data-i18n-attr="title,aria-label">
         <svg class="glyph" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
       </button>
       <div class="app-s-stamp">
         <span class="app-s-stamp-line" id="s-stamp-line"><span id="s-stamp-label"></span> <span class="mono" id="s-stamp"></span></span>
-        <label class="app-s-auto" title="Refresh every 2 minutes">
+        <label class="app-s-auto" title="Refresh every 2 minutes" data-i18n-attr="title">
           <button type="button" class="switch" role="switch" id="s-auto" data-action="toggleAuto" aria-checked="true"><span class="switch-knob"></span></button>
-          Auto-refresh (2 min)
+          <span data-i18n>Auto-refresh (2 min)</span>
         </label>
       </div>
       <div class="menu-anchor">
-        <button type="button" class="btn secondary icon" id="s-export" data-action="toggleExport" title="Export the rows shown" aria-label="Export" aria-haspopup="menu" aria-expanded="false">
+        <button type="button" class="btn secondary icon" id="s-export" data-action="toggleExport" title="Export the rows shown" aria-label="Export" aria-haspopup="menu" aria-expanded="false" data-i18n-attr="title,aria-label">
           <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
         </button>
         <div class="menu app-s-menu" id="s-export-menu" role="menu" hidden>
@@ -206,32 +206,32 @@
     <div class="app-s-main" id="s-main">
       <section class="card app-s-list">
         <div class="tbl-head">
-          <span>Status</span><span>Session</span><span class="app-s-r">Age</span><span>Packing</span><span>Orders</span><span class="app-s-r app-s-wide">Items</span><span class="app-s-wide">Last touched</span>
+          <span data-i18n>Status</span><span data-i18n>Session</span><span class="app-s-r" data-i18n>Age</span><span data-i18n>Packing</span><span data-i18n>Orders</span><span class="app-s-r app-s-wide" data-i18n>Items</span><span class="app-s-wide" data-i18n>Last touched</span>
         </div>
         <div class="app-rows">
           <div class="app-s-loading" id="s-loading" hidden>
             <svg class="glyph" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-            <span>Reading sessions from the server…</span>
+            <span data-i18n>Reading sessions from the server…</span>
           </div>
           <div id="s-skeleton" hidden></div>
           <div id="s-rows"></div>
           <div class="app-no-match" id="s-no-match" hidden>
             <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <div class="app-no-match-title">No sessions match</div>
+            <div class="app-no-match-title" data-i18n>No sessions match</div>
             <div class="app-no-match-text" id="s-no-match-text"></div>
-            <button type="button" class="btn secondary" data-action="clearSessionsFilter">Clear filters</button>
+            <button type="button" class="btn secondary" data-action="clearSessionsFilter" data-i18n>Clear filters</button>
           </div>
           <div class="app-no-match" id="s-empty" hidden>
             <svg class="glyph" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-            <div class="app-no-match-title">No sessions yet</div>
-            <div class="app-no-match-text">Sessions appear here once someone starts packing for this client.</div>
+            <div class="app-no-match-title" data-i18n>No sessions yet</div>
+            <div class="app-no-match-text" data-i18n>Sessions appear here once someone starts packing for this client.</div>
           </div>
         </div>
         <div class="app-s-foot">
-          <span class="app-s-legend"><span class="dot solid"></span>Set by a person</span>
-          <span class="app-s-legend"><span class="dot"></span>Inferred by the system</span>
+          <span class="app-s-legend"><span class="dot solid"></span><span data-i18n>Set by a person</span></span>
+          <span class="app-s-legend"><span class="dot"></span><span data-i18n>Inferred by the system</span></span>
           <span class="spacer"></span>
-          <span>Double-click a session for its action</span>
+          <span data-i18n>Double-click a session for its action</span>
           <span class="mono app-s-count" id="s-count"></span>
         </div>
       </section>
@@ -241,7 +241,7 @@
           <div class="app-p-top">
             <span id="p-chip"></span>
             <span class="spacer"></span>
-            <button type="button" class="app-clear app-p-close" data-action="closePane" title="Close  Esc" aria-label="Close">
+            <button type="button" class="app-clear app-p-close" data-action="closePane" title="Close  Esc" aria-label="Close" data-i18n-attr="title,aria-label">
               <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
@@ -251,7 +251,7 @@
         </div>
         <div class="app-p-body">
           <div class="app-p-orders">
-            <div class="app-p-line"><span class="spacer app-p-label">Orders done</span><span class="mono app-strong" id="p-orders"></span></div>
+            <div class="app-p-line"><span class="spacer app-p-label" data-i18n>Orders done</span><span class="mono app-strong" id="p-orders"></span></div>
             <div class="track app-p-track"><div class="app-bar-fill" id="p-fill"></div></div>
             <span class="app-p-note" id="p-orders-note"></span>
           </div>
@@ -263,8 +263,8 @@
             <span id="p-note-text"></span>
           </div>
           <button type="button" class="btn primary" id="p-action" data-action="paneAction"></button>
-          <button type="button" class="btn ghost" id="p-details" data-action="paneDetails">View details</button>
-          <span class="app-p-hint">Or double-click the row</span>
+          <button type="button" class="btn ghost" id="p-details" data-action="paneDetails" data-i18n>View details</button>
+          <span class="app-p-hint" data-i18n>Or double-click the row</span>
         </div>
       </aside>
     </div>
@@ -272,42 +272,42 @@
 
   <div class="app-details" id="details" hidden>
     <div class="app-d-top">
-      <button type="button" class="btn secondary" id="d-back" data-action="closeDetails" title="Back to Sessions  Alt+Left">
-        <svg class="glyph" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Sessions
+      <button type="button" class="btn secondary" id="d-back" data-action="closeDetails" title="Back to Sessions  Alt+Left" data-i18n-attr="title">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg><span data-i18n>Sessions</span>
       </button>
       <span class="mono app-d-id" id="d-id"></span>
       <span id="d-chip"></span>
       <span class="app-cut app-d-why" id="d-why"></span>
       <button type="button" class="btn secondary" id="d-export" data-action="exportDetails">
-        <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export Excel
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span data-i18n>Export Excel</span>
       </button>
     </div>
 
     <div class="banner danger app-s-banner" id="d-error" hidden>
       <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       <div class="banner-body">
-        <div class="banner-title">The session's files could not be read</div>
-        <div class="banner-text"><span class="mono" id="d-error-path"></span> could not be read: <span id="d-error-cause"></span>. Timings, metrics and orders appear once it can be read; the facts below come from the session list.</div>
+        <div class="banner-title" data-i18n>The session's files could not be read</div>
+        <div class="banner-text"><span class="mono" id="d-error-path"></span> <span data-i18n>could not be read:</span> <span id="d-error-cause"></span><span data-i18n>. Timings, metrics and orders appear once it can be read; the facts below come from the session list.</span></div>
       </div>
-      <button type="button" class="btn secondary" id="d-error-retry" data-action="retryDetails">Retry</button>
+      <button type="button" class="btn secondary" id="d-error-retry" data-action="retryDetails" data-i18n>Retry</button>
     </div>
 
     <div class="app-d-live" id="d-live" hidden>
       <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-      <span class="app-d-live-text"><span class="app-strong">Still packing on <span id="d-live-pc"></span>.</span> Every number below is so far and refreshes with the list.</span>
-      <span class="app-d-live-stamp">Last refreshed <span class="mono" id="d-live-stamp"></span></span>
+      <span class="app-d-live-text"><span class="app-strong"><span data-i18n>Still packing on</span> <span id="d-live-pc"></span>.</span> <span data-i18n>Every number below is so far and refreshes with the list.</span></span>
+      <span class="app-d-live-stamp"><span data-i18n>Last refreshed</span> <span class="mono" id="d-live-stamp"></span></span>
     </div>
 
     <section class="card app-d-facts" id="d-facts"></section>
 
-    <div class="app-d-reading" id="d-loading" hidden>Reading the session's files…</div>
+    <div class="app-d-reading" id="d-loading" hidden data-i18n>Reading the session's files…</div>
 
     <div class="app-d-ready" id="d-ready" hidden>
       <section class="card strip app-d-cards" id="d-cards"></section>
 
       <section class="card app-d-metrics">
         <div class="app-d-metrics-title">
-          <span class="app-strong">Timing and scan quality</span>
+          <span class="app-strong" data-i18n>Timing and scan quality</span>
           <span class="strip-note" id="d-metrics-note"></span>
         </div>
         <div class="app-d-groups" id="d-groups"></div>
@@ -315,30 +315,30 @@
 
       <section class="card app-d-orders">
         <div class="app-d-bar">
-          <span class="app-strong">Orders</span>
+          <span class="app-strong" data-i18n>Orders</span>
           <label class="input app-d-filter">
             <svg class="glyph" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input type="text" id="d-query" placeholder="Filter by order number" autocomplete="off" spellcheck="false">
-            <button type="button" class="app-clear" id="d-query-clear" data-action="clearDetailsFilter" title="Clear filter" aria-label="Clear filter" hidden>
+            <input type="text" id="d-query" placeholder="Filter by order number" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder">
+            <button type="button" class="app-clear" id="d-query-clear" data-action="clearDetailsFilter" title="Clear filter" aria-label="Clear filter" hidden data-i18n-attr="title,aria-label">
               <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </label>
           <span class="app-secondary" id="d-showing"></span>
           <span class="spacer"></span>
-          <button type="button" class="btn secondary" data-action="expandAll">Expand all</button>
-          <button type="button" class="btn secondary" data-action="collapseAll">Collapse all</button>
+          <button type="button" class="btn secondary" data-action="expandAll" data-i18n>Expand all</button>
+          <button type="button" class="btn secondary" data-action="collapseAll" data-i18n>Collapse all</button>
         </div>
         <div class="tbl-head app-d-head">
-          <span class="app-head-first">Order / Item</span><span>Duration</span><span>Count</span><span>Started / Scanned</span><span>Completed</span><span>Flags</span>
+          <span class="app-head-first" data-i18n>Order / Item</span><span data-i18n>Duration</span><span data-i18n>Count</span><span data-i18n>Started / Scanned</span><span data-i18n>Completed</span><span data-i18n>Flags</span>
         </div>
         <div id="d-rows"></div>
         <div class="app-no-match app-d-no-match" id="d-no-match" hidden>
           <svg class="glyph" viewBox="0 0 24 24"><path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <div class="app-no-match-title">No orders match</div>
-          <div class="app-no-match-text">No order number in this session contains “<span class="mono app-no-match-query" id="d-no-match-query"></span>”.</div>
-          <button type="button" class="btn secondary" data-action="clearDetailsFilter">Clear filter</button>
+          <div class="app-no-match-title" data-i18n>No orders match</div>
+          <div class="app-no-match-text"><span data-i18n>No order number in this session contains “</span><span class="mono app-no-match-query" id="d-no-match-query"></span><span data-i18n>”.</span></div>
+          <button type="button" class="btn secondary" data-action="clearDetailsFilter" data-i18n>Clear filter</button>
         </div>
-        <div class="app-d-none" id="d-none" hidden>No orders were recorded for this session.</div>
+        <div class="app-d-none" id="d-none" hidden data-i18n>No orders were recorded for this session.</div>
       </section>
     </div>
   </div>
@@ -347,13 +347,13 @@
     <div class="dialog app-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
       <h2 class="dialog-title" id="confirm-title">
         <svg class="glyph" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-        <span>Take over <span class="mono" id="confirm-id"></span>?</span>
+        <span><span data-i18n>Take over</span> <span class="mono" id="confirm-id"></span>?</span>
       </h2>
       <p class="dialog-text" id="confirm-body"></p>
       <p class="dialog-text app-secondary" id="confirm-carry"></p>
       <div class="dialog-actions">
-        <button type="button" class="btn secondary" id="confirm-cancel" data-action="cancelTakeOver">Cancel</button>
-        <button type="button" class="btn primary" id="confirm-ok" data-action="confirmTakeOver">Take over and resume</button>
+        <button type="button" class="btn secondary" id="confirm-cancel" data-action="cancelTakeOver" data-i18n>Cancel</button>
+        <button type="button" class="btn primary" id="confirm-ok" data-action="confirmTakeOver" data-i18n>Take over and resume</button>
       </div>
     </div>
   </div>
@@ -361,7 +361,7 @@
   <div class="toast-wrap">
     <div class="toast" id="toast" role="status" hidden>
       <span id="toast-text"></span>
-      <button type="button" class="toast-close" id="toast-close" title="Dismiss" aria-label="Dismiss">
+      <button type="button" class="toast-close" id="toast-close" title="Dismiss" aria-label="Dismiss" data-i18n-attr="title,aria-label">
         <svg class="glyph" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>

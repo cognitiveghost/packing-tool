@@ -21,6 +21,7 @@ from gui.packer_bridge import _int, order_label
 from gui.theme import current_tokens
 from packing_tool.exceptions import PackingListInvalidError, PackingStateUnreadableError
 from packing_tool.session_stats import courier_totals, session_totals, sku_summary
+from shared.i18n import N_, _, _n
 from shared.web_page import PageBridge, mount_page
 
 PAGE = Path(__file__).resolve().parent / "web" / "app.html"
@@ -28,18 +29,18 @@ CHANNEL_NAME = "app"
 
 # Frame 3b: the steps the code runs (spec section 5), not the mockup's.
 STEPS = (
-    "Taking the packing list",
-    "Reading saved progress",
-    "Reading the packing list",
+    N_("Taking the packing list"),
+    N_("Reading saved progress"),
+    N_("Reading the packing list"),
 )
 
 _GROUPS = (
-    ("in_progress", "In progress"),
-    ("not_started", "Not started"),
-    ("packed", "Packed"),
+    ("in_progress", N_("In progress")),
+    ("not_started", N_("Not started")),
+    ("packed", N_("Packed")),
 )
-_LIST_FAILED = "Packing list could not be loaded"
-_OPEN_FAILED = "Session could not be opened"
+_LIST_FAILED = N_("Packing list could not be loaded")
+_OPEN_FAILED = N_("Session could not be opened")
 
 
 def _item_state(packed: int, required: int) -> str:
@@ -120,13 +121,16 @@ def packing_payload(
         ):
             continue
         hits += 1
-        noun = "item" if len(items) == 1 else "items"
         names = ", ".join(item["product"] for item in items)
+        if names:
+            summary = _n("{n} item · {names}", "{n} items · {names}", len(items), names=names)
+        else:
+            summary = _n("{n} item", "{n} items", len(items))
         groups[key].append(
             {
                 "number": text,
                 "label": order_label(text),
-                "summary": f"{len(items)} {noun} · {names}" if names else f"{len(items)} {noun}",
+                "summary": summary,
                 "packed": order_packed,
                 "units": order_units,
                 "status": key,
@@ -142,7 +146,7 @@ def packing_payload(
 
     def note(key: str) -> str:
         listed = sum(1 for order in groups[key] if order["skipped"])
-        return f"{listed} skipped" if listed else ""
+        return _("{n} skipped", n=listed) if listed else ""
 
     return {
         "totals": {
@@ -161,7 +165,7 @@ def packing_payload(
         "groups": [
             {
                 "key": key,
-                "label": label,
+                "label": _(label),
                 "count": len(groups[key]),
                 "note": note(key),
                 "orders": groups[key],
@@ -224,7 +228,7 @@ def session_payload(
 ) -> dict[str, Any]:
     """What the document knows about the session: none, opening, failed or open."""
     names = [str(name) for name in couriers]
-    meta = f"{orders} {'order' if orders == 1 else 'orders'}"
+    meta = _n("{n} order", "{n} orders", orders)
     if names:
         meta += " · " + ", ".join(names[:3])
         if len(names) > 3:
@@ -234,7 +238,7 @@ def session_payload(
         "list": str(list_name),
         "id": str(session_id),
         "step": int(step),
-        "stepName": STEPS[step - 1] if 1 <= step <= len(STEPS) else "",
+        "stepName": _(STEPS[step - 1]) if 1 <= step <= len(STEPS) else "",
         "title": str(title),
         "text": str(text),
         "meta": meta if state == "open" else "",
@@ -246,24 +250,36 @@ def start_failure(error: Exception, list_name: str) -> tuple[str, str]:
     """Frame 3c's title and sentence for a session start that failed."""
     if isinstance(error, PackingStateUnreadableError):
         return (
-            "Saved progress could not be read",
-            (
-                f"The saved progress for {list_name} could not be read, so the list was "
+            _("Saved progress could not be read"),
+            _(
+                "The saved progress for {list_name} could not be read, so the list was "
                 "not opened. Nothing was changed. Check the connection to the server and "
-                "open it again."
+                "open it again.",
+                list_name=list_name,
             ),
         )
     if isinstance(error, PackingListInvalidError):
         missing = ", ".join(error.missing)
-        found = ", ".join(error.found) or "nothing"
+        found = ", ".join(error.found) or _("nothing")
         if error.kind == "column":
-            return _LIST_FAILED, f"{list_name} has no {missing} column. Found: {found}."
-        return _LIST_FAILED, f"{list_name} has an order with no {missing}. Found: {found}."
+            text = _(
+                "{list_name} has no {missing} column. Found: {found}.",
+                list_name=list_name, missing=missing, found=found,
+            )
+            return _(_LIST_FAILED), text
+        text = _(
+            "{list_name} has an order with no {missing}. Found: {found}.",
+            list_name=list_name, missing=missing, found=found,
+        )
+        return _(_LIST_FAILED), text
     if isinstance(error, FileNotFoundError):
-        return _LIST_FAILED, f"{list_name} is no longer in the session's folder."
+        text = _("{list_name} is no longer in the session's folder.", list_name=list_name)
+        return _(_LIST_FAILED), text
     if isinstance(error, ValueError):  # json.JSONDecodeError is one
-        return _LIST_FAILED, f"{list_name} could not be read: {error}."
-    return _OPEN_FAILED, str(error)
+        # Backend detail stays English (rule 4); only the framing is translated.
+        text = _("{list_name} could not be read: {error}.", list_name=list_name, error=error)
+        return _(_LIST_FAILED), text
+    return _(_OPEN_FAILED), str(error)
 
 
 class AppBridge(PageBridge):

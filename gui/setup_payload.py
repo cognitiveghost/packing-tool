@@ -13,11 +13,15 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from packing_tool.packer_logic import normalize_sku
+from shared.i18n import N_, _, _n, month_abbr
 from shared.metadata_utils import parse_timestamp
 
-# Never strftime: Qt can switch the process locale under us.
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+# Never strftime: Qt can switch the process locale under us. Months come from
+# shared.i18n.month_abbr for the same reason.
+_DAYS = (
+    N_("Monday"), N_("Tuesday"), N_("Wednesday"), N_("Thursday"),
+    N_("Friday"), N_("Saturday"), N_("Sunday"),
+)
 
 # A letter or a digit in any script, or one of four marks.
 _NAME = re.compile(r"(?:[^\W_]|[ .'\-])+")
@@ -37,14 +41,14 @@ def worker_name_problem(name: Any, names: list[str]) -> str:
     """Why `name` cannot be a new worker's, as a sentence; "" when it can."""
     text = clean_worker_name(name)
     if not text:
-        return "Enter a name."
+        return _("Enter a name.")
     if not _NAME.fullmatch(text):
-        return "Use letters, numbers, spaces, dots, hyphens or apostrophes."
+        return _("Use letters, numbers, spaces, dots, hyphens or apostrophes.")
     for existing in names:
         if existing.lower() == text.lower():
-            return (
-                f"There’s already a worker called {existing}. "
-                "Pick that card, or add a surname."
+            return _(
+                "There’s already a worker called {name}. Pick that card, or add a surname.",
+                name=existing,
             )
     return ""
 
@@ -53,20 +57,22 @@ def last_active_text(when: datetime | None, now: datetime, created: datetime | N
     """A card's second line (spec section 5.2). `when` and `now` are aware."""
     if when is None:
         if created is not None and now - created < timedelta(hours=1):
-            return "Just created"
-        return "Not active yet"
+            return _("Just created")
+        return _("Not active yet")
     local = when.astimezone(now.tzinfo)
     days = (now.date() - local.date()).days
     if days <= 0:
-        return f"Last active Today, {local.hour:02d}:{local.minute:02d}"
+        return _("Last active Today, {time}", time=f"{local.hour:02d}:{local.minute:02d}")
     if days == 1:
-        return "Last active Yesterday"
+        return _("Last active Yesterday")
     if days < 7:
-        return f"Last active {_DAYS[local.weekday()]}"
+        return _("Last active {day}", day=_(_DAYS[local.weekday()]))
     if days < 14:
-        return "Last active Last week"
-    day = f"{local.day} {_MONTHS[local.month - 1]}"
-    return f"Last active {day}" if local.year == now.year else f"Last active {day} {local.year}"
+        return _("Last active Last week")
+    day = f"{local.day} {month_abbr(local.month)}"
+    if local.year == now.year:
+        return _("Last active {date}", date=day)
+    return _("Last active {date} {year}", date=day, year=local.year)
 
 
 def _when(stamp: Any) -> datetime | None:
@@ -76,8 +82,13 @@ def _when(stamp: Any) -> datetime | None:
         return None
 
 
-def _count(number: int, noun: str) -> str:
-    return f"{number:,} {noun}" + ("" if number == 1 else "s")
+def _stats(sessions: int, orders: int) -> str:
+    """ "3 sessions · 41 orders", each noun as one whole sentence fragment."""
+    return _(
+        "{sessions} · {orders}",
+        sessions=_n("{count} session", "{count} sessions", sessions, count=f"{sessions:,}"),
+        orders=_n("{count} order", "{count} orders", orders, count=f"{orders:,}"),
+    )
 
 
 def workers_payload(
@@ -95,19 +106,26 @@ def workers_payload(
     `workers` are WorkerProfiles (or anything with their attributes).
     `failure` is {"cause", "path"} when the list could not be read.
     """
+    if startup:
+        leave = _("Quit")
+    elif current_name:
+        leave = _("Back to {name}", name=current_name)
+    else:
+        leave = _("Back")
     payload: dict[str, Any] = {
         "context": "startup" if startup else "switch",
-        "leave": "Quit" if startup else (f"Back to {current_name}" if current_name else "Back"),
+        "leave": leave,
         "mode": "ready",
         "error": {},
         "cards": [],
     }
     if failure:
-        cause = str(failure.get("cause") or "it could not be read")
+        cause = str(failure.get("cause") or _("it could not be read"))
         payload["mode"] = "failed"
         payload["error"] = {
-            "title": "Couldn’t load the worker list.",
-            "text": cause[:1].upper() + cause[1:] + ".",
+            "title": _("Couldn’t load the worker list."),
+            # The cause is the backend's English detail (rule 4); only the sentence around it is translated.
+            "text": _("{cause}.", cause=cause[:1].upper() + cause[1:]),
             "path": str(failure.get("path") or ""),
         }
         return payload
@@ -123,9 +141,9 @@ def workers_payload(
         orders = int(profile.total_orders or 0)
         picked = bool(picked_id) and profile.id == picked_id
         if picked:
-            badge = "Opening…"
+            badge = _("Opening…")
         elif not startup and profile.id == current_id:
-            badge = "Current"
+            badge = _("Current")
         else:
             badge = ""
         payload["cards"].append(
@@ -133,11 +151,7 @@ def workers_payload(
                 "id": str(profile.id),
                 "name": str(profile.name),
                 "initials": initials(profile.name),
-                "stats": (
-                    f"{_count(sessions, 'session')} · {_count(orders, 'order')}"
-                    if sessions or orders
-                    else "No sessions yet"
-                ),
+                "stats": _stats(sessions, orders) if sessions or orders else _("No sessions yet"),
                 "last": last_active_text(when, now, _when(profile.created_at)),
                 "badge": badge,
                 "picked": picked,
@@ -152,10 +166,6 @@ def workers_payload(
 def clean_mapping(barcode: Any, sku: Any) -> tuple[str, str]:
     """A barcode with no whitespace at all, and a SKU trimmed but kept as typed."""
     return "".join(str(barcode or "").split()), str(sku or "").strip()
-
-
-def _plural(count: int, noun: str) -> str:
-    return f"{count} {noun}" + ("" if count == 1 else "s")
 
 
 class MappingEditor:
@@ -200,12 +210,12 @@ class MappingEditor:
 
     def _problem(self, barcode: str, sku: str, row_id: int) -> str:
         if not normalize_sku(barcode):
-            return "Enter a barcode."
+            return _("Enter a barcode.")
         if not sku:
-            return "Enter a SKU."
+            return _("Enter a SKU.")
         clash = self.clash(barcode, row_id)
         if clash is not None:
-            return f"This barcode already maps to {clash['sku']}."
+            return _("This barcode already maps to {sku}.", sku=clash["sku"])
         return ""
 
     def add(self, barcode: Any, sku: Any) -> str:
@@ -220,7 +230,7 @@ class MappingEditor:
     def update(self, row_id: int, barcode: Any, sku: Any) -> str:
         row = self._row(row_id)
         if row is None:
-            return "That mapping is no longer in the list."
+            return _("That mapping is no longer in the list.")
         barcode, sku = clean_mapping(barcode, sku)
         problem = self._problem(barcode, sku, row_id)
         if problem:
@@ -236,7 +246,7 @@ class MappingEditor:
         """
         barcode, sku = clean_mapping(barcode, sku)
         if not sku:
-            return "Enter a SKU."
+            return _("Enter a SKU.")
         clash = self.clash(barcode, row_id)
         if clash is None:
             return self.update(row_id, barcode, sku) if row_id else self.add(barcode, sku)
@@ -265,7 +275,7 @@ class MappingEditor:
 
     def summary(self) -> str:
         """ "2 added, 1 edited, 1 deleted", zero parts left out."""
-        return ", ".join(f"{count} {word}" for word, count in self.counts().items() if count)
+        return ", ".join(_count_word(word, count) for word, count in self.counts().items() if count)
 
     def changes(self) -> tuple[dict[str, str], list[str]]:
         """(add, remove) for ProfileManager.update_sku_mapping."""
@@ -275,10 +285,19 @@ class MappingEditor:
         return add, remove
 
 
+def _count_word(word: str, count: int) -> str:
+    """One summary part, "2 added": the word is a logic key, so only its display is translated."""
+    if word == "added":
+        return _n("{n} added", "{n} added", count)
+    if word == "edited":
+        return _n("{n} edited", "{n} edited", count)
+    return _n("{n} deleted", "{n} deleted", count)
+
+
 _ERRORS = {
-    "save": ("Couldn’t save to the file server.", "save"),
-    "load": ("Couldn’t load the mappings.", "load"),
-    "quick": ("Couldn’t save to the file server.", ""),
+    "save": (N_("Couldn’t save to the file server."), "save"),
+    "load": (N_("Couldn’t load the mappings."), "load"),
+    "quick": (N_("Couldn’t save to the file server."), ""),
 }
 
 
@@ -286,13 +305,16 @@ def mapping_error(kind: str, cause: str, path: str, changes: int = 0) -> dict[st
     """The banner over the table (spec sections 6.6 and 7.3)."""
     title, action = _ERRORS[kind]
     if kind == "save":
-        kept = "change is" if changes == 1 else "changes are"
-        text = f"Your {changes} {kept} still here and nothing on the server changed."
+        text = _n(
+            "Your {n} change is still here and nothing on the server changed.",
+            "Your {n} changes are still here and nothing on the server changed.",
+            changes,
+        )
     elif kind == "load":
-        text = "The list could not be read from the file server."
+        text = _("The list could not be read from the file server.")
     else:
-        text = "Nothing on the server changed."
-    return {"title": title, "text": text, "cause": str(cause), "path": str(path), "action": action}
+        text = _("Nothing on the server changed.")
+    return {"title": _(title), "text": text, "cause": str(cause), "path": str(path), "action": action}
 
 
 def mapping_payload(
@@ -320,7 +342,12 @@ def mapping_payload(
         "changes": changes,
         "summary": summary,
         "lost": (
-            f"Your {_plural(changes, 'unsaved change')} ({summary}) will be lost."
+            _n(
+                "Your {n} unsaved change ({summary}) will be lost.",
+                "Your {n} unsaved changes ({summary}) will be lost.",
+                changes,
+                summary=summary,
+            )
             if changes
             else ""
         ),
@@ -339,7 +366,12 @@ def order_choices(order_state) -> list[dict[str, str]]:
     return [
         {
             "sku": line["original_sku"],
-            "label": f"{line['original_sku']} — {line['packed']} / {line['required']} packed",
+            "label": _(
+                "{sku} — {packed} / {required} packed",
+                sku=line["original_sku"],
+                packed=line["packed"],
+                required=line["required"],
+            ),
             "key": normalize_sku(line["original_sku"]),
         }
         for line in sorted(order_state or [], key=lambda line: line["packed"] >= line["required"])
@@ -347,8 +379,8 @@ def order_choices(order_state) -> list[dict[str, str]]:
 
 
 _HINTS = {
-    "sku": "Scan or type the barcode for this SKU.",
-    "barcode": "Scanned in Packer Mode. Enter the SKU it should count as.",
+    "sku": N_("Scan or type the barcode for this SKU."),
+    "barcode": N_("Scanned in Packer Mode. Enter the SKU it should count as."),
 }
 
 
@@ -358,6 +390,6 @@ def quick_payload(kind: str, *, sku: str = "", barcode: str = "", choices=()) ->
         "kind": kind,
         "sku": str(sku),
         "barcode": str(barcode),
-        "hint": _HINTS[kind],
+        "hint": _(_HINTS[kind]),
         "choices": list(choices),
     }

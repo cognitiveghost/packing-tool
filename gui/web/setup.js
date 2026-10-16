@@ -34,10 +34,6 @@ function show(node, on) {
   node.hidden = !on;
 }
 
-function plural(count, one, many) {
-  return count + " " + (count === 1 ? one : many);
-}
-
 function glyph(d) {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("class", "glyph");
@@ -194,16 +190,16 @@ function mappingRow(row, actions) {
   const node = el("div", "tbl-row su-row");
   node.dataset.row = row.id;
   const dot = el("span", row.status ? "su-undot" : "");
-  if (row.status === "new") dot.title = "Added, not saved";
-  if (row.status === "edited") dot.title = "Edited, not saved";
+  if (row.status === "new") dot.title = t("Added, not saved");
+  if (row.status === "edited") dot.title = t("Edited, not saved");
   node.appendChild(dot);
   node.appendChild(cut("mono su-cut", row.barcode));
   node.appendChild(glyph(ARROW));
   node.appendChild(cut("mono su-sku su-cut", row.sku));
   const acts = el("span", "su-row-actions");
   if (actions) {
-    acts.appendChild(iconButton("edit", row.id, "Edit", PENCIL));
-    acts.appendChild(iconButton("delete", row.id, "Delete", TRASH));
+    acts.appendChild(iconButton("edit", row.id, t("Edit"), PENCIL));
+    acts.appendChild(iconButton("delete", row.id, t("Delete"), TRASH));
   }
   node.appendChild(acts);
   return node;
@@ -233,13 +229,15 @@ function renderDraft() {
   show(els.dClash, !!hit);
   if (hit) {
     els.dClashSku.textContent = hit.sku;
-    els.dClashAsk.textContent = sku ? " Replace it with " + sku + "?" : " Enter a SKU to replace it.";
+    els.dClashAsk.textContent = sku
+      ? t("Replace it with {sku}?", {sku: sku})
+      : t("Enter a SKU to replace it.");
     els.dReplace.disabled = !sku;
   }
   els.mRows.querySelectorAll("[data-row]").forEach(function (node) {
     node.classList.toggle("clash", !!hit && Number(node.dataset.row) === hit.id);
   });
-  els.dCommit.textContent = view.draft.id ? "Update" : "Add";
+  els.dCommit.textContent = view.draft.id ? t("Update") : t("Add");
   els.dCommit.disabled = !barcode || !sku || !!hit;
   show(els.dCancel, !q);
   els.dBarcode.disabled = !!q && q.kind === "barcode";
@@ -270,8 +268,8 @@ function renderRows() {
   placeDraft();
   // Moving the draft took the focus off its field.
   if (focused && els.mDraft.contains(focused)) focused.focus();
-  const total = plural(rows.length, "mapping", "mappings");
-  els.mCount.textContent = needle ? shownRows + " of " + total : total;
+  const total = tn("{n} mapping", "{n} mappings", rows.length);
+  els.mCount.textContent = needle ? t("{shown} of {total}", {shown: shownRows, total: total}) : total;
   els.mNohitsQ.textContent = view.search.trim();
   show(els.mNohits, !!needle && !shownRows);
   renderDraft();
@@ -287,11 +285,17 @@ function renderChoices(q) {
   });
 }
 
-const ASK = {
-  delete: { title: "Delete this mapping?", yes: "Delete", no: "Cancel" },
-  reload: { title: "Reload from server?", yes: "Discard and reload", no: "Cancel" },
-  leave: { title: "Discard unsaved changes?", yes: "Discard", no: "Keep editing" },
-};
+// The confirm copy for each ask, in the page's language. Literal t() calls, so
+// the catalogue scanner sees every key.
+function askCopy(kind) {
+  if (kind === "delete") {
+    return {title: t("Delete this mapping?"), yes: t("Delete"), no: t("Cancel")};
+  }
+  if (kind === "reload") {
+    return {title: t("Reload from server?"), yes: t("Discard and reload"), no: t("Cancel")};
+  }
+  return {title: t("Discard unsaved changes?"), yes: t("Discard"), no: t("Keep editing")};
+}
 
 function renderAsk() {
   let ask = view.ask;
@@ -299,7 +303,7 @@ function renderAsk() {
   if (ask && ask.kind === "delete" && !row) ask = view.ask = null;
   show(els.mAsk, !!ask);
   if (!ask) return;
-  const copy = ASK[ask.kind];
+  const copy = askCopy(ask.kind);
   els.mAskTitle.textContent = copy.title;
   els.mAskYes.textContent = copy.yes;
   els.mAskNo.textContent = copy.no;
@@ -307,11 +311,15 @@ function renderAsk() {
   if (row) {
     els.mAskBarcode.textContent = row.barcode;
     els.mAskSku.textContent = row.sku;
-    els.mAskText.textContent = "Once you save, scanning this barcode on any PC will no longer"
-      + " count as " + row.sku + ".";
+    els.mAskText.textContent = t(
+      "Once you save, scanning this barcode on any PC will no longer count as {sku}.",
+      {sku: row.sku});
+  } else if (ask.kind === "reload") {
+    els.mAskText.textContent = t(
+      "{lost} The list is replaced with the copy on the file server.",
+      {lost: mapping().lost || ""});
   } else {
-    els.mAskText.textContent = (mapping().lost || "") + (ask.kind === "reload"
-      ? " The list is replaced with the copy on the file server." : "");
+    els.mAskText.textContent = mapping().lost || "";
   }
 }
 
@@ -345,7 +353,7 @@ function renderMapping() {
   els.mErrorText.textContent = error.text || "";
   els.mErrorCause.textContent = error.cause || "";
   els.mErrorPath.textContent = error.path || "";
-  els.mErrorAction.textContent = error.action === "load" ? "Retry" : "Try again";
+  els.mErrorAction.textContent = error.action === "load" ? t("Retry") : t("Try again");
   show(els.mErrorAction, !!error.action);
 
   const empty = !failed && !rows.length && !view.draft;
@@ -358,7 +366,7 @@ function renderMapping() {
   show(els.mSaved, !!data.saved);
   show(els.mSave, !q);
   els.mSave.disabled = !data.dirty;
-  els.mCancel.textContent = q ? "Back to packing" : "Cancel";
+  els.mCancel.textContent = q ? t("Back to packing") : t("Cancel");
 
   renderChoices(q);
   renderRows();
@@ -627,6 +635,7 @@ const IDS = {
 
 new QWebChannel(qt.webChannelTransport, function (channel) {
   const bridge = channel.objects.setup;
+  applyStrings(bridge);
   view.bridge = bridge;
   // The test harness drives the page through this handle; nothing in the
   // page reads it.

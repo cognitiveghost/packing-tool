@@ -10,6 +10,7 @@ from html import escape
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
+from shared.i18n import _
 from shared.icons import icon
 from shared.theme import font_css, on_theme_changed
 
@@ -31,7 +32,7 @@ class ConnectionBanner(QFrame):
 
         text = QVBoxLayout()
         text.setSpacing(2)
-        self.title_label = QLabel("Server unreachable", self)
+        self.title_label = QLabel(_("Server unreachable"), self)
         self.title_label.setObjectName("BannerTitle")
         self.message_label = QLabel(self)
         self.message_label.setObjectName("BannerMessage")
@@ -41,7 +42,7 @@ class ConnectionBanner(QFrame):
         text.addWidget(self.message_label)
         row.addLayout(text, 1)
 
-        self.retry_button = QPushButton("Retry", self)
+        self.retry_button = QPushButton(_("Retry"), self)
         self.retry_button.setFixedHeight(44)
         self.retry_button.clicked.connect(self.retryRequested.emit)
         row.addWidget(self.retry_button, 0, Qt.AlignVCenter)
@@ -57,10 +58,14 @@ class ConnectionBanner(QFrame):
     def _write_message(self) -> None:
         mono = self._mono
         self.message_label.setText(
-            f'<span style="font-family: {mono};">{escape(self._path)}</span>'
-            f" stopped answering at"
-            f' <span style="font-family: {mono};">{escape(self._since)}</span>.'
-            " Sessions cannot be opened or ended until it answers."
+            _(
+                '<span style="font-family: {mono};">{path}</span> stopped answering at'
+                ' <span style="font-family: {mono};">{since}</span>.'
+                " Sessions cannot be opened or ended until it answers.",
+                mono=mono,
+                path=escape(self._path),
+                since=escape(self._since),
+            )
         )
 
     def _apply_theme(self, t) -> None:

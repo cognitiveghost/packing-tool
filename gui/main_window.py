@@ -62,8 +62,10 @@ from packing_tool.session_lock_manager import SessionLockManager
 from packing_tool.session_manager import SessionManager
 from packing_tool.session_registry_manager import SessionRegistryManager
 from packing_tool.worker_manager import WorkerManager
+from shared.components.language_segment import switch_language
 from shared.components.toast import toast
 from shared.fonts import load_bundled_fonts
+from shared.i18n import N_, _, _n
 from shared.icons import icon
 from shared.server_connection import (
     ConnectionSettingsDialog,
@@ -76,6 +78,8 @@ from shared.theme import (
     theme_notifier,
     themed_tokens,
 )
+from shared.update_flow import UpdateFlow
+from shared.updater import AppIdentity
 from shared.web_page import switch_theme, when_painted
 
 logger = logging.getLogger(__name__)
@@ -83,9 +87,9 @@ logger = logging.getLogger(__name__)
 # (icon name, sidebar label, tooltip) per destination, in sidebar order. The
 # tooltip names the shortcut, as the mockup's does.
 RAIL_ITEMS = (
-    ("clipboard-list", "Packing", "Packing  Ctrl+1"),
-    ("table", "Statistics", "Statistics  Ctrl+2"),
-    ("folder-open", "Sessions", "Sessions  Ctrl+3"),
+    ("clipboard-list", N_("Packing"), N_("Packing  Ctrl+1")),
+    ("table", N_("Statistics"), N_("Statistics  Ctrl+2")),
+    ("folder-open", N_("Sessions"), N_("Sessions  Ctrl+3")),
 )
 
 # How long a finished order stays on screen before Packer Mode resets.
@@ -113,12 +117,17 @@ def list_changes_text(changes: dict) -> str:
     """The toast for a packing list Shopify rewrote after packing started (AUDIT-01-3)."""
     parts = []
     if changes.get("packed_dropped"):
-        parts.append(f"{changes['packed_dropped']} packed order(s) no longer on it")
+        parts.append(_("{n} packed order(s) no longer on it", n=changes["packed_dropped"]))
     if changes.get("open_dropped"):
-        parts.append(f"{changes['open_dropped']} started order(s) removed")
+        parts.append(_("{n} started order(s) removed", n=changes["open_dropped"]))
     if changes.get("quantities_changed"):
-        parts.append(f"{changes['quantities_changed']} started order(s) with new quantities")
-    return "The packing list changed since packing started: " + ", ".join(parts) + "."
+        parts.append(
+            _("{n} started order(s) with new quantities", n=changes["quantities_changed"])
+        )
+    return _(
+        "The packing list changed since packing started: {changes}.",
+        changes=", ".join(parts),
+    )
 
 
 def _local_stamp(iso) -> str:
@@ -198,7 +207,9 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.exception("Unexpected error initializing ProfileManager")
                 QMessageBox.critical(
-                    self, "Error", f"Failed to initialize application:\n\n{e}"
+                    self,
+                    _("Error"),
+                    _("Failed to initialize application:\n\n{detail}", detail=str(e)),
                 )
             sys.exit(1)
 
@@ -370,8 +381,8 @@ class MainWindow(QMainWindow):
         )
 
         for icon_name, label, tip in RAIL_ITEMS:
-            index = self.nav_rail.add_item(icon(icon_name), label)
-            self.nav_rail.button(index).setToolTip(tip)
+            index = self.nav_rail.add_item(icon(icon_name), _(label))
+            self.nav_rail.button(index).setToolTip(_(tip))
 
         # Two-way, and the back edge is load-bearing: code that jumps pages
         # directly must not leave the rail lit on the page the user left. It
@@ -391,6 +402,7 @@ class MainWindow(QMainWindow):
         self.sidebar.skuMappingRequested.connect(lambda: self.open_sku_mapping())
         self.sidebar.switchWorkerRequested.connect(lambda: self.switch_worker())
         self.sidebar.themeRequested.connect(lambda name: self._switch_theme(name))
+        self.sidebar.languageRequested.connect(lambda code: self._switch_language(code))
         self.sidebar.set_worker(self.current_worker_name or "")
         self.command_bar.sidebarToggled.connect(self._toggle_sidebar)
         self._shell_settings = QSettings("PackingTool", "Shell")
@@ -454,6 +466,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stacked_widget)
 
         self._init_overflow()
+        self.update_flow = UpdateFlow(
+            self, self.sidebar.update_button, self._toast,
+            AppIdentity("cognitiveghost/packing-tool", "PackerAssistant", "PackerAssistant.exe"),
+            __version__,
+        )
+        self.update_flow.start()
         self.sidebar.retryRequested.connect(self.check_connection)
         self._set_connection_state("ok")
 
@@ -495,13 +513,21 @@ class MainWindow(QMainWindow):
             set_theme=lambda theme: apply_theme(QApplication.instance(), theme),
         )
 
+    def _switch_language(self, code: str):
+        """English or Bulgarian, from the sidebar's segment. The window keeps its
+        language until the restart; the segment shows the saved choice."""
+        settings = QSettings("PackingTool", "Language")
+        switch_language(self, settings, code)
+        self.sidebar.language_segment.set_language(str(settings.value("language", "en")))
+
     def _init_overflow(self):
         """What is left behind the bar's ⋯ once the sidebar footer has the
         worker, SKU mapping and the theme (spec 2026-10-08 section 6.3)."""
         menu = self.command_bar.overflow
-        menu.add_item("Server connection…", self._open_connection_settings)
+        menu.add_item(_("Server connection…"), self._open_connection_settings)
+        menu.add_item(_("Check for updates…"), lambda: self.update_flow.check_now())
         menu.addSeparator()
-        exit_item = menu.add_item("Exit", self.close)
+        exit_item = menu.add_item(_("Exit"), self.close)
         # Shown beside the label, as the mockup draws it. The OS closes the
         # window on Alt+F4 either way.
         exit_item.setShortcut(QKeySequence("Alt+F4"))
@@ -705,7 +731,7 @@ class MainWindow(QMainWindow):
 
             if not clients:
                 logger.warning("No clients found")
-                self.client_combo.addItem("(No clients available)", None)
+                self.client_combo.addItem(_("(No clients available)"), None)
                 self.client_combo.setEnabled(False)
                 return
 
@@ -736,7 +762,11 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             logger.exception("Error loading clients")
-            QMessageBox.warning(self, "Error", f"Failed to load clients:\n\n{e}")
+            QMessageBox.warning(
+                self,
+                _("Error"),
+                _("Failed to load clients:\n\n{detail}", detail=str(e)),
+            )
 
         finally:
             self.client_combo.blockSignals(False)
@@ -850,7 +880,12 @@ class MainWindow(QMainWindow):
         if reachable:
             self._set_connection_state("ok")
             if self._connection_was_down:
-                self._toast(f"Server connected again · {self.profile_manager.base_path}")
+                self._toast(
+                    _(
+                        "Server connected again · {path}",
+                        path=self.profile_manager.base_path,
+                    )
+                )
             return
         if not self._connection_was_down:
             # The time we found out; when the server stopped is not knowable.
@@ -948,6 +983,7 @@ class MainWindow(QMainWindow):
         """
         _locked, info = self.lock_manager.is_locked(work_dir)
         holder = (info or {}).get("locked_by") or "Another PC"
+        holder_name = (info or {}).get("locked_by") or _("Another PC")
         list_name = getattr(self, "current_packing_list", None) or work_dir.name
         logger.error(f"Session lock lost to {holder}: {work_dir}")
         self.logic.stop_writing()
@@ -966,17 +1002,21 @@ class MainWindow(QMainWindow):
             # second report must not land on the panel.
             if hasattr(self, "heartbeat_timer"):
                 self.heartbeat_timer.stop()
-            self.packer_mode_widget.show_takeover(holder, list_name)
+            self.packer_mode_widget.show_takeover(holder_name, list_name)
             if in_quick_map:
                 self._leave_setup()
             return
         self._teardown_session()
         QMessageBox.critical(
             self,
-            "This list is open on another PC",
-            f"{holder} has taken over {list_name}. This PC has stopped packing it "
-            "so the two don't overwrite each other's progress. Orders packed here "
-            "up to now are saved.",
+            _("This list is open on another PC"),
+            _(
+                "{holder} has taken over {list_name}. This PC has stopped packing it "
+                "so the two don't overwrite each other's progress. Orders packed here "
+                "up to now are saved.",
+                holder=holder_name,
+                list_name=list_name,
+            ),
         )
 
     def _on_start_step(self, step: int):
@@ -1303,9 +1343,21 @@ class MainWindow(QMainWindow):
 
             # 11. Update UI state
             if taken_from:
-                self._toast(f"Took over {session_path.name} from {taken_from}.")
+                self._toast(
+                    _(
+                        "Took over {session} from {pc}.",
+                        session=session_path.name,
+                        pc=taken_from,
+                    )
+                )
             else:
-                self._toast(f"Loaded {order_count} orders from {packing_list_name}.")
+                self._toast(
+                    _(
+                        "Loaded {count} orders from {packing_list}.",
+                        count=order_count,
+                        packing_list=packing_list_name,
+                    )
+                )
             if self.logic.list_changes:
                 self._toast(list_changes_text(self.logic.list_changes), role="info")
 
@@ -1383,7 +1435,7 @@ class MainWindow(QMainWindow):
                         for cell in row:
                             cell.fill = green_fill
 
-            self._toast(f"Session ended. Report saved to {output_path}")
+            self._toast(_("Session ended. Report saved to {path}", path=output_path))
 
             # Generate session summary + record stats in background thread so the
             # UI stays responsive while writing to the (potentially slow) file server.
@@ -1577,8 +1629,8 @@ class MainWindow(QMainWindow):
                         )
 
                 # Show progress dialog while writes happen in background
-                _end_progress = QProgressDialog("Saving session…", None, 0, 0, self)
-                _end_progress.setWindowTitle("Please Wait")
+                _end_progress = QProgressDialog(_("Saving session…"), None, 0, 0, self)
+                _end_progress.setWindowTitle(_("Please Wait"))
                 _end_progress.setWindowModality(Qt.WindowModal)
                 _end_progress.setCancelButton(None)
                 _end_progress.setMinimumDuration(0)
@@ -1604,8 +1656,8 @@ class MainWindow(QMainWindow):
             # Neutral title: this can fire after the report was already saved.
             QMessageBox.critical(
                 self,
-                "Session end failed",
-                f"Could not finish ending the session:\n\n{e}",
+                _("Session end failed"),
+                _("Could not finish ending the session:\n\n{detail}", detail=str(e)),
             )
             logger.exception("Error during end_session")
             self.check_connection()
@@ -1772,8 +1824,12 @@ class MainWindow(QMainWindow):
                 )
                 count = len(items)
                 self.packer_mode_widget.show_notification(
-                    f"Order {order_label(order_number_from_scan)} · {count} "
-                    f"{'item' if count == 1 else 'items'}",
+                    _n(
+                        "Order {label} · {n} item",
+                        "Order {label} · {n} items",
+                        count,
+                        label=order_label(order_number_from_scan),
+                    ),
                     "status_info",
                 )
                 completed = len(
@@ -1786,12 +1842,12 @@ class MainWindow(QMainWindow):
                 _beep(1000, 120)
             elif status == "ORDER_ALREADY_COMPLETED":
                 self.packer_mode_widget.show_notification(
-                    f"Order {text} is already packed", "status_warning"
+                    _("Order {scan} is already packed", scan=text), "status_warning"
                 )
                 self.flash_border("orange")
             else:
                 self.packer_mode_widget.show_notification(
-                    f"No order matches {text}", "status_danger"
+                    _("No order matches {scan}", scan=text), "status_danger"
                 )
                 self.flash_border("red")
                 _beep(400, 350)
@@ -1799,8 +1855,11 @@ class MainWindow(QMainWindow):
             result, status = self.logic.process_sku_scan(text, confirmation_method)
             if status == "ORDER_BARCODE":
                 self.packer_mode_widget.show_notification(
-                    f"{text} is an order. Finish or skip "
-                    f"{self.logic.current_order_number} first.",
+                    _(
+                        "{scan} is an order. Finish or skip {order} first.",
+                        scan=text,
+                        order=self.logic.current_order_number,
+                    ),
                     "status_warning",
                 )
                 self.flash_border("orange")
@@ -1811,22 +1870,27 @@ class MainWindow(QMainWindow):
                 )
                 row = self.packer_mode_widget.row_at(result["row"])
                 self.packer_mode_widget.show_notification(
-                    f"{row.get('sku', '')} confirmed — {result['packed']} of "
-                    f"{row.get('required', 0)} packed",
+                    _(
+                        "{sku} confirmed — {packed} of {required} packed",
+                        sku=row.get("sku", ""),
+                        packed=result["packed"],
+                        required=row.get("required", 0),
+                    ),
                     "status_success",
                 )
                 self.flash_border("green")
                 _beep(1200, 80)
             elif status == "SKU_NOT_FOUND":
                 self.packer_mode_widget.show_notification(
-                    f"Unknown SKU {text} — scan again or map it", "status_danger"
+                    _("Unknown SKU {scan} — scan again or map it", scan=text),
+                    "status_danger",
                 )
                 self.packer_mode_widget.show_unknown_scans(self.logic.unknown_scans)
                 self.flash_border("red")
                 _beep(400, 350)
             elif status == "SKU_EXTRA":
                 self.packer_mode_widget.show_notification(
-                    "Extra item scanned — keep it or remove it", "status_warning"
+                    _("Extra item scanned — keep it or remove it"), "status_warning"
                 )
                 self.flash_border("orange")
                 _beep(700, 200)
@@ -1838,7 +1902,7 @@ class MainWindow(QMainWindow):
                     result["row"], result["packed"], result["is_complete"]
                 )
                 self.packer_mode_widget.show_notification(
-                    "Review the extra items before this order can close",
+                    _("Review the extra items before this order can close"),
                     "status_warning",
                 )
                 self.flash_border("orange")
@@ -1878,7 +1942,8 @@ class MainWindow(QMainWindow):
         """Shared teardown for every order-complete path (scan, force confirm, extra resolve)."""
         self.packer_mode_widget.add_order_to_history(order_number)
         self.packer_mode_widget.show_notification(
-            f"Order #{order_number} packed. Scan the next order.", "status_success"
+            _("Order #{order} packed. Scan the next order.", order=order_number),
+            "status_success",
         )
         self.flash_border("green")
         _beep(1200, 80)
@@ -1931,7 +1996,7 @@ class MainWindow(QMainWindow):
             self.flash_border("orange")
         elif status == "ITEM_ALREADY_ZERO":
             self.packer_mode_widget.show_notification(
-                "Nothing packed on that line yet", "status_warning"
+                _("Nothing packed on that line yet"), "status_warning"
             )
         self.packer_mode_widget.set_focus_to_scanner()
 
@@ -1951,7 +2016,7 @@ class MainWindow(QMainWindow):
                 # All items packed but extra items need resolution before completing
                 self.flash_border("orange")
                 self.packer_mode_widget.show_notification(
-                    "Review the extra items before this order can close",
+                    _("Review the extra items before this order can close"),
                     "status_warning",
                 )
                 self.packer_mode_widget.show_extras_panel(
@@ -2000,7 +2065,7 @@ class MainWindow(QMainWindow):
 
         def after():
             self.packer_mode_widget.show_notification(
-                f"Mapped: {barcode} → {sku}", "status_success"
+                _("Mapped: {barcode} → {sku}", barcode=barcode, sku=sku), "status_success"
             )
             if kind == "barcode" and self.logic:
                 # It matches an item now, so its "No match" row goes with the mapping.
@@ -2031,7 +2096,7 @@ class MainWindow(QMainWindow):
         """Handle 'Keep' for an extra item — user acknowledges it is intentional."""
         if not self.logic:
             return
-        _, status = self.logic.confirm_keep_extra(norm_sku)
+        _result, status = self.logic.confirm_keep_extra(norm_sku)
         self.packer_mode_widget.show_extras_panel(self.logic.current_extra_items)
         if status == "ORDER_NOW_COMPLETE":
             order_num = self.logic.current_order_number
@@ -2039,7 +2104,7 @@ class MainWindow(QMainWindow):
             self.logic.clear_current_order()
         elif status == "EXTRA_CLEARED":
             self.packer_mode_widget.show_notification(
-                "Extra cleared — continue scanning", "status_success"
+                _("Extra cleared — continue scanning"), "status_success"
             )
         self.packer_mode_widget.set_focus_to_scanner()
 
@@ -2047,7 +2112,7 @@ class MainWindow(QMainWindow):
         """Handle 'Remove' for an extra item — user acknowledges it was a mistake."""
         if not self.logic:
             return
-        _, status = self.logic.remove_extra_item(norm_sku)
+        _result, status = self.logic.remove_extra_item(norm_sku)
         self.packer_mode_widget.show_extras_panel(self.logic.current_extra_items)
         if status == "ORDER_NOW_COMPLETE":
             order_num = self.logic.current_order_number
@@ -2055,7 +2120,7 @@ class MainWindow(QMainWindow):
             self.logic.clear_current_order()
         elif status == "EXTRA_CLEARED":
             self.packer_mode_widget.show_notification(
-                "Extra cleared — continue scanning", "status_success"
+                _("Extra cleared — continue scanning"), "status_success"
             )
         self.packer_mode_widget.set_focus_to_scanner()
 
@@ -2155,7 +2220,7 @@ class MainWindow(QMainWindow):
             return
         if self._connection_state == "down":
             self._toast(
-                "Server unreachable. Sessions cannot be opened until it answers.",
+                _("Server unreachable. Sessions cannot be opened until it answers."),
                 role="info",
             )
             return
@@ -2170,9 +2235,12 @@ class MainWindow(QMainWindow):
             open_id = (
                 Path(self.current_session_path).name
                 if self.current_session_path
-                else "A session"
+                else _("A session")
             )
-            self._toast(f"{open_id} is open. End it before opening another.", role="info")
+            self._toast(
+                _("{session} is open. End it before opening another.", session=open_id),
+                role="info",
+            )
             return
 
         self._last_start = {
@@ -2209,8 +2277,12 @@ class MainWindow(QMainWindow):
                 # folder cannot be made on a share that has gone away.
                 logger.exception("Could not create the packing work directory")
                 self._show_start_failure(
-                    "Session could not be opened",
-                    f"The work folder for {packing_list_name} could not be made: {e}.",
+                    _("Session could not be opened"),
+                    _(
+                        "The work folder for {list_name} could not be made: {detail}.",
+                        list_name=packing_list_name,
+                        detail=str(e),
+                    ),
                     packing_list_name,
                 )
                 self.check_connection()
@@ -2312,12 +2384,13 @@ class MainWindow(QMainWindow):
         if stale(lock):
             # Nobody was asked about this lock: the list was behind, this is a
             # Retry of 3c, or the lock changed while the question was open.
-            pc = lock.get("locked_by") or "Another PC"
+            pc = lock.get("locked_by") or _("Another PC")
             return (
                 False,
-                (
-                    f"{pc} stopped responding while this list was open there. "
-                    "Resume it from Sessions to take it over."
+                _(
+                    "{pc} stopped responding while this list was open there. "
+                    "Resume it from Sessions to take it over.",
+                    pc=pc,
                 ),
                 None,
             )
