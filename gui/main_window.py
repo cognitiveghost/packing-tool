@@ -65,6 +65,7 @@ from packing_tool.worker_manager import WorkerManager
 from shared.components.language_segment import switch_language
 from shared.components.toast import toast
 from shared.fonts import load_bundled_fonts
+from shared.guide.help import open_guide
 from shared.i18n import N_, _, _n
 from shared.icons import icon
 from shared.server_connection import (
@@ -524,6 +525,7 @@ class MainWindow(QMainWindow):
         """What is left behind the bar's ⋯ once the sidebar footer has the
         worker, SKU mapping and the theme (spec 2026-10-08 section 6.3)."""
         menu = self.command_bar.overflow
+        menu.add_item(_("User guide"), self._open_user_guide)
         menu.add_item(_("Server connection…"), self._open_connection_settings)
         menu.add_item(_("Check for updates…"), lambda: self.update_flow.check_now())
         menu.addSeparator()
@@ -543,6 +545,12 @@ class MainWindow(QMainWindow):
         for page, _item in enumerate(RAIL_ITEMS):
             shortcut = QShortcut(QKeySequence(f"Ctrl+{page + 1}"), self)
             shortcut.activated.connect(lambda p=page: self._go_to_page(p))
+
+        help_shortcut = QShortcut(QKeySequence("F1"), self)
+        help_shortcut.activated.connect(self._open_user_guide)
+
+    def _open_user_guide(self):
+        open_guide(self, str(self.profile_manager.base_path), "packing-tool")
 
     def _go_to_page(self, page: int):
         """Ctrl+1/2/3. Nothing to go to until a client is chosen, and not
