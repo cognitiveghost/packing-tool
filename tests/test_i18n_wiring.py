@@ -73,7 +73,7 @@ def test_main_window_has_an_update_flow_and_an_overflow_item(main_window):
     assert "Check for updates…" in texts
 
 
-def test_a_vetoed_language_restart_starts_nothing(main_window, monkeypatch):
+def test_a_vetoed_language_restart_is_cancelled(main_window, monkeypatch):
     started = []
     monkeypatch.setattr(relaunch, "_start", lambda argv, update: started.append(argv))
     monkeypatch.setattr(update_flow, "ask", lambda *args, **kwargs: True)
@@ -84,7 +84,7 @@ def test_a_vetoed_language_restart_starts_nothing(main_window, monkeypatch):
     finally:
         main_window._starting = False
         QSettings("PackingTool", "Language").remove("language")
-    assert relaunch.pending() is not None  # armed for aboutToQuit only
+    assert relaunch.pending() is None  # cancelled: a later close must not restart
     assert started == []
 
 

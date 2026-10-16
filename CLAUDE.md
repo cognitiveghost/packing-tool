@@ -65,6 +65,9 @@ the GitHub UI — nothing builds for it.
 
 ## DO NOT
 
+- **No bare UI strings** — wrap user-facing text in `_()` from `shared.i18n` (Python) or `t()` (web
+  JS), `N_()` for module-level constants, and add the Bulgarian to `locales/bg.json`; the guard tests
+  in `tests/test_i18n_catalogue.py` fail otherwise (ADR 0021 in shopify-fulfillment-tool)
 - **No direct commits to `main`** — this repo is PR-only, with no exception for "trivial"
   docs-only changes. A cleanup commit (e.g. removing shipped plan/spec docs) that lands
   directly on local `main` never reaches `origin` and has to be un-done later. Always branch
