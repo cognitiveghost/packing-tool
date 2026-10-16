@@ -142,7 +142,30 @@ def test_the_bar_carries_the_session_actions(window):
 def test_the_overflow_keeps_only_server_connection_updates_and_exit(window):
     """Worker, SKU mapping and the theme moved to the sidebar footer."""
     labels = [a.text() for a in window.command_bar.overflow.actions() if a.text()]
-    assert labels == ["Server connection…", "Check for updates…", "Exit"]
+    assert labels == ["User guide", "Server connection…", "Check for updates…", "Exit"]
+
+
+def test_overflow_has_user_guide(window, monkeypatch):
+    from gui import main_window
+
+    calls = []
+    monkeypatch.setattr(main_window, "open_guide", lambda *args: calls.append(args))
+    item = next(a for a in window.command_bar.overflow.actions() if a.text() == "User guide")
+    item.trigger()
+    assert calls == [(window, str(window.profile_manager.base_path), "packing-tool")]
+
+
+def test_f1_opens_the_user_guide(window, monkeypatch):
+    from PySide6.QtGui import QKeySequence, QShortcut
+
+    from gui import main_window
+
+    calls = []
+    monkeypatch.setattr(main_window, "open_guide", lambda *args: calls.append(args))
+    f1 = [s for s in window.findChildren(QShortcut) if s.key() == QKeySequence("F1")]
+    assert len(f1) == 1
+    f1[0].activated.emit()
+    assert calls == [(window, str(window.profile_manager.base_path), "packing-tool")]
 
 
 def test_the_sidebar_footer_reaches_what_the_overflow_used_to(window, monkeypatch):
