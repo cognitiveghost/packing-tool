@@ -1,8 +1,8 @@
 pyinstaller~=6.22.3
 pytest~=9.1.1
 pytest-qt~=4.5.0
-ruff~=0.17.0
+ruff~=0.17.1
 coverage~=7.16
 # User guide build (shared/guide/build.py): Markdown to HTML, then HTML to PDF
-markdown>=3.7
+markdown>=3.11.1
 weasyprint>=70
