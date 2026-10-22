@@ -344,6 +344,7 @@
   "This barcode already maps to": "Този баркод вече е свързан със",
   "This barcode already maps to {sku}.": "Този баркод вече е свързан с {sku}.",
   "This list is open on another PC": "Списъкът е отворен на друг компютър",
+  "This list's lock could not be removed from {folder}. Other PCs may still see it as open.": "Заключването на този списък не можа да се премахне от {folder}. Другите компютри може още да го виждат като отворен.",
   "This session has no files to open.": "Тази сесия няма файлове за отваряне.",
   "Thursday": "четвъртък",
   "Timing and scan quality": "Време и качество на сканирането",
