@@ -50,7 +50,8 @@ the canonical source** (its `docs/adr/0017-fulfilment-owns-shared.md`); this one
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
-- **Always run `graphify update .` right after modifying code** — a stale graph gives wrong answers about `shared/` ownership silently, with no error. `shared/` changes land here via `scripts/sync_shared.py`, which graphify cannot see until you re-run it.
+- **Ask the graph before sweeping files.** For "where is X / what touches Y / what breaks if I change Z", run `graphify query "…" --budget 1500`, `graphify affected "X"` or `graphify path "A" "B"` first. Treat the Start nodes as leads and confirm each with `rg`/Read. If you already know the exact string, `rg` is faster. Never read `graphify-out/GRAPH_REPORT.md` whole.
+- **Don't run `graphify update` yourself**, except right after `scripts/sync_shared.py`: those `shared/` changes aren't in the graph until the next commit. Otherwise the `post-commit` hook refreshes the graph, and the runner builds it in each new worktree.
 
 ---
 
