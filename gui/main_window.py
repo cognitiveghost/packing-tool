@@ -1080,8 +1080,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "current_work_dir") and self.current_work_dir:
             try:
                 with self._lock_io:
-                    self.lock_manager.release_lock(Path(self.current_work_dir))
-                logger.info(f"Lock released during cleanup: {self.current_work_dir}")
+                    released = self.lock_manager.release_lock(Path(self.current_work_dir))
+                if released:
+                    logger.info(f"Lock released during cleanup: {self.current_work_dir}")
+                else:
+                    logger.warning(f"Lock not released: .session.lock left in {self.current_work_dir}")
             except Exception as lock_error:
                 logger.warning(f"Failed to release lock: {lock_error}")
 
@@ -1167,8 +1170,11 @@ class MainWindow(QMainWindow):
             if hasattr(self, "current_work_dir") and self.current_work_dir:
                 try:
                     with self._lock_io:
-                        self.lock_manager.release_lock(Path(self.current_work_dir))
-                    logger.info(f"Lock released: {self.current_work_dir}")
+                        released = self.lock_manager.release_lock(Path(self.current_work_dir))
+                    if released:
+                        logger.info(f"Lock released: {self.current_work_dir}")
+                    else:
+                        logger.warning(f"Lock not released: .session.lock left in {self.current_work_dir}")
                 except Exception as e:
                     logger.warning(f"Failed to release lock: {e}")
 
@@ -1687,8 +1693,19 @@ class MainWindow(QMainWindow):
         if hasattr(self, "current_work_dir") and self.current_work_dir:
             try:
                 with self._lock_io:
-                    self.lock_manager.release_lock(Path(self.current_work_dir))
-                logger.info("Lock released")
+                    released = self.lock_manager.release_lock(Path(self.current_work_dir))
+                if released:
+                    logger.info("Lock released")
+                else:
+                    logger.warning(f"Lock not released: .session.lock left in {self.current_work_dir}")
+                    self._toast(
+                        _(
+                            "This list's lock could not be removed from {folder}. "
+                            "Other PCs may still see it as open.",
+                            folder=Path(self.current_work_dir).name,
+                        ),
+                        role="info",
+                    )
             except Exception:
                 logger.exception("Failed to release lock")
 
