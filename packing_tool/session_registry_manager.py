@@ -405,9 +405,10 @@ class SessionRegistryManager:
         pl_file: Path,
         session_dir: Path,
     ):
-        """Parse an unstarted packing list JSON and add it to available_lists."""
+        """Parse an unstarted packing list JSON and add it to available_lists, with its mtime."""
         key = self._session_key(session_id, packing_list_name)
         try:
+            mtime = pl_file.stat().st_mtime  # before the read: a rewrite mid-read is re-read next time
             with open(pl_file, "r", encoding="utf-8") as f:
                 pl_data = json.load(f)
             # Courier may be under different keys depending on Shopify tool version
@@ -426,6 +427,7 @@ class SessionRegistryManager:
                     "total_orders", len(pl_data.get("orders", []))
                 ),
                 "total_items": pl_data.get("total_items", 0),
+                "mtime": mtime,
             }
         except Exception as e:
             logger.debug(f"Could not read packing list {pl_file}: {e}")
@@ -614,6 +616,7 @@ class SessionRegistryManager:
                 "session_id": session_id,
                 "packing_list_name": packing_list_name,
                 "packing_list_path": packing_list_path,
+                "mtime": metadata.get("mtime"),
                 "session_path": session_path,
                 "courier": metadata.get("courier", ""),
                 "created_at": metadata.get("created_at", ""),
@@ -732,23 +735,23 @@ class SessionRegistryManager:
 
     def refresh_available_lists(self, client_id: str) -> int:
         """
-        Scan packing_lists/ directories for this client and register any new
-        available lists that are not yet in the registry.
+        Bring available_lists in line with the packing_lists/ folders.
 
-        This is a lightweight scan — it only lists directories one level deep
-        and reads packing list JSON files that are genuinely new (not in registry).
+        Registers new lists, re-reads an available list whose JSON changed (or has
+        no stored mtime), and drops one whose JSON is gone (withdrawn). Started
+        lists (`sessions`) are never re-read here.
 
-        Returns the number of newly registered lists.
+        Returns the number of entries added or replaced (removals are not counted).
         """
-        registry = self.read_registry(client_id)  # snapshot, only to skip known keys
+        registry = self.read_registry(client_id)  # snapshot, only to decide what to re-read
         found = self._empty_registry(client_id)  # what the scan turns up; merged under the lock
         client_dir = self.profile_manager.get_sessions_root() / f"CLIENT_{client_id}"
         if not client_dir.exists():
             return 0
 
-        known_keys = set(registry["sessions"].keys()) | set(
-            registry["available_lists"].keys()
-        )
+        available = registry["available_lists"]
+        seen: set[str] = set()  # available keys whose JSON is still on disk
+        scanned_sessions: set[str] = set()  # session dirs whose packing_lists/ was listed
         try:
             for s_entry in os.scandir(client_dir):
                 if not s_entry.is_dir():
@@ -764,18 +767,17 @@ class SessionRegistryManager:
                         continue
                     pl_name = Path(pl_entry.name).stem
                     key = self._session_key(session_id, pl_name)
-
-                    if key in known_keys:
+                    if key in registry["sessions"]:
                         continue
+                    seen.add(key)
 
-                    # New list — check if a work dir exists
                     work_dir = packing_root / pl_name
                     if work_dir.exists():
                         # Session was started; do a full register
                         self._register_from_work_dir(
                             found, session_id, pl_name, work_dir, Path(s_entry.path)
                         )
-                    else:
+                    elif key not in available or available[key].get("mtime") != pl_entry.stat().st_mtime:
                         self._register_available_from_file(
                             found,
                             session_id,
@@ -783,25 +785,37 @@ class SessionRegistryManager:
                             Path(pl_entry.path),
                             Path(s_entry.path),
                         )
-                    known_keys.add(key)
+                scanned_sessions.add(session_id)
 
         except Exception:
             logger.exception("Error scanning for new available lists")
 
-        if not (found["sessions"] or found["available_lists"]):
+        # Withdrawn: listed earlier, its session dir scanned now, JSON not on disk
+        gone = {
+            key for key, entry in available.items()
+            if entry.get("session_id") in scanned_sessions and key not in seen
+        }
+        if not (found["sessions"] or found["available_lists"] or gone):
             return 0
 
         new_count = 0
         try:
             with self._locked(client_id):
                 current = self._read_for_update(client_id)
-                for section in ("sessions", "available_lists"):
-                    for key, entry in found[section].items():
-                        if key in current["sessions"] or key in current["available_lists"]:
-                            continue  # another PC registered it while we scanned
-                        current[section][key] = entry
-                        new_count += 1
-                if new_count:
+                for key, entry in found["sessions"].items():
+                    if key in current["sessions"]:
+                        continue  # another PC registered it while we scanned
+                    current["available_lists"].pop(key, None)  # started now
+                    current["sessions"][key] = entry
+                    new_count += 1
+                for key, entry in found["available_lists"].items():
+                    if key in current["sessions"]:
+                        continue
+                    current["available_lists"][key] = entry  # new, or replaces a stale copy
+                    new_count += 1
+                for key in gone:
+                    current["available_lists"].pop(key, None)
+                if new_count or gone:
                     self.write_registry(client_id, current)
         except FileLockError:
             logger.warning("Registry busy; new lists will merge on the next refresh")

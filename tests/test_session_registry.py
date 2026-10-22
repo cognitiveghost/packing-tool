@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 from datetime import datetime, timedelta
 
@@ -225,3 +226,85 @@ def test_pausing_a_finished_entry_leaves_it_finished(registry, tmp_path):
     registry.register_session_paused("M", "2026-10-01_1", "DHL_Orders")
     [entry] = registry.get_sessions("M")
     assert entry["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# refresh_available_lists: a regenerated or withdrawn list (spec section 8)
+# ---------------------------------------------------------------------------
+
+def _list_json(profile_manager, session_id="2026-10-01_1", name="L"):
+    return profile_manager.get_sessions_root() / "CLIENT_M" / session_id / "packing_lists" / f"{name}.json"
+
+
+def _write_list(path, total, created_at):
+    path.write_text(json.dumps({"list_name": "L", "courier": "DHL", "created_at": created_at,
+                                "total_orders": total}), encoding="utf-8")
+
+
+def _bump_mtime(path, seconds=10):
+    t = path.stat().st_mtime
+    os.utime(path, (t + seconds, t + seconds))
+
+
+def test_refresh_picks_up_a_regenerated_list(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["L"])
+    path = _list_json(profile_manager)
+    _write_list(path, total=16, created_at="2026-10-01T09:00:00")
+    assert registry.refresh_available_lists("M") == 1
+    assert registry.get_available_lists("M")[0]["total_orders"] == 16
+
+    _write_list(path, total=18, created_at="2026-10-01T10:00:00")
+    _bump_mtime(path)
+    assert registry.refresh_available_lists("M") == 1
+    [entry] = registry.get_available_lists("M")
+    assert entry["total_orders"] == 18
+    assert entry["created_at"] == "2026-10-01T10:00:00"
+
+
+def test_refresh_drops_a_withdrawn_list(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["L"])
+    registry.refresh_available_lists("M")
+    path = _list_json(profile_manager)
+    (path.parent / "withdrawn").mkdir()
+    path.rename(path.parent / "withdrawn" / "L.json")
+    registry.refresh_available_lists("M")
+    assert registry.get_available_lists("M") == []
+
+
+def test_refresh_leaves_a_started_list_alone(registry, profile_manager):
+    session_dir = _session_tree(profile_manager, "2026-10-01_1", ["L"])
+    _work_dir(session_dir, "L", state=STATE)
+    registry.refresh_available_lists("M")
+    [started] = registry.get_sessions("M")
+    path = _list_json(profile_manager)
+    _write_list(path, total=18, created_at="2026-10-01T10:00:00")
+    _bump_mtime(path)
+    registry.refresh_available_lists("M")
+    assert registry.get_sessions("M") == [started]
+    assert registry.get_available_lists("M") == []
+
+
+def test_a_legacy_entry_without_mtime_is_reread_once(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["L"])
+    registry.refresh_available_lists("M")
+    data = registry.read_registry("M")
+    for entry in data["available_lists"].values():
+        entry.pop("mtime", None)
+    registry.write_registry("M", data)
+
+    assert registry.refresh_available_lists("M") == 1
+    [entry] = registry.get_available_lists("M")
+    assert "mtime" in entry
+    assert registry.refresh_available_lists("M") == 0
+
+
+def test_an_unreadable_rewrite_keeps_the_old_entry(registry, profile_manager):
+    _session_tree(profile_manager, "2026-10-01_1", ["L"])
+    path = _list_json(profile_manager)
+    _write_list(path, total=16, created_at="2026-10-01T09:00:00")
+    registry.refresh_available_lists("M")
+    path.write_text("{", encoding="utf-8")
+    _bump_mtime(path)
+    registry.refresh_available_lists("M")
+    [entry] = registry.get_available_lists("M")
+    assert entry["total_orders"] == 16
